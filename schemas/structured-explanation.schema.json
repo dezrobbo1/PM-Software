@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/dsc/structured-explanation.schema.json",
+  "title": "Structured Scheduling Explanation",
+  "type": "object",
+  "required": [
+    "activity_id",
+    "previous_start",
+    "proposed_start",
+    "movement",
+    "reason_type",
+    "model_version",
+    "input_hash",
+    "output_hash"
+  ],
+  "properties": {
+    "activity_id": {
+      "type": "string"
+    },
+    "previous_start": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "proposed_start": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "movement": {
+      "type": "integer"
+    },
+    "reason_type": {
+      "enum": [
+        "precedence",
+        "calendar",
+        "date_constraint",
+        "resource_conflict",
+        "operational_exclusion",
+        "objective_tradeoff",
+        "canonical_tie_break",
+        "inherited_downstream",
+        "actual_progress"
+      ]
+    },
+    "governing_entity_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "conflicting_activity_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "affected_milestone_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "selected_objective_vector": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "counterfactuals": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "model_version": {
+      "type": "string"
+    },
+    "solver_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "input_hash": {
+      "type": "string"
+    },
+    "output_hash": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

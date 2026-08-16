@@ -1,0 +1,43 @@
+{
+  "policy_id": "objective-v0.1",
+  "type": "lexicographic",
+  "levels": [
+    {
+      "level": 1,
+      "metric": "hard_violation_count",
+      "direction": "minimize"
+    },
+    {
+      "level": 2,
+      "metric": "mandatory_milestone_lateness_by_descending_priority",
+      "direction": "minimize"
+    },
+    {
+      "level": 3,
+      "metric": "project_finish",
+      "direction": "minimize"
+    },
+    {
+      "level": 4,
+      "metric": "approved_forecast_movement",
+      "direction": "minimize"
+    },
+    {
+      "level": 5,
+      "metric": "overtime_mobilisation_peak_penalty",
+      "direction": "minimize"
+    },
+    {
+      "level": 6,
+      "metric": "continuity_interruption_penalty",
+      "direction": "minimize"
+    },
+    {
+      "level": 7,
+      "metric": "canonical_activity_mode_resource_id_rank",
+      "direction": "minimize"
+    }
+  ],
+  "status": "benchmark_policy_not_practitioner_validated",
+  "milestone_priority_policy": "higher integer priority is evaluated before lower priority; equal priority is aggregated, then stable milestone ID breaks equality"
+}

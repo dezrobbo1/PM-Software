@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/dsc/execution-record.schema.json",
+  "title": "Execution Record",
+  "type": "object",
+  "required": [
+    "execution_id",
+    "case_id",
+    "execution_identity",
+    "status",
+    "input_hash",
+    "output_hash",
+    "explanation_hash",
+    "validator_status"
+  ],
+  "properties": {
+    "execution_id": {
+      "type": "string"
+    },
+    "case_id": {
+      "type": "string"
+    },
+    "executed_at": {
+      "type": "string"
+    },
+    "execution_identity": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "executed_pass",
+        "executed_fail",
+        "executed_inconclusive",
+        "not_executed"
+      ]
+    },
+    "input_hash": {
+      "type": "string"
+    },
+    "output_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "explanation_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "validator_status": {
+      "enum": [
+        "pass",
+        "fail",
+        "not_run"
+      ]
+    },
+    "objective_vector": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "evidence_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

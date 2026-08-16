@@ -1,0 +1,31 @@
+{
+  "profile_id": "reference-v0.1",
+  "time_domain": "integer",
+  "duration_basis": "productive_working_time",
+  "relationship_types": [
+    "FS",
+    "SS",
+    "FF",
+    "SF"
+  ],
+  "lag_policy": "successor_calendar_unless_explicit",
+  "negative_lag": "supported",
+  "project_start_lower_bound": true,
+  "constraints": [
+    "start_no_earlier_than",
+    "finish_no_earlier_than",
+    "fixed_start",
+    "fixed_finish"
+  ],
+  "progress_policies": [
+    "none",
+    "retained_logic",
+    "progress_override"
+  ],
+  "actual_dates_policy": "native_validation_only",
+  "float_scope": "simple_24x7_acyclic_unconstrained_networks_only",
+  "native_equivalence": {
+    "p6": "not_claimed",
+    "microsoft_project": "not_claimed"
+  }
+}

@@ -1,0 +1,369 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/dsc/canonical-schedule.schema.json",
+  "title": "Canonical Schedule",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "schedule_id",
+    "semantic_profile",
+    "time_axis",
+    "project",
+    "calendars",
+    "activities",
+    "relationships"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "schedule_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string"
+    },
+    "semantic_profile": {
+      "type": "string"
+    },
+    "source_system": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_snapshot_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "time_axis": {
+      "type": "object",
+      "required": [
+        "unit",
+        "origin",
+        "horizon"
+      ],
+      "properties": {
+        "unit": {
+          "enum": [
+            "minute",
+            "hour"
+          ]
+        },
+        "origin": {
+          "type": "string"
+        },
+        "horizon": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "project": {
+      "type": "object",
+      "required": [
+        "project_start"
+      ],
+      "properties": {
+        "project_start": {
+          "type": "integer"
+        },
+        "status_time": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "required_finish": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "progress_policy": {
+          "enum": [
+            "none",
+            "retained_logic",
+            "progress_override",
+            "actual_dates",
+            null
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "calendars": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/calendar"
+      },
+      "minItems": 1
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/resource"
+      },
+      "default": []
+    },
+    "activities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/activity"
+      },
+      "minItems": 1
+    },
+    "relationships": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relationship"
+      }
+    },
+    "operational_constraints": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "default": []
+    },
+    "governance": {
+      "type": "object",
+      "default": {}
+    }
+  },
+  "$defs": {
+    "calendar": {
+      "type": "object",
+      "required": [
+        "id",
+        "working_intervals"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "working_intervals": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "items": false,
+            "minItems": 2,
+            "maxItems": 2
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "resource": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "capacity",
+        "calendar_id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "renewable",
+            "exclusive",
+            "cumulative",
+            "non_renewable"
+          ]
+        },
+        "capacity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "calendar_id": {
+          "type": "string"
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "constraint": {
+      "type": "object",
+      "required": [
+        "type",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "start_no_earlier_than",
+            "finish_no_earlier_than",
+            "fixed_start",
+            "fixed_finish"
+          ]
+        },
+        "value": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "assignment": {
+      "type": "object",
+      "required": [
+        "resource_id",
+        "demand"
+      ],
+      "properties": {
+        "resource_id": {
+          "type": "string"
+        },
+        "demand": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "activity": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "duration",
+        "calendar_id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "task",
+            "start_milestone",
+            "finish_milestone"
+          ]
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "remaining_duration": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "calendar_id": {
+          "type": "string"
+        },
+        "actual_start": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "actual_finish": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/constraint"
+          },
+          "default": []
+        },
+        "assignments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assignment"
+          },
+          "default": []
+        },
+        "milestone_priority": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "due_time": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source_fields": {
+          "type": "object",
+          "default": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "relationship": {
+      "type": "object",
+      "required": [
+        "id",
+        "predecessor_id",
+        "successor_id",
+        "type",
+        "lag"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "predecessor_id": {
+          "type": "string"
+        },
+        "successor_id": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "FS",
+            "SS",
+            "FF",
+            "SF"
+          ]
+        },
+        "lag": {
+          "type": "integer"
+        },
+        "lag_calendar": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
