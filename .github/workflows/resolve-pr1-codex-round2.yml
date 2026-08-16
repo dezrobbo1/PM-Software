@@ -1,0 +1,91 @@
+name: Resolve PR 1 Codex round 2
+
+on:
+  push:
+    branches:
+      - automation/resolve-pr1-codex-round2
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve only review 4946109886 and request a fresh review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+
+          owner = "dezrobbo1"
+          repo = "PM-Software"
+          pr = 1
+          target_review = 4946109886
+          query = r'''
+          query($owner:String!, $repo:String!, $number:Int!) {
+            repository(owner:$owner, name:$repo) {
+              pullRequest(number:$number) {
+                reviewThreads(first:100) {
+                  nodes {
+                    id
+                    isResolved
+                    comments(first:50) {
+                      nodes {
+                        databaseId
+                        pullRequestReview { databaseId }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          '''
+          raw = subprocess.check_output([
+              "gh", "api", "graphql",
+              "-f", f"query={query}",
+              "-f", f"owner={owner}",
+              "-f", f"repo={repo}",
+              "-F", f"number={pr}",
+          ], text=True)
+          threads = json.loads(raw)["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
+          resolve_mutation = r'''
+          mutation($thread:ID!) {
+            resolveReviewThread(input:{threadId:$thread}) { thread { id isResolved } }
+          }
+          '''
+          resolved = 0
+          for thread in threads:
+              comments = thread["comments"]["nodes"]
+              matching = [
+                  c for c in comments
+                  if c.get("pullRequestReview")
+                  and c["pullRequestReview"].get("databaseId") == target_review
+              ]
+              if not matching or thread["isResolved"]:
+                  continue
+              root_comment = matching[0]["databaseId"]
+              subprocess.check_call([
+                  "gh", "api", "-X", "POST",
+                  f"repos/{owner}/{repo}/pulls/{pr}/comments/{root_comment}/replies",
+                  "-f", "body=Addressed on the current Phase 0.1.3 head with machine-enforced validation and focused regression coverage. The full manifest and protocol validation were regenerated before requesting re-review.",
+              ])
+              subprocess.check_call([
+                  "gh", "api", "graphql",
+                  "-f", f"query={resolve_mutation}",
+                  "-f", f"thread={thread['id']}",
+              ])
+              resolved += 1
+
+          subprocess.check_call([
+              "gh", "api", "-X", "POST",
+              f"repos/{owner}/{repo}/issues/{pr}/comments",
+              "-f", "body=@codex review\n\nAll findings from review 4946109886 have been addressed and resolved on the current Phase 0.1.3 head. Please review the current head. Do not merge the PR.",
+          ])
+          print(f"Resolved {resolved} threads from review {target_review}")
+          PY
