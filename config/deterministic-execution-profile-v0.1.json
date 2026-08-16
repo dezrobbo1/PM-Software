@@ -9,6 +9,6 @@
   "wall_clock_termination_for_semantic_tests": false,
   "solver_name": "to_be_pinned_in_phase1",
   "solver_build": "to_be_pinned_in_phase1",
-  "tie_break_policy": "objective-v0.1-level-7",
+  "tie_break_policy": "objective-v0.2-level-7",
   "cross_version_determinism_promised": false
 }

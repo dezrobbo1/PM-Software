@@ -3,6 +3,11 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+try:
+    from .repository_files import repository_paths
+except ImportError:  # Direct execution: python tools/build_manifest.py
+    from repository_files import repository_paths
+
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "manifest.sha256"
 
@@ -15,10 +20,13 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-files = [
-    p for p in ROOT.rglob("*")
-    if p.is_file() and p != OUT and "__pycache__" not in p.parts
-]
-lines = [f"{sha256(p)}  {p.relative_to(ROOT).as_posix()}" for p in sorted(files)]
-OUT.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-print(f"Wrote {len(lines)} entries to {OUT}")
+def main() -> int:
+    paths = repository_paths(ROOT)
+    lines = [f"{sha256(ROOT / rel)}  {rel.as_posix()}" for rel in paths]
+    OUT.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    print(f"Wrote {len(lines)} tracked entries to {OUT}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

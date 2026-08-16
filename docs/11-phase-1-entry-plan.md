@@ -4,6 +4,17 @@
 
 Implement and test the declared reference semantic subset. Do not implement the optimiser first.
 
+## Mandatory entry checks
+
+Before Phase 1 code is added:
+
+```bash
+python -m unittest discover -s tests -v
+python tools/validate_phase0.py
+```
+
+Both commands must pass from a clean Git checkout. The manifest must exactly cover the tracked protocol files, and the consolidated protocol must match the numbered authoritative documents.
+
 ## Work packages
 
 ### WP1 — Repository and runtime pin
@@ -12,14 +23,16 @@ Implement and test the declared reference semantic subset. Do not implement the 
 - pin runtime and dependency versions;
 - record platform fingerprint;
 - adopt canonical JSON and SHA-256 implementation;
-- set CI to run fixture/schema validation.
+- keep CI running schema, negative-guard and manifest validation.
 
 ### WP2 — Canonical loader
 
 - parse canonical schedule fixtures;
 - reject duplicate IDs and unresolved references;
+- reject invalid, overlapping or out-of-horizon calendar intervals;
 - expand explicit working intervals;
-- preserve source-specific fields without interpreting them.
+- preserve source-specific fields without interpreting them;
+- represent baseline, approved forecast and proposed scenario separately.
 
 ### WP3 — Reference CPM kernel
 
@@ -38,12 +51,14 @@ Implement and test the declared reference semantic subset. Do not implement the 
 - resource capacity where declared;
 - immutable actuals;
 - expected assertion comparison;
-- deterministic serialisation and hash.
+- deterministic serialisation and hash;
+- execution-record and explanation-schema validation.
 
 ### WP5 — Run 50 semantic fixtures
 
 - save one execution record per case;
 - retain all failures;
+- require complete evidence and hashes before using an `executed_*` label;
 - do not modify expected outputs without change control.
 
 ### WP6 — First native comparison

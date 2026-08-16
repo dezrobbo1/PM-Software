@@ -1,6 +1,6 @@
 # Deterministic Scheduling Core — Phase 0 Protocol Freeze
 
-Status: **Phase 0 complete; implementation not started**  
+Status: **Phase 0 complete at `phase0-0.1.2`; implementation not started**  
 Research date: **16 August 2026**  
 Scope: **Separate from Shutdown Tracker**
 
@@ -33,15 +33,18 @@ This bundle does **not** claim:
 - Change-control rules
 - Fifty semantic micro-test fixtures
 - Schemas and blank experiment registers
-- Structural validation script and SHA-256 manifest
+- Structural and negative-regression validation, continuous integration, and complete SHA-256 manifest
 
 ## Validate the bundle
 
+Run the negative regression suite and the full protocol validator from a clean Git checkout:
+
 ```bash
+python -m unittest discover -s tests -v
 python tools/validate_phase0.py
 ```
 
-The script checks every JSON fixture against its schema, verifies that there are exactly 50 unique semantic cases, validates register headers, and verifies the manifest.
+The checks validate all JSON Schemas and 50 fixtures, enforce date-time formats, stable-ID and reference integrity across current and scenario states, reject invalid calendars, frozen coordinates and incomplete expected results, verify the exact frozen objective policy and required register set, ensure the consolidated protocol mirrors its authoritative documents, and require the SHA-256 manifest to cover exactly the intended tracked files.
 
 ## Immediate next implementation milestone
 

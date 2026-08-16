@@ -15,7 +15,8 @@
   ],
   "properties": {
     "schema_version": {
-      "type": "string"
+      "type": "string",
+      "const": "0.1.0"
     },
     "schedule_id": {
       "type": "string",
@@ -25,7 +26,8 @@
       "type": "string"
     },
     "semantic_profile": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "source_system": {
       "type": [
@@ -37,6 +39,16 @@
       "type": [
         "string",
         "null"
+      ]
+    },
+    "source_file_hash": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hash"
+        },
+        {
+          "type": "null"
+        }
       ]
     },
     "time_axis": {
@@ -54,7 +66,8 @@
           ]
         },
         "origin": {
-          "type": "string"
+          "type": "string",
+          "format": "date-time"
         },
         "horizon": {
           "type": "integer",
@@ -92,9 +105,22 @@
             "actual_dates",
             null
           ]
+        },
+        "frozen_horizon_finish": {
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
       "additionalProperties": false
+    },
+    "wbs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/wbsNode"
+      },
+      "default": []
     },
     "calendars": {
       "type": "array",
@@ -126,16 +152,117 @@
     "operational_constraints": {
       "type": "array",
       "items": {
-        "type": "object"
+        "$ref": "#/$defs/operationalConstraint"
       },
       "default": []
     },
+    "baseline": {
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/scheduleState"
+            },
+            {
+              "properties": {
+                "state_type": {
+                  "const": "baseline"
+                }
+              },
+              "required": [
+                "state_type"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "approved_forecast": {
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/scheduleState"
+            },
+            {
+              "properties": {
+                "state_type": {
+                  "const": "approved_forecast"
+                }
+              },
+              "required": [
+                "state_type"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "proposed_scenario": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/proposedScenario"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "governance": {
-      "type": "object",
-      "default": {}
+      "$ref": "#/$defs/governance"
     }
   },
   "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceFields": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "wbsNode": {
+      "type": "object",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "parent_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outline_order": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "source_fields": {
+          "$ref": "#/$defs/sourceFields"
+        }
+      },
+      "additionalProperties": false
+    },
     "calendar": {
       "type": "object",
       "required": [
@@ -146,6 +273,9 @@
         "id": {
           "type": "string",
           "minLength": 1
+        },
+        "name": {
+          "type": "string"
         },
         "working_intervals": {
           "type": "array",
@@ -163,6 +293,9 @@
             "minItems": 2,
             "maxItems": 2
           }
+        },
+        "source_fields": {
+          "$ref": "#/$defs/sourceFields"
         }
       },
       "additionalProperties": false
@@ -177,6 +310,10 @@
       ],
       "properties": {
         "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
           "type": "string"
         },
         "type": {
@@ -192,16 +329,59 @@
           "minimum": 0
         },
         "calendar_id": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "skills": {
           "type": "array",
           "items": {
             "type": "string"
           },
+          "uniqueItems": true,
           "default": []
+        },
+        "certifications": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "location": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_reference": {
+          "$ref": "#/$defs/sourceFields"
+        },
+        "source_fields": {
+          "$ref": "#/$defs/sourceFields"
         }
       },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "exclusive"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "capacity": {
+                "const": 1
+              }
+            }
+          }
+        }
+      ],
       "additionalProperties": false
     },
     "constraint": {
@@ -211,6 +391,9 @@
         "value"
       ],
       "properties": {
+        "id": {
+          "type": "string"
+        },
         "type": {
           "enum": [
             "start_no_earlier_than",
@@ -221,6 +404,9 @@
         },
         "value": {
           "type": "integer"
+        },
+        "source_fields": {
+          "$ref": "#/$defs/sourceFields"
         }
       },
       "additionalProperties": false
@@ -233,7 +419,8 @@
       ],
       "properties": {
         "resource_id": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "demand": {
           "type": "integer",
@@ -241,6 +428,131 @@
         }
       },
       "additionalProperties": false
+    },
+    "executionMode": {
+      "type": "object",
+      "required": [
+        "id",
+        "duration",
+        "assignments"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "calendar_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "assignments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assignment"
+          }
+        },
+        "required_skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "parameters": {
+          "$ref": "#/$defs/sourceFields"
+        }
+      },
+      "additionalProperties": false
+    },
+    "frozenState": {
+      "type": "object",
+      "required": [
+        "is_frozen"
+      ],
+      "properties": {
+        "is_frozen": {
+          "type": "boolean"
+        },
+        "frozen_start": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "frozen_finish": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "is_frozen": {
+                "const": true
+              }
+            },
+            "required": [
+              "is_frozen"
+            ]
+          },
+          "then": {
+            "required": [
+              "frozen_start",
+              "frozen_finish"
+            ],
+            "properties": {
+              "frozen_start": {
+                "type": "integer"
+              },
+              "frozen_finish": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "is_frozen": {
+                "const": false
+              }
+            },
+            "required": [
+              "is_frozen"
+            ]
+          },
+          "then": {
+            "properties": {
+              "frozen_start": {
+                "type": "null"
+              },
+              "frozen_finish": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
     },
     "activity": {
       "type": "object",
@@ -258,6 +570,12 @@
         },
         "name": {
           "type": "string"
+        },
+        "wbs_id": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "kind": {
           "enum": [
@@ -278,7 +596,8 @@
           "minimum": 0
         },
         "calendar_id": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "actual_start": {
           "type": [
@@ -306,6 +625,24 @@
           },
           "default": []
         },
+        "eligible_modes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/executionMode"
+          },
+          "default": []
+        },
+        "frozen_state": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/frozenState"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "milestone_priority": {
           "type": "integer",
           "minimum": 0,
@@ -318,10 +655,39 @@
           ]
         },
         "source_fields": {
-          "type": "object",
-          "default": {}
+          "$ref": "#/$defs/sourceFields"
         }
       },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "start_milestone",
+                  "finish_milestone"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "duration": {
+                "const": 0
+              },
+              "remaining_duration": {
+                "enum": [
+                  0,
+                  null
+                ]
+              }
+            }
+          }
+        }
+      ],
       "additionalProperties": false
     },
     "relationship": {
@@ -335,13 +701,16 @@
       ],
       "properties": {
         "id": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "predecessor_id": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "successor_id": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "type": {
           "enum": [
@@ -360,9 +729,362 @@
             "null"
           ],
           "default": null
+        },
+        "source_fields": {
+          "$ref": "#/$defs/sourceFields"
         }
       },
       "additionalProperties": false
+    },
+    "operationalConstraint": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "hard"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "workface_occupancy",
+            "permit_window",
+            "isolation_state",
+            "simops_exclusion",
+            "material_release",
+            "mandatory_supervision",
+            "alternative_mode",
+            "continuity",
+            "mobilisation_transition",
+            "frozen_horizon",
+            "custom_preserved"
+          ]
+        },
+        "hard": {
+          "type": "boolean"
+        },
+        "activity_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "resource_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "window_start": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "window_finish": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "capacity": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parameters": {
+          "$ref": "#/$defs/sourceFields"
+        },
+        "source_fields": {
+          "$ref": "#/$defs/sourceFields"
+        }
+      },
+      "additionalProperties": false
+    },
+    "stateAssignment": {
+      "type": "object",
+      "required": [
+        "resource_id",
+        "demand"
+      ],
+      "properties": {
+        "resource_id": {
+          "type": "string"
+        },
+        "demand": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "activityState": {
+      "type": "object",
+      "required": [
+        "activity_id",
+        "start",
+        "finish"
+      ],
+      "properties": {
+        "activity_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start": {
+          "type": "integer"
+        },
+        "finish": {
+          "type": "integer"
+        },
+        "remaining_duration": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "mode_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "assignments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stateAssignment"
+          },
+          "default": []
+        },
+        "source_fields": {
+          "$ref": "#/$defs/sourceFields"
+        }
+      },
+      "additionalProperties": false
+    },
+    "scheduleState": {
+      "type": "object",
+      "required": [
+        "state_id",
+        "state_type",
+        "activity_states"
+      ],
+      "properties": {
+        "state_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state_type": {
+          "enum": [
+            "baseline",
+            "approved_forecast",
+            "snapshot"
+          ]
+        },
+        "source_snapshot_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "activity_states": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/activityState"
+          }
+        },
+        "source_fields": {
+          "$ref": "#/$defs/sourceFields"
+        }
+      },
+      "additionalProperties": false
+    },
+    "proposedScenario": {
+      "type": "object",
+      "required": [
+        "scenario_id",
+        "status",
+        "activity_states",
+        "objective_policy_id",
+        "objective_vector"
+      ],
+      "properties": {
+        "scenario_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "approved",
+            "rejected",
+            "superseded"
+          ]
+        },
+        "created_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "objective_policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "objective_vector": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "activity_states": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/activityState"
+          }
+        },
+        "alternative_scenario_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "governance": {
+          "$ref": "#/$defs/governance"
+        },
+        "source_fields": {
+          "$ref": "#/$defs/sourceFields"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidenceReference": {
+      "type": "object",
+      "required": [
+        "id",
+        "path_or_uri",
+        "hash"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path_or_uri": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hash": {
+          "$ref": "#/$defs/hash"
+        }
+      },
+      "additionalProperties": false
+    },
+    "governance": {
+      "type": "object",
+      "properties": {
+        "approval_state": {
+          "enum": [
+            "not_submitted",
+            "pending",
+            "approved",
+            "rejected",
+            "superseded",
+            null
+          ]
+        },
+        "decision_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rationale": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceReference"
+          },
+          "default": []
+        },
+        "actor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timestamp": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "source_system": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "calculation_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "objective_policy_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rejected_alternative_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
     }
   },
   "additionalProperties": false

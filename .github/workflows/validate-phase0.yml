@@ -1,0 +1,27 @@
+name: Validate Phase 0 protocol
+
+on:
+  push:
+    branches:
+      - main
+      - phase0-protocol-freeze
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install pinned dependencies
+        run: python -m pip install --disable-pip-version-check -e .
+      - name: Run negative guard tests
+        run: python -m unittest discover -s tests -v
+      - name: Validate frozen protocol
+        run: python tools/validate_phase0.py
