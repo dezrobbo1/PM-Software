@@ -129,7 +129,11 @@ The canonical integer vector is flattened in this order:
 ]
 ```
 
-The Phase 0 validator derives the required vector layout from the canonical schedule and rejects incomplete or surplus entries. A fixed seven-entry vector is invalid because levels 2 and 7 are deliberately case-specific vectors.
+The Phase 0 validator derives the required vector layout from the canonical schedule and rejects incomplete or surplus entries. It also recomputes every entry from complete feasible activity states, including mandatory-milestone lateness, project finish, approved-forecast movement, the explicit resource tuple and the stable activity/resource tie vector. A fixed seven-entry vector is invalid because levels 2 and 7 are deliberately case-specific vectors, and a correctly sized fabricated vector is also invalid.
+
+The recomputed hard-violation component is `0` only after the selected states pass the active executable feasibility checks. Unsupported semantic branches or missing output states fail closed rather than inventing a positive violation-count convention.
+
+Execution and explanation validators load complete states through evidence maps keyed by the claimed selected-scenario or output hash. They do not substitute an unbound proposed state. Every non-empty execution vector is recomputed even when optimality is `unknown`. Feasible counterfactual vectors are recomputed only after applying and validating their canonical-input patch; the approved forecast is immutable across competing scenarios.
 
 ## Required scenario comparison
 

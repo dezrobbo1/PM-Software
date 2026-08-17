@@ -20,4 +20,7 @@ This directory contains exactly 50 preregistered fixtures.
 - Expected outputs may be changed only through Phase 0 change control.
 - The exact case IDs and canonical filenames are preregistered; a same-count replacement is invalid.
 - Every declared relationship formula is independently validated against the expected coordinates.
+- All 49 declared coordinate sets are independently recomputed exactly; feasible but noncanonical delays are invalid.
+- Expected duration, supported date bounds, exclusive-resource feasibility, restricted float and curated driving-relationship assertions are machine checked.
+- Curated driving assertions are non-exhaustive, but every listed relationship must govern after calendar adjustment.
 - A later engine must not generate the expected values from the same implementation under test.

@@ -119,7 +119,11 @@ An `executed_pass` additionally requires:
 
 An optimal or feasible-not-proven result must be feasible. An optimal result has absolute optimality gap exactly `0`. A proven-infeasible result must be classified infeasible, must have a null selected-scenario hash, must carry an empty objective vector, and must have null best-bound and optimality-gap values. Its output and explanation hashes may identify proof evidence, but they must not identify a feasible selected schedule. A non-optimisation semantic execution may remain `not_applicable` for feasibility and optimality and uses an empty objective vector.
 
-The cross-validator derives the complete objective-vector length from the case's mandatory milestone groups, activities, modes and resources. Merely requiring a non-empty array is insufficient.
+The cross-validator derives the complete objective-vector length from the case's mandatory milestone groups, activities, modes and resources, then recomputes every value from a complete, feasible selected activity-state set. Shape alone is insufficient. Every non-empty execution objective vector is recomputed, including one retained with an `unknown` optimality classification. Feasible optimisation evidence without complete selected states fails closed; non-optimisation semantic executions remain `not_applicable` with an empty vector.
+
+For a standalone execution record, the validator caller must load the complete selected activity states from the immutable artifact identified by the selected-scenario hash and supply them for recomputation. The execution-record schema does not duplicate that output artifact. A missing artifact is not treated as proof of a vector's values.
+
+The same evidence binding applies to an optimisation explanation: its selected states are loaded by the explanation output hash, not inferred from an unrelated in-memory scenario. The active value-recomputation guard covers unstarted complete-state outputs in the current executable profile; actual/progress output-state objective recomputation remains fail-closed until a separately reviewed output profile exists.
 
 A failed or inconclusive execution may lack a selected scenario when failure occurred before one was produced, but the immutable failure evidence bundle remains mandatory.
 
@@ -130,6 +134,8 @@ Non-executed result labels must not contain an input, execution, output, selecte
 A counterfactual is a separate recomputation, not narrative inference. A feasible counterfactual must contain a validated output hash, a non-empty objective vector and validator status `pass`. A proven-infeasible counterfactual records no output schedule, an empty objective vector and validator status `pass`. An unknown result cannot claim an output or objective vector. The changed input, execution identity, result evidence hash and evidence paths remain mandatory.
 
 Counterfactual input changes use non-empty RFC 6901 JSON Pointer paths. Only `~0` and `~1` are valid escape sequences; malformed pointers are rejected before any recomputation is accepted.
+
+For a feasible counterfactual, semantic validation applies the declared patch to a copy of the canonical input and loads the complete counterfactual states associated with its output hash. It then revalidates feasibility and recomputes the full objective vector against the patched input. The immutable approved forecast and existing proposed-output state cannot be patched. A focus-activity coordinate pair or output hash alone is insufficient.
 
 ## Native round-trip record
 

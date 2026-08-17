@@ -211,6 +211,22 @@ Float is calculated only for simple 24x7 acyclic networks without actuals, resou
 
 No claim is made that this restricted float profile matches every native product configuration.
 
+## Declared reference-oracle validation
+
+The 49 fixtures marked `declared` are exact reference assertions, not merely feasible examples. The independent validator recomputes the earliest canonical coordinates from the input network and compares every start, remaining-start, finish and project-finish coordinate exactly. `SEM-STA-045` remains excluded because its `actual_dates` result is deliberately native-validation-only.
+
+The bounded oracle applies only the semantics exercised by the frozen corpus:
+
+- completed activities preserve actual start and finish without substituting nominal duration;
+- in-progress activities preserve actual start and consume remaining duration from a status-bounded remaining start;
+- unstarted activities consume nominal duration on the intersection of the activity calendar and every mandatory assigned-resource calendar;
+- SNET, FNET and all four relationship formulas contribute lower bounds, with lag consumed on the successor activity calendar;
+- capacity-one exclusive demand is checked over productive half-open segments;
+- the two contended-resource fixtures enumerate their two legal orders and use the frozen objective vector to select the canonical order; and
+- the two float fixtures use only the restricted 24x7, acyclic, unconstrained FS-zero backward pass declared above.
+
+`driving_relationships` is a preregistered curated assertion set, not a claim to enumerate every tight or critical relationship. The validator freezes each existing set and independently requires every listed relationship to attain the successor's governing coordinate after calendar adjustment. Defining a complete critical-path set would require a later amendment and direct fixture review.
+
 ## Unsupported or unresolved semantics
 
 The following require later, separate profiles:
@@ -228,6 +244,7 @@ The following require later, separate profiles:
 - multiple float paths;
 - cross-project relationships;
 - full constraint hierarchies.
+- hard operational constraints and project required-finish execution in the reference oracle.
 
 Any unexplained native difference is a failed compatibility claim, not a reason to modify the reference result after the fact.
 
@@ -562,7 +579,11 @@ An `executed_pass` additionally requires:
 
 An optimal or feasible-not-proven result must be feasible. An optimal result has absolute optimality gap exactly `0`. A proven-infeasible result must be classified infeasible, must have a null selected-scenario hash, must carry an empty objective vector, and must have null best-bound and optimality-gap values. Its output and explanation hashes may identify proof evidence, but they must not identify a feasible selected schedule. A non-optimisation semantic execution may remain `not_applicable` for feasibility and optimality and uses an empty objective vector.
 
-The cross-validator derives the complete objective-vector length from the case's mandatory milestone groups, activities, modes and resources. Merely requiring a non-empty array is insufficient.
+The cross-validator derives the complete objective-vector length from the case's mandatory milestone groups, activities, modes and resources, then recomputes every value from a complete, feasible selected activity-state set. Shape alone is insufficient. Every non-empty execution objective vector is recomputed, including one retained with an `unknown` optimality classification. Feasible optimisation evidence without complete selected states fails closed; non-optimisation semantic executions remain `not_applicable` with an empty vector.
+
+For a standalone execution record, the validator caller must load the complete selected activity states from the immutable artifact identified by the selected-scenario hash and supply them for recomputation. The execution-record schema does not duplicate that output artifact. A missing artifact is not treated as proof of a vector's values.
+
+The same evidence binding applies to an optimisation explanation: its selected states are loaded by the explanation output hash, not inferred from an unrelated in-memory scenario. The active value-recomputation guard covers unstarted complete-state outputs in the current executable profile; actual/progress output-state objective recomputation remains fail-closed until a separately reviewed output profile exists.
 
 A failed or inconclusive execution may lack a selected scenario when failure occurred before one was produced, but the immutable failure evidence bundle remains mandatory.
 
@@ -573,6 +594,8 @@ Non-executed result labels must not contain an input, execution, output, selecte
 A counterfactual is a separate recomputation, not narrative inference. A feasible counterfactual must contain a validated output hash, a non-empty objective vector and validator status `pass`. A proven-infeasible counterfactual records no output schedule, an empty objective vector and validator status `pass`. An unknown result cannot claim an output or objective vector. The changed input, execution identity, result evidence hash and evidence paths remain mandatory.
 
 Counterfactual input changes use non-empty RFC 6901 JSON Pointer paths. Only `~0` and `~1` are valid escape sequences; malformed pointers are rejected before any recomputation is accepted.
+
+For a feasible counterfactual, semantic validation applies the declared patch to a copy of the canonical input and loads the complete counterfactual states associated with its output hash. It then revalidates feasibility and recomputes the full objective vector against the patched input. The immutable approved forecast and existing proposed-output state cannot be patched. A focus-activity coordinate pair or output hash alone is insufficient.
 
 ## Native round-trip record
 
@@ -731,7 +754,11 @@ The canonical integer vector is flattened in this order:
 ]
 ```
 
-The Phase 0 validator derives the required vector layout from the canonical schedule and rejects incomplete or surplus entries. A fixed seven-entry vector is invalid because levels 2 and 7 are deliberately case-specific vectors.
+The Phase 0 validator derives the required vector layout from the canonical schedule and rejects incomplete or surplus entries. It also recomputes every entry from complete feasible activity states, including mandatory-milestone lateness, project finish, approved-forecast movement, the explicit resource tuple and the stable activity/resource tie vector. A fixed seven-entry vector is invalid because levels 2 and 7 are deliberately case-specific vectors, and a correctly sized fabricated vector is also invalid.
+
+The recomputed hard-violation component is `0` only after the selected states pass the active executable feasibility checks. Unsupported semantic branches or missing output states fail closed rather than inventing a positive violation-count convention.
+
+Execution and explanation validators load complete states through evidence maps keyed by the claimed selected-scenario or output hash. They do not substitute an unbound proposed state. Every non-empty execution vector is recomputed even when optimality is `unknown`. Feasible counterfactual vectors are recomputed only after applying and validating their canonical-input patch; the approved forecast is immutable across competing scenarios.
 
 ## Required scenario comparison
 
@@ -1193,7 +1220,12 @@ The amendment:
 - preserves historical `reference-v0.1` and `reference-v0.2`, introduces active `reference-v0.3`, and removes untested alternate-lag-calendar and cumulative-capacity execution claims;
 - requires complete activity coverage for every supplied approved forecast and proposed scenario;
 - advances the execution-record schema to `0.1.4` and rejects selected-scenario/objective/bound/gap evidence for `infeasible_proven` results;
-- adds focused negative regression tests.
+- independently recomputes all 49 declared coordinate oracles, including duration, date-bound, status, calendar and canonical-earliest placement;
+- checks exclusive-resource feasibility and independently objective-selects the two frozen contended-resource orders;
+- recomputes every objective-vector value from complete feasible selected states for proposed scenarios, execution evidence and patched feasible counterfactuals;
+- recomputes complete float values for the two restricted float fixtures;
+- freezes each curated driving-relationship assertion set and verifies that every listed relationship governs after calendar adjustment; and
+- adds focused negative regression tests, bringing the guard suite to 67 tests.
 
 Affected semantic fixtures: only the active semantic-profile reference changed from `reference-v0.2` to `reference-v0.3`. All calculation-bearing values and declared expected results remain unchanged.
 Affected prior outputs: none; no CPM, optimiser, native or practitioner execution had occurred.

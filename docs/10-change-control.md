@@ -131,7 +131,12 @@ The amendment:
 - preserves historical `reference-v0.1` and `reference-v0.2`, introduces active `reference-v0.3`, and removes untested alternate-lag-calendar and cumulative-capacity execution claims;
 - requires complete activity coverage for every supplied approved forecast and proposed scenario;
 - advances the execution-record schema to `0.1.4` and rejects selected-scenario/objective/bound/gap evidence for `infeasible_proven` results;
-- adds focused negative regression tests.
+- independently recomputes all 49 declared coordinate oracles, including duration, date-bound, status, calendar and canonical-earliest placement;
+- checks exclusive-resource feasibility and independently objective-selects the two frozen contended-resource orders;
+- recomputes every objective-vector value from complete feasible selected states for proposed scenarios, execution evidence and patched feasible counterfactuals;
+- recomputes complete float values for the two restricted float fixtures;
+- freezes each curated driving-relationship assertion set and verifies that every listed relationship governs after calendar adjustment; and
+- adds focused negative regression tests, bringing the guard suite to 67 tests.
 
 Affected semantic fixtures: only the active semantic-profile reference changed from `reference-v0.2` to `reference-v0.3`. All calculation-bearing values and declared expected results remain unchanged.
 Affected prior outputs: none; no CPM, optimiser, native or practitioner execution had occurred.

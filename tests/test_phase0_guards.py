@@ -66,6 +66,27 @@ class Phase0GuardTests(unittest.TestCase):
     def cross_errors(self, data: dict) -> list[str]:
         return validate_phase0.validate_case_document(data, "case.json")
 
+    @staticmethod
+    def expected_activity_states(data: dict) -> list[dict]:
+        return [
+            {
+                "activity_id": activity_id,
+                "start": record["start"],
+                "finish": record["finish"],
+            }
+            for activity_id, record in sorted(
+                data["expected"]["activity_times"].items()
+            )
+        ]
+
+    def objective_vector(self, schedule: dict, activity_states: list[dict]) -> list[int]:
+        vector, errors = validate_phase0.recompute_objective_vector(
+            schedule, activity_states, "test scenario"
+        )
+        self.assertEqual([], errors)
+        self.assertIsNotNone(vector)
+        return vector or []
+
     def test_duplicate_stable_ids_are_rejected(self) -> None:
         mutations = []
 
@@ -183,13 +204,16 @@ class Phase0GuardTests(unittest.TestCase):
             "scenario_id": "SCN-1",
             "status": "proposed",
             "objective_policy_id": "objective-v0.3",
-            "objective_vector": [0] * len(validate_phase0.objective_vector_layout(schedule)),
             "activity_states": [
                 {"activity_id": "A", "start": 0, "finish": 4},
                 {"activity_id": "B", "start": 4, "finish": 7},
             ],
             "governance": {},
         }
+        schedule["proposed_scenario"]["objective_vector"] = self.objective_vector(
+            schedule, schedule["proposed_scenario"]["activity_states"]
+        )
+        data["expected"]["reference_status"] = "native_validation_only"
         self.assertEqual([], self.schema_errors(data))
         self.assertEqual([], self.cross_errors(data))
 
@@ -477,6 +501,20 @@ class Phase0GuardTests(unittest.TestCase):
             any("frozen start exceeds" in error for error in self.cross_errors(reversed_coordinates))
         )
 
+        outside_frozen_horizon = copy.deepcopy(self.relationship_case)
+        outside_frozen_horizon["schedule"]["project"]["frozen_horizon_finish"] = 2
+        outside_frozen_horizon["schedule"]["activities"][0]["frozen_state"] = {
+            "is_frozen": True,
+            "frozen_start": 0,
+            "frozen_finish": 4,
+        }
+        self.assertTrue(
+            any(
+                "exceeds frozen_horizon_finish 2" in error
+                for error in self.cross_errors(outside_frozen_horizon)
+            )
+        )
+
     def test_complete_required_register_set_is_enforced(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -594,18 +632,30 @@ class Phase0GuardTests(unittest.TestCase):
 
     def test_objective_vector_shape_is_case_specific_and_complete(self) -> None:
         schedule = copy.deepcopy(self.relationship_case["schedule"])
+        activity_states = self.expected_activity_states(self.relationship_case)
+        vector = self.objective_vector(schedule, activity_states)
         expected = len(validate_phase0.objective_vector_layout(schedule))
         self.assertTrue(
             validate_phase0.validate_execution_record(
-                {"optimality_status": "optimal", "objective_vector": [0] * (expected - 1)},
+                {
+                    "optimality_status": "optimal",
+                    "selected_scenario_hash": HASH_A,
+                    "objective_vector": [0] * (expected - 1),
+                },
                 schedule,
+                activity_states_by_selected_scenario_hash={HASH_A: activity_states},
             )
         )
         self.assertEqual(
             [],
             validate_phase0.validate_execution_record(
-                {"optimality_status": "optimal", "objective_vector": [0] * expected},
+                {
+                    "optimality_status": "optimal",
+                    "selected_scenario_hash": HASH_A,
+                    "objective_vector": vector,
+                },
                 schedule,
+                activity_states_by_selected_scenario_hash={HASH_A: activity_states},
             ),
         )
 
@@ -746,6 +796,15 @@ class Phase0GuardTests(unittest.TestCase):
             item["finish"] for item in data["expected"]["activity_times"].values()
         )
         self.assertTrue(any("must have start equal to finish" in error for error in self.cross_errors(data)))
+
+        nonworking = copy.deepcopy(self.milestone_case)
+        nonworking["schedule"]["calendars"][0]["working_intervals"] = [[4, 400]]
+        self.assertTrue(
+            any(
+                "M.start 0" in error and "canonical value 4" in error
+                for error in self.cross_errors(nonworking)
+            )
+        )
 
     def test_mandatory_milestone_rule_excludes_normal_tasks(self) -> None:
         schedule = copy.deepcopy(self.relationship_case["schedule"])
@@ -948,11 +1007,21 @@ class Phase0GuardTests(unittest.TestCase):
 
     def test_explanation_causes_resolve_against_canonical_input(self) -> None:
         schedule = copy.deepcopy(self.resource_case["schedule"])
-        vector = [0] * len(validate_phase0.objective_vector_layout(schedule))
+        states = self.expected_activity_states(self.resource_case)
+        vector = self.objective_vector(schedule, states)
+        schedule["proposed_scenario"] = {
+            "scenario_id": "SCN-1",
+            "status": "proposed",
+            "objective_policy_id": "objective-v0.3",
+            "objective_vector": vector,
+            "activity_states": states,
+        }
         counterfactual = {
             "counterfactual_id": "CF-1",
-            "description": "Release the exclusive resource",
-            "input_patch": [{"op": "remove", "path": "/resources/0"}],
+            "description": "Rename an activity without changing its schedule",
+            "input_patch": [
+                {"op": "replace", "path": "/activities/0/name", "value": "A revised"}
+            ],
             "execution_identity": HASH_A,
             "result_status": "feasible",
             "result_hash": HASH_B,
@@ -966,11 +1035,23 @@ class Phase0GuardTests(unittest.TestCase):
         explanation["selected_objective_vector"] = vector
         explanation["governing_entity"] = {"type": "resource", "id": "R-MISSING"}
         explanation["affected_milestone_id"] = "MA"
-        errors = validate_phase0.validate_explanation_document(explanation, schedule)
+        evidence = {HASH_B: states, HASH_C: states}
+        errors = validate_phase0.validate_explanation_document(
+            explanation,
+            schedule,
+            activity_states_by_output_hash=evidence,
+        )
         self.assertTrue(any("unknown ID R-MISSING" in error for error in errors))
 
         explanation["governing_entity"]["id"] = "R1"
-        self.assertEqual([], validate_phase0.validate_explanation_document(explanation, schedule))
+        self.assertEqual(
+            [],
+            validate_phase0.validate_explanation_document(
+                explanation,
+                schedule,
+                activity_states_by_output_hash=evidence,
+            ),
+        )
 
     def test_counterfactual_patch_paths_use_valid_json_pointer_escapes(self) -> None:
         base = {
@@ -1031,6 +1112,841 @@ class Phase0GuardTests(unittest.TestCase):
                         for error in self.cross_errors(data)
                     )
                 )
+
+    def test_declared_expected_spans_consume_activity_or_remaining_duration(self) -> None:
+        duration_case = copy.deepcopy(self.relationship_case)
+        duration_case["expected"]["activity_times"]["A"]["finish"] = 3
+        duration_case["expected"]["activity_times"]["B"] = {
+            "start": 3,
+            "finish": 6,
+        }
+        duration_case["expected"]["project_finish"] = 6
+        self.assertTrue(
+            any(
+                "A finish 3 does not equal calendar-derived finish 4" in error
+                for error in self.cross_errors(duration_case)
+            )
+        )
+
+        remaining_case = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-sta-040.json"
+        )
+        remaining_case["expected"]["activity_times"]["A"]["finish"] = 7
+        remaining_case["expected"]["project_finish"] = 7
+        self.assertTrue(
+            any(
+                "remaining-duration-derived finish 8" in error
+                for error in self.cross_errors(remaining_case)
+            )
+        )
+
+        actual_case = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-sta-039.json"
+        )
+        actual_case["expected"]["activity_times"]["A"]["finish"] = 5
+        actual_case["expected"]["project_finish"] = 5
+        self.assertTrue(
+            any(
+                "must preserve actual [1, 6]" in error
+                for error in self.cross_errors(actual_case)
+            )
+        )
+
+    def test_declared_expected_coordinates_enforce_supported_lower_bounds(self) -> None:
+        mutations = []
+
+        snet = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-con-035.json"
+        )
+        snet["expected"]["activity_times"]["A"] = {"start": 0, "finish": 3}
+        snet["expected"]["project_finish"] = 3
+        mutations.append(("start_no_earlier_than 5", snet))
+
+        fnet = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-con-036.json"
+        )
+        fnet["expected"]["activity_times"]["A"] = {"start": 0, "finish": 3}
+        fnet["expected"]["project_finish"] = 3
+        mutations.append(("finish_no_earlier_than 7", fnet))
+
+        project_start = copy.deepcopy(self.relationship_case)
+        project_start["schedule"]["project"]["project_start"] = 1
+        mutations.append(("precedes project start 1", project_start))
+
+        status = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-sta-040.json"
+        )
+        status["expected"]["activity_times"]["A"]["remaining_start"] = 4
+        status["expected"]["activity_times"]["A"]["finish"] = 7
+        status["expected"]["project_finish"] = 7
+        mutations.append(("precedes status time 5", status))
+
+        for expected_error, data in mutations:
+            with self.subTest(expected_error=expected_error):
+                self.assertTrue(
+                    any(
+                        expected_error in error for error in self.cross_errors(data)
+                    )
+                )
+
+        operational = copy.deepcopy(self.relationship_case)
+        operational["schedule"]["operational_constraints"] = [
+            {
+                "id": "OC-1",
+                "type": "permit_window",
+                "hard": True,
+                "activity_ids": ["A"],
+                "resource_ids": [],
+                "window_start": 10,
+                "window_finish": 20,
+            }
+        ]
+        self.assertTrue(
+            any(
+                "operational constraints" in error
+                and "not executable under reference-v0.3" in error
+                for error in self.cross_errors(operational)
+            )
+        )
+
+        required_finish = copy.deepcopy(self.relationship_case)
+        required_finish["schedule"]["project"]["required_finish"] = 2
+        self.assertTrue(
+            any(
+                "project.required_finish" in error
+                and "not executable under reference-v0.3" in error
+                for error in self.cross_errors(required_finish)
+            )
+        )
+
+    def test_declared_exclusive_resources_are_independently_feasible(self) -> None:
+        overlap = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-det-049.json"
+        )
+        overlap["expected"]["activity_times"]["B"] = {"start": 0, "finish": 4}
+        overlap["expected"]["project_finish"] = 4
+        self.assertTrue(
+            any(
+                "concurrent demand 2 exceeds exclusive capacity 1" in error
+                for error in self.cross_errors(overlap)
+            )
+        )
+
+        excessive_demand = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-cal-027.json"
+        )
+        excessive_demand["schedule"]["activities"][0]["assignments"][0]["demand"] = 2
+        self.assertTrue(
+            any(
+                "demand 2 exceeds resource R1 capacity 1" in error
+                for error in self.cross_errors(excessive_demand)
+            )
+        )
+
+        swapped_tie_break = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-det-049.json"
+        )
+        swapped_tie_break["expected"]["activity_times"] = {
+            "A": {"start": 4, "finish": 8},
+            "B": {"start": 0, "finish": 4},
+        }
+        swapped_tie_break["expected"]["resource_order"] = ["B", "A"]
+        self.assertTrue(
+            any(
+                "objective-selected exclusive-resource order ['A', 'B']" in error
+                for error in self.cross_errors(swapped_tie_break)
+            )
+        )
+
+        touching = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-det-049.json"
+        )
+        self.assertFalse(
+            any(
+                "concurrent demand" in error for error in self.cross_errors(touching)
+            )
+        )
+
+        unsupported_contention = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-det-049.json"
+        )
+        third = copy.deepcopy(unsupported_contention["schedule"]["activities"][1])
+        third["id"] = "C"
+        third["name"] = "C"
+        unsupported_contention["schedule"]["activities"].append(third)
+        unsupported_contention["expected"]["activity_times"]["C"] = {
+            "start": 8,
+            "finish": 12,
+        }
+        unsupported_contention["expected"]["project_finish"] = 12
+        unsupported_contention["expected"]["resource_order"] = ["A", "B", "C"]
+        self.assertTrue(
+            any(
+                "cannot be independently recomputed" in error
+                for error in self.cross_errors(unsupported_contention)
+            )
+        )
+
+    def test_objective_vectors_are_recomputed_from_complete_scenarios(self) -> None:
+        data = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-det-050.json"
+        )
+        schedule = data["schedule"]
+        states = self.expected_activity_states(data)
+        vector = self.objective_vector(schedule, states)
+        self.assertEqual(
+            [
+                0, 0, 0, 0, 4, 4, 4, 8, 0, 0, 1, 1, 0,
+                4, 8, 0, 1, 0, 4, 0, 1, 8, 8, 0, 0, 4, 4, 0, 0,
+            ],
+            vector,
+        )
+
+        for index in range(len(vector)):
+            with self.subTest(objective_index=index):
+                corrupted = vector.copy()
+                corrupted[index] += 1
+                self.assertTrue(
+                    any(
+                        f"objective vector entry {index}" in error
+                        for error in validate_phase0.validate_objective_vector(
+                            corrupted,
+                            schedule,
+                            "scenario",
+                            activity_states=states,
+                        )
+                    )
+                )
+
+        proposed = copy.deepcopy(data)
+        proposed["schedule"]["proposed_scenario"] = {
+            "scenario_id": "SCN-1",
+            "status": "proposed",
+            "objective_policy_id": "objective-v0.3",
+            "objective_vector": vector.copy(),
+            "activity_states": states,
+        }
+        self.assertEqual([], self.cross_errors(proposed))
+        proposed["schedule"]["proposed_scenario"]["objective_vector"][7] = -1
+        self.assertTrue(
+            any(
+                "project_finish" in error for error in self.cross_errors(proposed)
+            )
+        )
+
+        record = {
+            "optimality_status": "optimal",
+            "selected_scenario_hash": HASH_A,
+            "objective_vector": vector,
+        }
+        self.assertEqual(
+            [],
+            validate_phase0.validate_execution_record(
+                record,
+                schedule,
+                activity_states_by_selected_scenario_hash={HASH_A: states},
+            ),
+        )
+        self.assertTrue(validate_phase0.validate_execution_record(record, schedule))
+        corrupted_record = copy.deepcopy(record)
+        corrupted_record["objective_vector"][7] = -1
+        self.assertTrue(
+            any(
+                "project_finish" in error
+                for error in validate_phase0.validate_execution_record(
+                    corrupted_record,
+                    schedule,
+                    activity_states_by_selected_scenario_hash={HASH_A: states},
+                )
+            )
+        )
+        unknown_record = {
+            "optimality_status": "unknown",
+            "selected_scenario_hash": HASH_A,
+            "objective_vector": vector.copy(),
+        }
+        self.assertEqual(
+            [],
+            validate_phase0.validate_execution_record(
+                unknown_record,
+                schedule,
+                activity_states_by_selected_scenario_hash={HASH_A: states},
+            ),
+        )
+        unknown_record["objective_vector"][7] = 107
+        self.assertTrue(
+            any(
+                "project_finish" in error
+                for error in validate_phase0.validate_execution_record(
+                    unknown_record,
+                    schedule,
+                    activity_states_by_selected_scenario_hash={HASH_A: states},
+                )
+            )
+        )
+        self.assertTrue(
+            validate_phase0.validate_execution_record(
+                record,
+                schedule,
+                activity_states_by_selected_scenario_hash={HASH_D: states},
+            )
+        )
+        for demand in (0, -1):
+            with self.subTest(invalid_external_demand=demand):
+                invalid_states = copy.deepcopy(states)
+                invalid_states[0]["assignments"] = [
+                    {"resource_id": "R1", "demand": demand}
+                ]
+                demand_errors = validate_phase0.validate_execution_record(
+                    record,
+                    schedule,
+                    activity_states_by_selected_scenario_hash={
+                        HASH_A: invalid_states
+                    },
+                )
+                self.assertTrue(demand_errors)
+                self.assertTrue(any("minimum of 1" in error for error in demand_errors))
+
+        malformed_values = (None, "oops", [None], {"resource_id": "R1", "demand": 1})
+        for malformed in malformed_values:
+            with self.subTest(malformed_external_assignments=malformed):
+                malformed_states = copy.deepcopy(states)
+                malformed_states[0]["assignments"] = malformed
+                self.assertTrue(
+                    validate_phase0.validate_execution_record(
+                        record,
+                        schedule,
+                        activity_states_by_selected_scenario_hash={
+                            HASH_A: malformed_states
+                        },
+                    )
+                )
+        malformed_mode = copy.deepcopy(states)
+        malformed_mode[0]["mode_id"] = 7
+        self.assertTrue(
+            validate_phase0.validate_execution_record(
+                record,
+                schedule,
+                activity_states_by_selected_scenario_hash={HASH_A: malformed_mode},
+            )
+        )
+
+        schedule_with_scenario = copy.deepcopy(schedule)
+        schedule_with_scenario["proposed_scenario"] = {
+            "scenario_id": "SCN-1",
+            "status": "proposed",
+            "objective_policy_id": "objective-v0.3",
+            "objective_vector": vector.copy(),
+            "activity_states": states,
+        }
+        patched_schedule = copy.deepcopy(schedule)
+        patched_schedule["activities"][2]["due_time"] = 3
+        counterfactual_vector = self.objective_vector(patched_schedule, states)
+        counterfactual = {
+            "counterfactual_id": "CF-1",
+            "description": "Move MA's mandatory due coordinate one unit earlier",
+            "input_patch": [
+                {"op": "replace", "path": "/activities/2/due_time", "value": 3}
+            ],
+            "execution_identity": HASH_A,
+            "result_status": "feasible",
+            "result_hash": HASH_B,
+            "output_hash": HASH_C,
+            "objective_vector": counterfactual_vector.copy(),
+            "validator_status": "pass",
+            "milestone_impacts": [{"milestone_id": "MA", "movement": 0}],
+            "evidence_paths": ["evidence/CF-1.json"],
+        }
+        explanation = self.explanation(counterfactuals=[counterfactual])
+        explanation["selected_objective_vector"] = vector.copy()
+        explanation["affected_milestone_id"] = "MA"
+        self.assertEqual(
+            [],
+            validate_phase0.validate_explanation_document(
+                explanation,
+                schedule_with_scenario,
+                activity_states_by_output_hash={HASH_B: states, HASH_C: states},
+            ),
+        )
+        missing_selected_states = validate_phase0.validate_explanation_document(
+            explanation,
+            schedule_with_scenario,
+            activity_states_by_output_hash={HASH_C: states},
+        )
+        self.assertTrue(
+            any(
+                "complete activity states" in error
+                and "counterfactual CF-1" not in error
+                for error in missing_selected_states
+            )
+        )
+        missing_counterfactual_states = validate_phase0.validate_explanation_document(
+            explanation,
+            schedule_with_scenario,
+            activity_states_by_output_hash={HASH_B: states},
+        )
+        self.assertTrue(
+            any(
+                "counterfactual CF-1" in error
+                and "complete activity states" in error
+                for error in missing_counterfactual_states
+            )
+        )
+        explanation["counterfactuals"][0]["objective_vector"][0] = 1
+        self.assertTrue(
+            any(
+                "counterfactual CF-1" in error and "hard_violation_count" in error
+                for error in validate_phase0.validate_explanation_document(
+                    explanation,
+                    schedule_with_scenario,
+                    activity_states_by_output_hash={HASH_B: states, HASH_C: states},
+                )
+            )
+        )
+
+        invalid_profile = copy.deepcopy(explanation)
+        invalid_profile["counterfactuals"][0]["input_patch"] = [
+            {
+                "op": "replace",
+                "path": "/semantic_profile",
+                "value": "invented-v9",
+            }
+        ]
+        self.assertTrue(
+            any(
+                "semantic_profile must resolve" in error
+                for error in validate_phase0.validate_explanation_document(
+                    invalid_profile,
+                    schedule_with_scenario,
+                    activity_states_by_output_hash={HASH_B: states, HASH_C: states},
+                )
+            )
+        )
+
+        forecast_patch = copy.deepcopy(explanation)
+        forecast_patch["counterfactuals"][0]["input_patch"] = [
+            {"op": "replace", "path": "/approved_forecast", "value": None}
+        ]
+        self.assertTrue(
+            any(
+                "cannot modify the immutable approved forecast" in error
+                for error in validate_phase0.validate_explanation_document(
+                    forecast_patch,
+                    schedule_with_scenario,
+                    activity_states_by_output_hash={HASH_B: states, HASH_C: states},
+                )
+            )
+        )
+
+        proposed_patch = copy.deepcopy(explanation)
+        proposed_patch["counterfactuals"][0]["input_patch"] = [
+            {
+                "op": "replace",
+                "path": "/proposed_scenario/objective_vector/0",
+                "value": 99,
+            }
+        ]
+        self.assertTrue(
+            any(
+                "cannot modify the immutable proposed scenario" in error
+                for error in validate_phase0.validate_explanation_document(
+                    proposed_patch,
+                    schedule_with_scenario,
+                    activity_states_by_output_hash={HASH_B: states, HASH_C: states},
+                )
+            )
+        )
+
+        invalid_array_index = copy.deepcopy(explanation)
+        invalid_array_index["counterfactuals"][0]["input_patch"] = [
+            {
+                "op": "replace",
+                "path": "/activities/-1/name",
+                "value": "invalid",
+            }
+        ]
+        self.assertTrue(
+            any(
+                "invalid array index '-1'" in error
+                for error in validate_phase0.validate_explanation_document(
+                    invalid_array_index,
+                    schedule_with_scenario,
+                    activity_states_by_output_hash={HASH_B: states, HASH_C: states},
+                )
+            )
+        )
+        for path, expected_error in (
+            ("/activities/01/name", "invalid array index '01'"),
+            ("/activities/999", "cannot be applied: 999"),
+        ):
+            with self.subTest(invalid_counterfactual_array_path=path):
+                bad_pointer = copy.deepcopy(explanation)
+                bad_pointer["counterfactuals"][0]["input_patch"] = [
+                    {"op": "add", "path": path, "value": {}}
+                ]
+                self.assertTrue(
+                    any(
+                        expected_error in error
+                        for error in validate_phase0.validate_explanation_document(
+                            bad_pointer,
+                            schedule_with_scenario,
+                            activity_states_by_output_hash={
+                                HASH_B: states,
+                                HASH_C: states,
+                            },
+                        )
+                    )
+                )
+
+        self.assertEqual(
+            [],
+            validate_phase0.validate_execution_record(
+                {"optimality_status": "not_applicable", "objective_vector": []},
+                schedule,
+            ),
+        )
+
+    def test_objective_recomputation_covers_nonconstant_policy_components(self) -> None:
+        schedule = copy.deepcopy(self.resource_case["schedule"])
+        schedule["relationships"] = []
+        schedule["resources"].append(
+            {
+                "id": "R2",
+                "type": "exclusive",
+                "capacity": 1,
+                "calendar_id": "CAL-24X7",
+                "skills": [],
+            }
+        )
+        activity_a, activity_b, milestone_a, milestone_b = schedule["activities"]
+        activity_a["duration"] = 2
+        activity_a["eligible_modes"] = [
+            {
+                "id": "MODE-1",
+                "duration": 2,
+                "calendar_id": "CAL-24X7",
+                "assignments": [{"resource_id": "R1", "demand": 1}],
+            },
+            {
+                "id": "MODE-2",
+                "duration": 2,
+                "calendar_id": "CAL-24X7",
+                "assignments": [
+                    {"resource_id": "R1", "demand": 1},
+                    {"resource_id": "R2", "demand": 1},
+                ],
+            },
+        ]
+        activity_b["duration"] = 2
+        milestone_a.update(
+            {
+                "id": "M1",
+                "name": "M1",
+                "milestone_priority": 10,
+                "due_time": 0,
+                "constraints": [
+                    {
+                        "id": "C-M1-01",
+                        "type": "start_no_earlier_than",
+                        "value": 5,
+                    }
+                ],
+            }
+        )
+        milestone_b.update(
+            {
+                "id": "M2",
+                "name": "M2",
+                "milestone_priority": 10,
+                "due_time": 0,
+                "constraints": [
+                    {
+                        "id": "C-M2-01",
+                        "type": "start_no_earlier_than",
+                        "value": 2,
+                    }
+                ],
+            }
+        )
+        states = [
+            {
+                "activity_id": "A",
+                "start": 0,
+                "finish": 2,
+                "mode_id": "MODE-2",
+            },
+            {"activity_id": "B", "start": 4, "finish": 6},
+            {"activity_id": "M1", "start": 5, "finish": 5},
+            {"activity_id": "M2", "start": 2, "finish": 2},
+        ]
+        schedule["approved_forecast"] = {
+            "state_id": "FCST-RICH",
+            "state_type": "approved_forecast",
+            "activity_states": [
+                {"activity_id": "A", "start": 1, "finish": 3},
+                {"activity_id": "B", "start": 3, "finish": 5},
+                {"activity_id": "M1", "start": 4, "finish": 4},
+                {"activity_id": "M2", "start": 1, "finish": 1},
+            ],
+        }
+        vector = self.objective_vector(schedule, states)
+        self.assertEqual(
+            [
+                0,
+                7,
+                5,
+                5,
+                2,
+                6,
+                8,
+                0,
+                3,
+                2,
+                0,
+                0,
+                2,
+                2,
+                1,
+                1,
+                4,
+                6,
+                0,
+                1,
+                0,
+                5,
+                5,
+                0,
+                0,
+                0,
+                2,
+                2,
+                0,
+                0,
+                0,
+            ],
+            vector,
+        )
+
+        invalid_forecast = copy.deepcopy(schedule)
+        invalid_forecast["approved_forecast"]["activity_states"][0]["start"] = "bad"
+        recomputed, errors = validate_phase0.recompute_objective_vector(
+            invalid_forecast, states, "rich scenario"
+        )
+        self.assertIsNone(recomputed)
+        self.assertTrue(any("is not of type 'integer'" in error for error in errors))
+
+        mode_calendar = copy.deepcopy(self.relationship_case["schedule"])
+        mode_calendar["calendars"].append(
+            {
+                "id": "CAL-LATE",
+                "name": "Late",
+                "working_intervals": [[10, 400]],
+                "exceptions": [],
+            }
+        )
+        mode_calendar["relationships"][0]["lag"] = 2
+        mode_calendar["activities"][1]["eligible_modes"] = [
+            {
+                "id": "MODE-LATE",
+                "duration": 3,
+                "calendar_id": "CAL-LATE",
+                "assignments": [],
+            }
+        ]
+        mode_states = [
+            {"activity_id": "A", "start": 0, "finish": 4},
+            {
+                "activity_id": "B",
+                "start": 10,
+                "finish": 13,
+                "mode_id": "MODE-LATE",
+            },
+        ]
+        _, mode_errors = validate_phase0.recompute_objective_vector(
+            mode_calendar, mode_states, "mode-calendar scenario"
+        )
+        self.assertTrue(any("violates lower bound 12" in error for error in mode_errors))
+
+    def test_declared_float_is_complete_and_recomputed(self) -> None:
+        wrong_total = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-flt-047.json"
+        )
+        wrong_total["expected"]["activity_times"]["C"]["total_float"] = 999
+        self.assertTrue(
+            any(
+                "C.total_float 999" in error
+                for error in self.cross_errors(wrong_total)
+            )
+        )
+
+        missing_free = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-flt-047.json"
+        )
+        del missing_free["expected"]["activity_times"]["D"]["free_float"]
+        self.assertTrue(
+            any(
+                "requires integer D.free_float" in error
+                for error in self.cross_errors(missing_free)
+            )
+        )
+
+        missing_activity = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-flt-047.json"
+        )
+        del missing_activity["expected"]["activity_times"]["D"]
+        self.assertTrue(
+            any(
+                "requires complete integer start/finish coordinates" in error
+                for error in self.cross_errors(missing_activity)
+            )
+        )
+
+        wrong_free = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-flt-048.json"
+        )
+        wrong_free["expected"]["activity_times"]["E"]["free_float"] = 0
+        self.assertTrue(
+            any(
+                "E.free_float 0" in error
+                for error in self.cross_errors(wrong_free)
+            )
+        )
+
+        out_of_scope = copy.deepcopy(self.relationship_case)
+        out_of_scope["expected"]["activity_times"]["A"].update(
+            {"total_float": 999, "free_float": -999}
+        )
+        self.assertTrue(
+            any(
+                "executable only in the preregistered SEM-FLT-047/048" in error
+                for error in self.cross_errors(out_of_scope)
+            )
+        )
+
+        frozen = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-flt-047.json"
+        )
+        frozen["schedule"]["activities"][0]["frozen_state"] = {
+            "is_frozen": True,
+            "frozen_start": 0,
+            "frozen_finish": 2,
+        }
+        self.assertTrue(
+            any(
+                "restricted to the preregistered 24x7" in error
+                for error in self.cross_errors(frozen)
+            )
+        )
+
+        native_only = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-sta-045.json"
+        )
+        native_only["expected"]["activity_times"]["A"].update(
+            {"total_float": 999, "free_float": 999}
+        )
+        self.assertTrue(
+            any(
+                "executable only in the preregistered SEM-FLT-047/048" in error
+                for error in self.cross_errors(native_only)
+            )
+        )
+
+    def test_declared_oracle_matches_recomputed_canonical_earliest_schedule(self) -> None:
+        shifted = copy.deepcopy(self.relationship_case)
+        for record in shifted["expected"]["activity_times"].values():
+            record["start"] += 1
+            record["finish"] += 1
+        shifted["expected"]["project_finish"] += 1
+        self.assertTrue(
+            any(
+                "independently recomputed canonical value" in error
+                for error in self.cross_errors(shifted)
+            )
+        )
+
+        delayed_calendar = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-cal-025.json"
+        )
+        delayed_calendar["expected"]["activity_times"]["B"] = {
+            "start": 25,
+            "finish": 27,
+        }
+        delayed_calendar["expected"]["project_finish"] = 27
+        self.assertTrue(
+            any(
+                "B.start 25" in error and "canonical value 24" in error
+                for error in self.cross_errors(delayed_calendar)
+            )
+        )
+
+        delayed_finish_bound = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-rel-003.json"
+        )
+        delayed_finish_bound["expected"]["activity_times"]["B"] = {
+            "start": 2,
+            "finish": 5,
+        }
+        delayed_finish_bound["expected"]["project_finish"] = 5
+        self.assertTrue(
+            any(
+                "B.start 2" in error and "canonical value 1" in error
+                for error in self.cross_errors(delayed_finish_bound)
+            )
+        )
+
+    def test_declared_driving_relationships_are_governing(self) -> None:
+        replaced = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-net-013.json"
+        )
+        replaced["expected"]["driving_relationships"] = ["R1"]
+        errors = self.cross_errors(replaced)
+        self.assertTrue(any("preregistered curated assertion set" in error for error in errors))
+        self.assertTrue(any("does not govern C.start" in error for error in errors))
+
+        removed = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-net-013.json"
+        )
+        removed["expected"]["driving_relationships"] = []
+        self.assertTrue(
+            any(
+                "preregistered curated assertion set ['R2']" in error
+                for error in self.cross_errors(removed)
+            )
+        )
+
+        dominated = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-con-037.json"
+        )
+        dominated["expected"]["driving_relationships"] = ["R1"]
+        self.assertTrue(
+            any(
+                "does not govern B.start" in error
+                for error in self.cross_errors(dominated)
+            )
+        )
+
+        for filename in ("sem-cal-025.json", "sem-net-017.json"):
+            with self.subTest(valid_curated_subset=filename):
+                control = load_json(
+                    ROOT / "benchmarks" / "semantic" / "cases" / filename
+                )
+                self.assertFalse(
+                    any(
+                        "driving relationship" in error
+                        for error in self.cross_errors(control)
+                    )
+                )
+
+        native_only = load_json(
+            ROOT / "benchmarks" / "semantic" / "cases" / "sem-sta-045.json"
+        )
+        native_only["expected"]["driving_relationships"] = ["R1"]
+        self.assertTrue(
+            any(
+                "preregistered curated assertion set []" in error
+                for error in self.cross_errors(native_only)
+            )
+        )
 
     def test_declared_cumulative_resource_is_not_claimed_without_a_fixture(self) -> None:
         data = copy.deepcopy(self.resource_case)

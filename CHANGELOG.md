@@ -7,7 +7,11 @@
 - Preserved historical `reference-v0.1` and `reference-v0.2`, introduced active `reference-v0.3`, and narrowed executable claims to successor-calendar lag and capacity-one exclusive resources until direct alternate-lag/cumulative-capacity fixtures exist.
 - Required every supplied approved forecast to cover the full canonical activity set; objective-level-4 fallback now applies only when no approved forecast exists.
 - Advanced the execution-record schema to `0.1.4` and prohibited selected-scenario hashes, objective vectors, best bounds and gaps for `infeasible_proven` results.
-- Added six focused regression guards and retained all existing fixture inputs and expected calculation values.
+- Independently recomputed all 49 declared canonical coordinate oracles, including productive spans, supported lower bounds, actual/status treatment and canonical earliest placement.
+- Enforced productive half-open exclusive-resource feasibility and objective-selected resource ordering for DET-049/050.
+- Recomputed every objective-vector value from complete feasible selected states for proposed scenarios, execution records and patched feasible counterfactuals.
+- Recomputed all required float values in the two restricted float fixtures and froze/verified the curated driving-relationship assertions.
+- Added fourteen focused Phase 0.1.4 regression guards in total; the guard suite now contains 67 tests while retaining all existing fixture inputs and expected calculation values.
 
 ## phase0-0.1.3 — 2026-08-17
 

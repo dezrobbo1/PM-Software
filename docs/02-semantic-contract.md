@@ -92,6 +92,22 @@ Float is calculated only for simple 24x7 acyclic networks without actuals, resou
 
 No claim is made that this restricted float profile matches every native product configuration.
 
+## Declared reference-oracle validation
+
+The 49 fixtures marked `declared` are exact reference assertions, not merely feasible examples. The independent validator recomputes the earliest canonical coordinates from the input network and compares every start, remaining-start, finish and project-finish coordinate exactly. `SEM-STA-045` remains excluded because its `actual_dates` result is deliberately native-validation-only.
+
+The bounded oracle applies only the semantics exercised by the frozen corpus:
+
+- completed activities preserve actual start and finish without substituting nominal duration;
+- in-progress activities preserve actual start and consume remaining duration from a status-bounded remaining start;
+- unstarted activities consume nominal duration on the intersection of the activity calendar and every mandatory assigned-resource calendar;
+- SNET, FNET and all four relationship formulas contribute lower bounds, with lag consumed on the successor activity calendar;
+- capacity-one exclusive demand is checked over productive half-open segments;
+- the two contended-resource fixtures enumerate their two legal orders and use the frozen objective vector to select the canonical order; and
+- the two float fixtures use only the restricted 24x7, acyclic, unconstrained FS-zero backward pass declared above.
+
+`driving_relationships` is a preregistered curated assertion set, not a claim to enumerate every tight or critical relationship. The validator freezes each existing set and independently requires every listed relationship to attain the successor's governing coordinate after calendar adjustment. Defining a complete critical-path set would require a later amendment and direct fixture review.
+
 ## Unsupported or unresolved semantics
 
 The following require later, separate profiles:
@@ -109,5 +125,6 @@ The following require later, separate profiles:
 - multiple float paths;
 - cross-project relationships;
 - full constraint hierarchies.
+- hard operational constraints and project required-finish execution in the reference oracle.
 
 Any unexplained native difference is a failed compatibility claim, not a reason to modify the reference result after the fact.
