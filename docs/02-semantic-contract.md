@@ -1,4 +1,4 @@
-# Reference Semantic Contract `reference-v0.1`
+# Reference Semantic Contract `reference-v0.2`
 
 ## Purpose
 
@@ -29,7 +29,7 @@ Let predecessor `i` and successor `j` have start `S` and finish `F`.
 - FF: `F_j >= add_lag(F_i, lag)`
 - SF: `F_j >= add_lag(S_i, lag)`
 
-For `reference-v0.1`:
+For `reference-v0.2`:
 
 - lag is consumed on the successor activity calendar unless a fixture explicitly declares another calendar;
 - positive lag adds working time;
@@ -40,7 +40,7 @@ For `reference-v0.1`:
 
 P6 and Microsoft Project lag/calendar rules are not assumed equivalent and require separate native profiles.
 
-## Constraints included in `reference-v0.1`
+## Constraints included in `reference-v0.2`
 
 - `start_no_earlier_than`
 - `finish_no_earlier_than`
@@ -48,7 +48,9 @@ P6 and Microsoft Project lag/calendar rules are not assumed equivalent and requi
 - fixed actual finish
 - frozen start/finish within a declared frozen horizon
 
-Other native constraints remain outside the reference subset until explicitly specified.
+The canonical model can preserve `fixed_start` and `fixed_finish` constraint records, but the executable reference profile does not claim those semantics because the frozen 50-case corpus contains no direct fixture for either type. They require a later profile and direct expected-result cases before execution.
+
+`reference-v0.2` supersedes the original preregistered `reference-v0.1` before any CPM result existed. The historical v0.1 profile remains in `config/` for auditability; it is not the active executable profile.
 
 ## Actuals and status
 
@@ -84,6 +86,7 @@ The following require later, separate profiles:
 
 - P6 retained-logic, progress-override and actual-dates parity beyond declared cases
 - P6 relationship-lag calendar options
+- canonical `fixed_start` and `fixed_finish` execution semantics
 - Microsoft manual task scheduling
 - native duration-type semantics
 - resource-dependent activity/task types

@@ -1,9 +1,9 @@
-PHASE 0 REVIEW-CORRECTION VALIDATION: PASS
-- 21 negative guard tests passed
+PHASE 0 VALIDATION: PASS
 - 50 unique semantic fixtures validated
-- JSON Schemas resolved, meta-validated, and date-time formats checked
-- IDs, current/scenario references, calendars, frozen coordinates, and expected results validated
-- Complete required register set and headers validated
-- Exact objective policy and deterministic profile aligned
+- JSON Schemas resolved and meta-validated
+- IDs, references, hierarchies, calendars, status, states, and expected results validated
+- Frozen scenarios, explanation causes, counterfactual paths, spans, and objective vectors validated
+- Register filenames, header sequences, and authoritative protocol chapters validated
+- Objective, semantic, and deterministic profiles match frozen definitions
 - Consolidated protocol matches authoritative documents
 - SHA-256 manifest completeness and hashes verified

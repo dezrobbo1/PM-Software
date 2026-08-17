@@ -26,7 +26,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "0.1.2"
+      "const": "0.1.3"
     },
     "execution_id": {
       "type": "string",
@@ -222,8 +222,41 @@
               },
               "then": {
                 "properties": {
+                  "native_system": {
+                    "enum": [
+                      "p6",
+                      "microsoft_project",
+                      "other"
+                    ]
+                  },
                   "evidence_hash": {
                     "$ref": "#/$defs/hash"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "required_not_run"
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "native_system": {
+                    "enum": [
+                      "p6",
+                      "microsoft_project",
+                      "other"
+                    ]
+                  },
+                  "evidence_hash": {
+                    "type": "null"
                   }
                 }
               }
@@ -369,6 +402,25 @@
               "optimal",
               "feasible_not_proven",
               "not_applicable"
+            ]
+          },
+          "native_roundtrip_result": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "enum": [
+                  "pass",
+                  "fail",
+                  "inconclusive",
+                  "required_not_run",
+                  "not_applicable"
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "native_system",
+              "evidence_hash"
             ]
           }
         }
@@ -547,6 +599,50 @@
       "then": {
         "properties": {
           "native_roundtrip_result": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "optimality_status": {
+            "const": "optimal"
+          }
+        },
+        "required": [
+          "optimality_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "optimality_gap": {
+            "const": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "optimality_status": {
+            "const": "not_applicable"
+          }
+        },
+        "required": [
+          "optimality_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "objective_vector": {
+            "maxItems": 0
+          },
+          "best_bound": {
+            "type": "null"
+          },
+          "optimality_gap": {
             "type": "null"
           }
         }

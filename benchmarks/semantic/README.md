@@ -14,7 +14,7 @@ This directory contains exactly 50 preregistered fixtures.
 
 ## Rules
 
-- The fixtures define `reference-v0.1`, not P6 or Microsoft Project semantics.
+- The fixtures define `reference-v0.2`, not P6 or Microsoft Project semantics.
 - Native expectations remain `required` unless marked not applicable.
 - `SEM-STA-045` intentionally has no invented reference forecast for P6 Actual Dates behaviour; it tests preservation of actual facts and requires native execution.
 - Expected outputs may be changed only through Phase 0 change control.

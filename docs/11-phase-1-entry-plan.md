@@ -28,11 +28,13 @@ Both commands must pass from a clean Git checkout. The manifest must exactly cov
 ### WP2 — Canonical loader
 
 - parse canonical schedule fixtures;
-- reject duplicate IDs and unresolved references;
+- reject duplicate IDs, unresolved references and WBS cycles;
 - reject invalid, overlapping or out-of-horizon calendar intervals;
 - expand explicit working intervals;
 - preserve source-specific fields without interpreting them;
-- represent baseline, approved forecast and proposed scenario separately.
+- represent baseline, approved forecast and proposed scenario separately;
+- enforce complete proposed-scenario coverage, preservation of frozen coordinates and case-specific objective-vector shape;
+- validate saved state spans against selected duration and calendar intersections.
 
 ### WP3 — Reference CPM kernel
 
@@ -41,6 +43,7 @@ Both commands must pass from a clean Git checkout. The manifest must exactly cov
 - signed lag;
 - milestones;
 - included constraints;
+- reject preserved-only `fixed_start` and `fixed_finish` from the active `reference-v0.2` execution path until direct fixtures exist;
 - restricted actual/status policies;
 - restricted float calculation.
 
@@ -50,9 +53,12 @@ Both commands must pass from a clean Git checkout. The manifest must exactly cov
 - duration/calendar satisfaction;
 - resource capacity where declared;
 - immutable actuals;
+- require deterministic in-progress status time;
 - expected assertion comparison;
 - deterministic serialisation and hash;
-- execution-record and explanation-schema validation.
+- execution-record and explanation-schema validation;
+- coordinate-derived movement checks, canonical cause resolution, RFC 6901 counterfactual patches and calculation-trace evidence;
+- explicit native round-trip disposition and zero-gap proof for optimal results.
 
 ### WP5 — Run 50 semantic fixtures
 

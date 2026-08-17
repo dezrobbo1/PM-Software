@@ -26,8 +26,8 @@ Any change to semantics, objective levels, tie-breaking, comparator settings, me
 
 ## Phase 0 amendment `phase0-0.1.1`
 
-Date: 16 August 2026  
-Trigger: Codex review of PR #1  
+Date: 16 August 2026
+Trigger: Codex review of PR #1
 Results existing when proposed: **none**
 
 Classes: clarification, deterministic and validation.
@@ -43,15 +43,15 @@ The amendment:
 - makes the manifest cover exactly the intended tracked repository file set;
 - adds negative regression tests and continuous validation.
 
-Affected semantic fixtures: none of the 50 inputs or expected outputs changed.  
+Affected semantic fixtures: none of the 50 inputs or expected outputs changed.
 Affected prior outputs: none; no CPM, optimiser, native or practitioner execution had occurred.
 
 The detailed amendment record is `docs/amendments/phase0-0.1.1-review-corrections.md`.
 
 ## Phase 0 amendment `phase0-0.1.2`
 
-Date: 16 August 2026  
-Trigger: follow-up Codex review of PR #1  
+Date: 16 August 2026
+Trigger: follow-up Codex review of PR #1
 Results existing when proposed: **none**
 
 Classes: clarification, deterministic and validation.
@@ -69,7 +69,7 @@ The amendment:
 - requires the complete frozen register set;
 - adds nine corresponding negative regression tests.
 
-Affected semantic fixtures: none of the 50 inputs or expected outputs changed.  
+Affected semantic fixtures: none of the 50 inputs or expected outputs changed.
 Affected prior outputs: none; no CPM, optimiser, native or practitioner execution had occurred.
 
 The detailed amendment record is `docs/amendments/phase0-0.1.2-follow-up-review-corrections.md`.
@@ -87,3 +87,31 @@ Before each new benchmark family begins, commit:
 - evidence location.
 
 Post-result changes must be explicitly labelled exploratory and cannot replace the preregistered result.
+
+## Phase 0 amendment `phase0-0.1.3`
+
+Date: 17 August 2026
+Trigger: remaining Codex review of PR #1 and review of the failed one-time correction attempt
+Results existing when proposed: **none**
+
+Classes: clarification, semantic-profile binding, deterministic, objective-policy, schema migration and validation.
+
+The amendment:
+
+- advances all active machine-readable schemas to revision `0.1.3`, migrates all 50 fixtures to canonical schema `0.1.3`, and assigns stable IDs to existing date constraints without changing calculation-bearing values or declared expected results;
+- supersedes incomplete `objective-v0.2` with exact `objective-v0.3`, including the mandatory milestone kind predicate, explicit level-five tuple and case-specific canonical tie vector;
+- preserves historical `reference-v0.1`, supersedes it with active `reference-v0.2`, and removes untested `fixed_start`/`fixed_finish` executable claims rather than inventing fixture coverage;
+- freezes every field of the active reference semantic profile and deterministic profile;
+- requires exact fixture/catalogue agreement and the exact numbered protocol chapter set;
+- rejects WBS cycles, invalid actual-state combinations, milestone modes with duration, invalid operational windows and out-of-horizon expected results;
+- validates complete proposed-scenario activity coverage, frozen-coordinate preservation, approval governance, objective-vector shape and saved state duration/calendar satisfaction;
+- validates in-progress status-time origin, coordinate-derived explanation movement, canonical cause namespaces, RFC 6901 counterfactual paths and explicit calculation-trace evidence;
+- freezes the exact header sequence of every evidence register;
+- requires explicit native round-trip disposition for passing executions and zero optimality gap for `optimal` results;
+- removes the failed one-time applicator and temporary export workflow;
+- adds 32 corresponding regression tests, bringing the guard suite to 53 tests.
+
+Affected semantic fixtures: their schema-version field changed from `0.1.0` to `0.1.3`, their semantic-profile reference changed from superseded `reference-v0.1` to active `reference-v0.2`, and 13 existing date constraints received stable IDs. All calculation-bearing duration, relationship, calendar, resource, project and expected-result values are unchanged.
+Affected prior outputs: none; no CPM, optimiser, native or practitioner execution had occurred.
+
+The detailed amendment record is `docs/amendments/phase0-0.1.3-remaining-review-corrections.md`.

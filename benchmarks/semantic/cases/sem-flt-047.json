@@ -4,10 +4,10 @@
   "category": "float",
   "purpose": "Verify total float on a shorter independent path.",
   "schedule": {
-    "schema_version": "0.1.0",
+    "schema_version": "0.1.3",
     "schedule_id": "SEM-FLT-047",
     "name": "SEM-FLT-047",
-    "semantic_profile": "reference-v0.1",
+    "semantic_profile": "reference-v0.2",
     "source_system": null,
     "source_snapshot_id": null,
     "time_axis": {

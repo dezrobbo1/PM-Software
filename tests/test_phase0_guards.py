@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import subprocess
+import shutil
 import sys
 import tempfile
 import unittest
@@ -85,6 +86,13 @@ class Phase0GuardTests(unittest.TestCase):
         )
         mutations.append(("relationship", relationship_case))
 
+        constraint_case = copy.deepcopy(self.relationship_case)
+        constraint_case["schedule"]["activities"][0]["constraints"] = [
+            {"id": "C-DUP", "type": "start_no_earlier_than", "value": 0},
+            {"id": "C-DUP", "type": "finish_no_earlier_than", "value": 4},
+        ]
+        mutations.append(("constraint", constraint_case))
+
         for entity, data in mutations:
             with self.subTest(entity=entity):
                 self.assertTrue(
@@ -162,9 +170,12 @@ class Phase0GuardTests(unittest.TestCase):
         schedule["proposed_scenario"] = {
             "scenario_id": "SCN-1",
             "status": "proposed",
-            "objective_policy_id": "objective-v0.2",
-            "objective_vector": [0, 7],
-            "activity_states": [{"activity_id": "A", "start": 0, "finish": 4}],
+            "objective_policy_id": "objective-v0.3",
+            "objective_vector": [0] * len(validate_phase0.objective_vector_layout(schedule)),
+            "activity_states": [
+                {"activity_id": "A", "start": 0, "finish": 4},
+                {"activity_id": "B", "start": 4, "finish": 7},
+            ],
             "governance": {},
         }
         self.assertEqual([], self.schema_errors(data))
@@ -180,7 +191,7 @@ class Phase0GuardTests(unittest.TestCase):
                 "evidence_hash": None,
             }
         return {
-            "schema_version": "0.1.2",
+            "schema_version": "0.1.3",
             "execution_id": f"EX-{status}",
             "case_id": "SEM-REL-001",
             "executed_at": None,
@@ -229,7 +240,7 @@ class Phase0GuardTests(unittest.TestCase):
 
     def test_complete_executed_pass_record_is_valid(self) -> None:
         valid = {
-            "schema_version": "0.1.2",
+            "schema_version": "0.1.3",
             "execution_id": "EX-1",
             "case_id": "SEM-REL-001",
             "executed_at": "2026-08-16T12:00:00+08:00",
@@ -258,7 +269,7 @@ class Phase0GuardTests(unittest.TestCase):
     @staticmethod
     def explanation(counterfactuals: list[dict]) -> dict:
         return {
-            "schema_version": "0.1.2",
+            "schema_version": "0.1.3",
             "explanation_id": "EXP-1",
             "decision_scope": "optimisation_scenario",
             "scenario_id": "SCN-1",
@@ -278,9 +289,10 @@ class Phase0GuardTests(unittest.TestCase):
             "counterfactuals": counterfactuals,
             "model_version": "model-0.1",
             "solver_version": "solver-1",
-            "objective_policy_version": "objective-v0.2",
+            "objective_policy_version": "objective-v0.3",
             "input_hash": HASH_A,
             "output_hash": HASH_B,
+            "calculation_trace": None,
             "recomputation": {
                 "execution_identity": HASH_C,
                 "validator_status": "pass",
@@ -381,29 +393,23 @@ class Phase0GuardTests(unittest.TestCase):
             root = Path(tmp)
             config = root / "config"
             config.mkdir()
-            objective = load_json(ROOT / "config" / "objective-policy-v0.2.json")
-            deterministic = load_json(
-                ROOT / "config" / "deterministic-execution-profile-v0.1.json"
-            )
-            (config / "deterministic-execution-profile-v0.1.json").write_text(
-                json.dumps(deterministic), encoding="utf-8"
-            )
+            for name in validate_phase0._EXPECTED_CONFIG_FILES:
+                shutil.copy2(ROOT / "config" / name, config / name)
 
+            objective_path = config / "objective-policy-v0.3.json"
+            objective = load_json(objective_path)
             objective["milestone_priority_aggregation"]["group_primary"] = "maximum_lateness"
-            (config / "objective-policy-v0.2.json").write_text(
-                json.dumps(objective), encoding="utf-8"
-            )
+            objective_path.write_text(json.dumps(objective), encoding="utf-8")
             self.assertTrue(
-                any("aggregation values" in error for error in validate_phase0.validate_configuration(root))
+                any("complete frozen definition" in error for error in validate_phase0.validate_configuration(root))
             )
 
-            objective = load_json(ROOT / "config" / "objective-policy-v0.2.json")
+            shutil.copy2(ROOT / "config" / "objective-policy-v0.3.json", objective_path)
+            objective = load_json(objective_path)
             objective["levels"] = list(reversed(objective["levels"]))
-            (config / "objective-policy-v0.2.json").write_text(
-                json.dumps(objective), encoding="utf-8"
-            )
+            objective_path.write_text(json.dumps(objective), encoding="utf-8")
             self.assertTrue(
-                any("ordered level definitions" in error for error in validate_phase0.validate_configuration(root))
+                any("complete frozen definition" in error for error in validate_phase0.validate_configuration(root))
             )
 
     def test_schedule_state_type_must_match_its_container(self) -> None:
@@ -418,7 +424,7 @@ class Phase0GuardTests(unittest.TestCase):
 
     def test_passing_execution_rejects_infeasible_optimality(self) -> None:
         data = {
-            "schema_version": "0.1.2",
+            "schema_version": "0.1.3",
             "execution_id": "EX-CONTRADICTORY",
             "case_id": "SEM-REL-001",
             "executed_at": "2026-08-16T12:00:00+08:00",
@@ -435,7 +441,11 @@ class Phase0GuardTests(unittest.TestCase):
             "objective_vector": [0],
             "best_bound": None,
             "optimality_gap": None,
-            "native_roundtrip_result": None,
+            "native_roundtrip_result": {
+                "status": "not_applicable",
+                "native_system": "not_applicable",
+                "evidence_hash": None,
+            },
             "evidence_paths": ["evidence/EX.json"],
         }
         self.assertTrue(list(self.execution_validator.iter_errors(data)))
@@ -462,7 +472,8 @@ class Phase0GuardTests(unittest.TestCase):
             register_dir.mkdir()
             names = set(validate_phase0._EXPECTED_REGISTERS)
             for name in names:
-                (register_dir / name).write_text("id\n", encoding="utf-8")
+                header = ",".join(validate_phase0._EXPECTED_REGISTERS[name])
+                (register_dir / name).write_text(header + "\n", encoding="utf-8")
             self.assertEqual([], validate_phase0.validate_registers(root))
 
             missing = sorted(names)[0]
@@ -470,6 +481,397 @@ class Phase0GuardTests(unittest.TestCase):
             self.assertTrue(
                 any(missing in error and "missing" in error for error in validate_phase0.validate_registers(root))
             )
+
+    def test_register_header_sequences_are_frozen(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            register_dir = root / "registers"
+            register_dir.mkdir()
+            for name, fields in validate_phase0._EXPECTED_REGISTERS.items():
+                (register_dir / name).write_text(",".join(fields) + "\n", encoding="utf-8")
+            target = register_dir / "input-economics-log.csv"
+            target.write_text("id\n", encoding="utf-8")
+            self.assertTrue(
+                any(
+                    "input-economics-log.csv" in error and "header sequence" in error
+                    for error in validate_phase0.validate_registers(root)
+                )
+            )
+
+    def test_reversed_schedule_state_interval_is_rejected(self) -> None:
+        data = copy.deepcopy(self.relationship_case)
+        data["schedule"]["baseline"] = {
+            "state_id": "BASE-1",
+            "state_type": "baseline",
+            "activity_states": [{"activity_id": "A", "start": 5, "finish": 4}],
+        }
+        self.assertTrue(any("start exceeds finish" in error for error in self.cross_errors(data)))
+
+    def test_attempted_native_roundtrip_requires_real_system(self) -> None:
+        data = {
+            "schema_version": "0.1.3",
+            "execution_id": "EX-NATIVE",
+            "case_id": "SEM-REL-001",
+            "executed_at": "2026-08-16T12:00:00+08:00",
+            "execution_identity": HASH_A,
+            "status": "executed_pass",
+            "input_hash": HASH_B,
+            "output_hash": HASH_C,
+            "selected_scenario_hash": HASH_C,
+            "explanation_hash": HASH_D,
+            "evidence_bundle_hash": HASH_A,
+            "validator_status": "pass",
+            "feasibility_status": "not_applicable",
+            "optimality_status": "not_applicable",
+            "objective_vector": [],
+            "best_bound": None,
+            "optimality_gap": None,
+            "native_roundtrip_result": {
+                "status": "pass",
+                "native_system": "not_applicable",
+                "evidence_hash": HASH_D,
+            },
+            "evidence_paths": ["evidence/native.json"],
+        }
+        self.assertTrue(list(self.execution_validator.iter_errors(data)))
+
+    def test_catalogue_metadata_must_match_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shutil.copytree(ROOT / "schemas", root / "schemas")
+            shutil.copytree(ROOT / "benchmarks", root / "benchmarks")
+            catalogue = root / "benchmarks" / "semantic" / "catalogue.csv"
+            text = catalogue.read_text(encoding="utf-8")
+            catalogue.write_text(text.replace("FS zero lag", "Wrong title", 1), encoding="utf-8")
+            self.assertTrue(
+                any("does not match fixture value" in error for error in validate_phase0.validate_cases(root))
+            )
+
+    def test_wbs_multi_node_cycle_is_rejected(self) -> None:
+        data = copy.deepcopy(self.relationship_case)
+        data["schedule"]["wbs"] = [
+            {"id": "WBS-A", "name": "A", "parent_id": "WBS-B"},
+            {"id": "WBS-B", "name": "B", "parent_id": "WBS-A"},
+        ]
+        self.assertTrue(any("WBS hierarchy contains cycle" in error for error in self.cross_errors(data)))
+
+    def test_in_progress_activity_requires_remaining_duration(self) -> None:
+        data = copy.deepcopy(self.relationship_case)
+        activity = data["schedule"]["activities"][0]
+        activity["actual_start"] = 1
+        activity["actual_finish"] = None
+        activity.pop("remaining_duration", None)
+        self.assertTrue(self.schema_errors(data))
+
+    def test_explanation_movement_is_derived_from_coordinates(self) -> None:
+        data = self.explanation(counterfactuals=[{
+            "counterfactual_id": "CF-1",
+            "description": "No change",
+            "input_patch": [{"op": "replace", "path": "/resources/0/capacity", "value": 2}],
+            "execution_identity": HASH_A,
+            "result_status": "feasible",
+            "result_hash": HASH_B,
+            "output_hash": HASH_C,
+            "objective_vector": [0],
+            "validator_status": "pass",
+            "evidence_paths": ["evidence/cf.json"],
+        }])
+        data["movement"] = 0
+        errors = validate_phase0.validate_explanation_document(data)
+        self.assertTrue(any("coordinate-derived movement" in error for error in errors))
+
+    def test_objective_vector_shape_is_case_specific_and_complete(self) -> None:
+        schedule = copy.deepcopy(self.relationship_case["schedule"])
+        expected = len(validate_phase0.objective_vector_layout(schedule))
+        self.assertTrue(
+            validate_phase0.validate_execution_record(
+                {"optimality_status": "optimal", "objective_vector": [0] * (expected - 1)},
+                schedule,
+            )
+        )
+        self.assertEqual(
+            [],
+            validate_phase0.validate_execution_record(
+                {"optimality_status": "optimal", "objective_vector": [0] * expected},
+                schedule,
+            ),
+        )
+
+        milestone_schedule = copy.deepcopy(self.milestone_case["schedule"])
+        without_priority = len(validate_phase0.objective_vector_layout(milestone_schedule))
+        milestone = next(
+            activity
+            for activity in milestone_schedule["activities"]
+            if activity["kind"] in {"start_milestone", "finish_milestone"}
+        )
+        milestone["milestone_priority"] = 10
+        milestone["due_time"] = 5
+        self.assertGreater(
+            len(validate_phase0.objective_vector_layout(milestone_schedule)),
+            without_priority,
+        )
+
+    def test_operational_constraint_windows_are_ordered_and_bounded(self) -> None:
+        for label, start, finish in (
+            ("reversed", 10, 5),
+            ("outside", 0, 401),
+        ):
+            with self.subTest(label=label):
+                data = copy.deepcopy(self.relationship_case)
+                data["schedule"]["operational_constraints"] = [{
+                    "id": "OC-1",
+                    "type": "permit_window",
+                    "hard": True,
+                    "activity_ids": ["A"],
+                    "resource_ids": [],
+                    "window_start": start,
+                    "window_finish": finish,
+                }]
+                self.assertTrue(any("operational constraint" in error for error in self.cross_errors(data)))
+
+    def test_complete_deterministic_profile_is_frozen(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = root / "config"
+            config.mkdir()
+            for name in validate_phase0._EXPECTED_CONFIG_FILES:
+                shutil.copy2(ROOT / "config" / name, config / name)
+            profile = load_json(config / "deterministic-execution-profile-v0.1.json")
+            profile["worker_count"] = 2
+            (config / "deterministic-execution-profile-v0.1.json").write_text(
+                json.dumps(profile), encoding="utf-8"
+            )
+            self.assertTrue(any("complete frozen definition" in error for error in validate_phase0.validate_configuration(root)))
+
+    def test_actual_dates_cannot_publish_declared_reference_results(self) -> None:
+        data = copy.deepcopy(self.relationship_case)
+        data["schedule"]["project"]["progress_policy"] = "actual_dates"
+        data["expected"]["reference_status"] = "declared"
+        self.assertTrue(any("native-validation-only" in error for error in self.cross_errors(data)))
+
+    def test_proposed_scenario_must_cover_every_activity(self) -> None:
+        data = copy.deepcopy(self.relationship_case)
+        schedule = data["schedule"]
+        schedule["proposed_scenario"] = {
+            "scenario_id": "SCN-1",
+            "status": "proposed",
+            "objective_policy_id": "objective-v0.3",
+            "objective_vector": [0] * len(validate_phase0.objective_vector_layout(schedule)),
+            "activity_states": [{"activity_id": "A", "start": 0, "finish": 4}],
+        }
+        self.assertTrue(any("exactly cover" in error for error in self.cross_errors(data)))
+
+    def test_approved_scenario_requires_approval_governance(self) -> None:
+        data = copy.deepcopy(self.relationship_case)
+        schedule = data["schedule"]
+        schedule["proposed_scenario"] = {
+            "scenario_id": "SCN-1",
+            "status": "approved",
+            "objective_policy_id": "objective-v0.3",
+            "objective_vector": [0] * len(validate_phase0.objective_vector_layout(schedule)),
+            "activity_states": [
+                {"activity_id": "A", "start": 0, "finish": 4},
+                {"activity_id": "B", "start": 4, "finish": 7},
+            ],
+            "governance": {},
+        }
+        self.assertTrue(self.schema_errors(data))
+
+    def test_semantic_profile_is_frozen_and_resolved(self) -> None:
+        data = copy.deepcopy(self.relationship_case)
+        data["schedule"]["semantic_profile"] = "invented-v9"
+        self.assertTrue(any("semantic_profile must resolve" in error for error in self.cross_errors(data)))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = root / "config"
+            config.mkdir()
+            for name in validate_phase0._EXPECTED_CONFIG_FILES:
+                shutil.copy2(ROOT / "config" / name, config / name)
+            profile = load_json(config / "semantic-profile-reference-v0.2.json")
+            profile["lag_policy"] = "changed"
+            (config / "semantic-profile-reference-v0.2.json").write_text(
+                json.dumps(profile), encoding="utf-8"
+            )
+            self.assertTrue(any("complete frozen definition" in error for error in validate_phase0.validate_configuration(root)))
+
+    def test_milestone_execution_modes_must_be_zero_duration(self) -> None:
+        data = copy.deepcopy(self.milestone_case)
+        milestone = next(
+            activity
+            for activity in data["schedule"]["activities"]
+            if activity["kind"] in {"start_milestone", "finish_milestone"}
+        )
+        milestone["eligible_modes"] = [{
+            "id": "MODE-1",
+            "duration": 1,
+            "assignments": [],
+        }]
+        self.assertTrue(self.schema_errors(data))
+        self.assertTrue(any("mode MODE-1 must have zero duration" in error for error in self.cross_errors(data)))
+
+    def test_actual_date_intervals_are_valid(self) -> None:
+        missing_start = copy.deepcopy(self.relationship_case)
+        missing_start["schedule"]["activities"][0]["actual_finish"] = 4
+        self.assertTrue(self.schema_errors(missing_start))
+        self.assertTrue(any("actual_finish requires actual_start" in error for error in self.cross_errors(missing_start)))
+
+        reversed_dates = copy.deepcopy(self.relationship_case)
+        reversed_dates["schedule"]["activities"][0]["actual_start"] = 5
+        reversed_dates["schedule"]["activities"][0]["actual_finish"] = 4
+        self.assertTrue(any("actual_finish precedes" in error for error in self.cross_errors(reversed_dates)))
+
+    def test_declared_milestone_oracle_has_zero_span(self) -> None:
+        data = copy.deepcopy(self.milestone_case)
+        milestone = next(
+            activity
+            for activity in data["schedule"]["activities"]
+            if activity["kind"] in {"start_milestone", "finish_milestone"}
+        )
+        record = data["expected"]["activity_times"][milestone["id"]]
+        record["finish"] = record["start"] + 1
+        data["expected"]["project_finish"] = max(
+            item["finish"] for item in data["expected"]["activity_times"].values()
+        )
+        self.assertTrue(any("must have start equal to finish" in error for error in self.cross_errors(data)))
+
+    def test_mandatory_milestone_rule_excludes_normal_tasks(self) -> None:
+        schedule = copy.deepcopy(self.relationship_case["schedule"])
+        schedule["activities"][0]["milestone_priority"] = 10
+        schedule["activities"][0]["due_time"] = 2
+        self.assertEqual({}, validate_phase0.mandatory_milestones(schedule))
+        policy = load_json(ROOT / "config" / "objective-policy-v0.3.json")
+        self.assertIn("kind_in_start_or_finish_milestone", policy["milestone_priority_aggregation"]["mandatory_definition"])
+
+    def test_level_five_penalty_is_an_explicit_tuple(self) -> None:
+        policy = load_json(ROOT / "config" / "objective-policy-v0.3.json")
+        self.assertEqual(
+            ["overtime_units", "mobilisation_block_count", "resource_peak_demand_sum"],
+            policy["operational_resource_penalty"]["components"],
+        )
+        self.assertEqual("lexicographic", policy["operational_resource_penalty"]["ordering"])
+
+    def test_passing_execution_requires_explicit_roundtrip_disposition(self) -> None:
+        data = {
+            "schema_version": "0.1.3",
+            "execution_id": "EX-1",
+            "case_id": "SEM-REL-001",
+            "executed_at": "2026-08-16T12:00:00+08:00",
+            "execution_identity": HASH_A,
+            "status": "executed_pass",
+            "input_hash": HASH_B,
+            "output_hash": HASH_C,
+            "selected_scenario_hash": HASH_C,
+            "explanation_hash": HASH_D,
+            "evidence_bundle_hash": HASH_A,
+            "validator_status": "pass",
+            "feasibility_status": "not_applicable",
+            "optimality_status": "not_applicable",
+            "objective_vector": [],
+            "best_bound": None,
+            "optimality_gap": None,
+            "native_roundtrip_result": None,
+            "evidence_paths": ["evidence/EX-1.json"],
+        }
+        self.assertTrue(list(self.execution_validator.iter_errors(data)))
+
+    def test_canonical_schema_version_advanced(self) -> None:
+        self.assertEqual("0.1.3", self.relationship_case["schedule"]["schema_version"])
+        data = copy.deepcopy(self.relationship_case)
+        data["schedule"]["schema_version"] = "0.1.0"
+        self.assertTrue(self.schema_errors(data))
+
+    def test_authoritative_protocol_chapter_set_is_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shutil.copytree(ROOT / "docs", root / "docs")
+            (root / "docs" / validate_phase0.AUTHORITATIVE_CHAPTERS[0]).unlink()
+            with self.assertRaises(RuntimeError):
+                validate_phase0.authoritative_sources(root)
+
+    def test_schedule_state_span_must_consume_declared_duration(self) -> None:
+        data = copy.deepcopy(self.relationship_case)
+        data["schedule"]["baseline"] = {
+            "state_id": "BASE-1",
+            "state_type": "baseline",
+            "activity_states": [{"activity_id": "A", "start": 0, "finish": 0}],
+        }
+        self.assertTrue(any("calendar-derived finish" in error for error in self.cross_errors(data)))
+
+    def test_declared_reference_results_are_bounded_by_horizon(self) -> None:
+        data = copy.deepcopy(self.relationship_case)
+        data["expected"]["activity_times"]["B"]["finish"] = 401
+        data["expected"]["project_finish"] = 401
+        self.assertTrue(any("outside horizon" in error for error in self.cross_errors(data)))
+
+    def test_optimal_result_requires_zero_gap(self) -> None:
+        data = {
+            "schema_version": "0.1.3",
+            "execution_id": "EX-OPT",
+            "case_id": "SEM-REL-001",
+            "executed_at": "2026-08-16T12:00:00+08:00",
+            "execution_identity": HASH_A,
+            "status": "executed_pass",
+            "input_hash": HASH_B,
+            "output_hash": HASH_C,
+            "selected_scenario_hash": HASH_C,
+            "explanation_hash": HASH_D,
+            "evidence_bundle_hash": HASH_A,
+            "validator_status": "pass",
+            "feasibility_status": "feasible",
+            "optimality_status": "optimal",
+            "objective_vector": [0],
+            "best_bound": 0,
+            "optimality_gap": 1,
+            "native_roundtrip_result": {
+                "status": "not_applicable",
+                "native_system": "not_applicable",
+                "evidence_hash": None,
+            },
+            "evidence_paths": ["evidence/EX-OPT.json"],
+        }
+        self.assertTrue(list(self.execution_validator.iter_errors(data)))
+
+    def test_calculation_trace_scope_requires_trace_evidence(self) -> None:
+        data = self.explanation(counterfactuals=[])
+        data.update({
+            "decision_scope": "calculation_trace",
+            "scenario_id": None,
+            "selected_objective_vector": [],
+            "counterfactuals": [],
+            "solver_version": None,
+            "objective_policy_version": None,
+            "calculation_trace": None,
+        })
+        self.assertTrue(list(self.explanation_validator.iter_errors(data)))
+
+    def test_passing_semantic_execution_can_be_not_applicable_to_optimisation(self) -> None:
+        data = {
+            "schema_version": "0.1.3",
+            "execution_id": "EX-SEMANTIC",
+            "case_id": "SEM-REL-001",
+            "executed_at": "2026-08-16T12:00:00+08:00",
+            "execution_identity": HASH_A,
+            "status": "executed_pass",
+            "input_hash": HASH_B,
+            "output_hash": HASH_C,
+            "selected_scenario_hash": HASH_C,
+            "explanation_hash": HASH_D,
+            "evidence_bundle_hash": HASH_A,
+            "validator_status": "pass",
+            "feasibility_status": "not_applicable",
+            "optimality_status": "not_applicable",
+            "objective_vector": [],
+            "best_bound": None,
+            "optimality_gap": None,
+            "native_roundtrip_result": {
+                "status": "not_applicable",
+                "native_system": "not_applicable",
+                "evidence_hash": None,
+            },
+            "evidence_paths": ["evidence/semantic.json"],
+        }
+        self.assertEqual([], list(self.execution_validator.iter_errors(data)))
 
     def test_manifest_file_set_excludes_git_metadata_and_detects_omission(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -487,6 +889,123 @@ class Phase0GuardTests(unittest.TestCase):
             (root / "manifest.sha256").write_text(f"{digest}  a.txt\n", encoding="utf-8")
             errors = validate_phase0.validate_manifest(root)
             self.assertTrue(any("b.txt" in error and "missing from manifest" in error for error in errors))
+
+    def test_proposed_scenario_preserves_frozen_coordinates(self) -> None:
+        data = copy.deepcopy(self.relationship_case)
+        schedule = data["schedule"]
+        schedule["activities"][0]["frozen_state"] = {
+            "is_frozen": True,
+            "frozen_start": 0,
+            "frozen_finish": 4,
+            "reason": "committed near-term work",
+        }
+        schedule["proposed_scenario"] = {
+            "scenario_id": "SCN-FROZEN",
+            "status": "proposed",
+            "objective_policy_id": "objective-v0.3",
+            "objective_vector": [0] * len(validate_phase0.objective_vector_layout(schedule)),
+            "activity_states": [
+                {"activity_id": "A", "start": 1, "finish": 5},
+                {"activity_id": "B", "start": 5, "finish": 8},
+            ],
+        }
+        self.assertTrue(
+            any("must preserve frozen coordinates" in error for error in self.cross_errors(data))
+        )
+
+    def test_unexercised_fixed_constraints_are_not_claimed_by_reference_profile(self) -> None:
+        historical = load_json(ROOT / "config" / "semantic-profile-reference-v0.1.json")
+        active = load_json(ROOT / "config" / "semantic-profile-reference-v0.2.json")
+        self.assertIn("fixed_start", historical["constraints"])
+        self.assertIn("fixed_finish", historical["constraints"])
+        self.assertNotIn("fixed_start", active["constraints"])
+        self.assertNotIn("fixed_finish", active["constraints"])
+        self.assertEqual("reference-v0.1", active["supersedes"])
+
+        data = copy.deepcopy(self.relationship_case)
+        data["schedule"]["activities"][0]["constraints"].append(
+            {"id": "C-FIXED", "type": "fixed_start", "value": 0}
+        )
+        self.assertTrue(
+            any("is not executable under reference-v0.2" in error for error in self.cross_errors(data))
+        )
+
+    def test_explanation_causes_resolve_against_canonical_input(self) -> None:
+        schedule = copy.deepcopy(self.resource_case["schedule"])
+        vector = [0] * len(validate_phase0.objective_vector_layout(schedule))
+        counterfactual = {
+            "counterfactual_id": "CF-1",
+            "description": "Release the exclusive resource",
+            "input_patch": [{"op": "remove", "path": "/resources/0"}],
+            "execution_identity": HASH_A,
+            "result_status": "feasible",
+            "result_hash": HASH_B,
+            "output_hash": HASH_C,
+            "objective_vector": vector,
+            "validator_status": "pass",
+            "milestone_impacts": [{"milestone_id": "MA", "movement": 0}],
+            "evidence_paths": ["evidence/CF-1.json"],
+        }
+        explanation = self.explanation(counterfactuals=[counterfactual])
+        explanation["selected_objective_vector"] = vector
+        explanation["governing_entity"] = {"type": "resource", "id": "R-MISSING"}
+        explanation["affected_milestone_id"] = "MA"
+        errors = validate_phase0.validate_explanation_document(explanation, schedule)
+        self.assertTrue(any("unknown ID R-MISSING" in error for error in errors))
+
+        explanation["governing_entity"]["id"] = "R1"
+        self.assertEqual([], validate_phase0.validate_explanation_document(explanation, schedule))
+
+    def test_counterfactual_patch_paths_use_valid_json_pointer_escapes(self) -> None:
+        base = {
+            "counterfactual_id": "CF-1",
+            "description": "Change an activity",
+            "input_patch": [{"op": "replace", "path": "/activities/~2", "value": 1}],
+            "execution_identity": HASH_A,
+            "result_status": "feasible",
+            "result_hash": HASH_B,
+            "output_hash": HASH_C,
+            "objective_vector": [0],
+            "validator_status": "pass",
+            "evidence_paths": ["evidence/CF-1.json"],
+        }
+        self.assertTrue(
+            list(
+                self.explanation_validator.iter_errors(
+                    self.explanation(counterfactuals=[base])
+                )
+            )
+        )
+        base["input_patch"][0]["path"] = "/activities/0/source_fields/name~1code"
+        self.assertEqual(
+            [],
+            list(
+                self.explanation_validator.iter_errors(
+                    self.explanation(counterfactuals=[base])
+                )
+            ),
+        )
+
+    def test_in_progress_activity_requires_valid_status_time(self) -> None:
+        data = copy.deepcopy(self.relationship_case)
+        activity = data["schedule"]["activities"][0]
+        activity["actual_start"] = 1
+        activity["actual_finish"] = None
+        activity["remaining_duration"] = 3
+        data["schedule"]["project"]["status_time"] = None
+        self.assertTrue(
+            any("status_time must be an integer" in error for error in self.cross_errors(data))
+        )
+
+        data["schedule"]["project"]["status_time"] = 0
+        self.assertTrue(
+            any("precedes in-progress actual start" in error for error in self.cross_errors(data))
+        )
+
+        data["schedule"]["project"]["status_time"] = 1
+        self.assertFalse(
+            any("status_time" in error for error in self.cross_errors(data))
+        )
 
 
 if __name__ == "__main__":

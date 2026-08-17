@@ -9,7 +9,7 @@
 - Unsupported native semantics remain labelled and preserved where possible.
 - Stable identifiers are unique within their declared scope and all references must resolve.
 
-The machine-readable schema is `schemas/canonical-schedule.schema.json`. The existing 50 Phase 0 fixtures remain canonical schema version `0.1.0`; Phase 0 release `0.1.2` expands and tightens the schema without changing their declared expected results.
+The machine-readable schema is `schemas/canonical-schedule.schema.json`, version `0.1.3`. All 50 Phase 0 fixtures have been migrated to that schema version. Their scheduling inputs and declared expected results remain unchanged.
 
 ## Core entities
 
@@ -48,6 +48,8 @@ The machine-readable schema is `schemas/canonical-schedule.schema.json`. The exi
 - optional canonical outline order
 - preserved source fields
 
+Parent references must resolve and the hierarchy must be acyclic, including multi-node cycles.
+
 ### Activity
 
 - stable `id`
@@ -66,7 +68,7 @@ The machine-readable schema is `schemas/canonical-schedule.schema.json`. The exi
 - milestone priority and due time where applicable
 - preserved source fields
 
-Start and finish milestones have zero duration. Their remaining duration must be zero or null.
+Every date constraint has a stable non-empty ID so that explanation records can resolve the governing constraint. Start and finish milestones have zero duration. Every eligible milestone mode also has zero duration. An `actual_finish` requires an `actual_start` and may not precede it. An in-progress activity—actual start present and actual finish absent—requires an explicit non-null remaining duration.
 
 ### Relationship
 
@@ -119,7 +121,7 @@ The schema can represent these bounded prototype classes:
 - frozen horizon;
 - explicitly preserved custom state.
 
-Each constraint has a stable ID, hard/soft classification, referenced activities/resources, applicable window/state and structured parameters. Referenced activities and resources must resolve.
+Each constraint has a stable ID, hard/soft classification, referenced activities/resources, applicable window/state and structured parameters. Referenced activities and resources must resolve. Every supplied time window is ordered and lies within the schedule horizon.
 
 ### Baseline and approved forecast
 
@@ -127,11 +129,11 @@ A baseline or approved forecast is an immutable schedule-state record containing
 
 - stable state ID and a container-matching state type (`baseline` or `approved_forecast`);
 - source snapshot and creation timestamp where available;
-- one state record per represented activity;
+- represented activity states;
 - start, finish, remaining duration, selected mode and assignments;
 - preserved source fields.
 
-This separate approved-forecast state is required to calculate objective level 4, movement from the approved forecast.
+For an ordinary unstarted activity, each saved state span must consume its selected activity/mode duration over the selected activity and resource calendars. A state cannot claim arbitrary start and finish coordinates inconsistent with its own canonical inputs.
 
 ### Proposed scenario
 
@@ -139,12 +141,12 @@ A proposed scenario contains:
 
 - stable scenario ID;
 - lifecycle status;
-- objective-policy ID and complete objective vector;
-- proposed activity states;
+- active objective-policy ID and complete case-specific objective vector;
+- one proposed state for every schedule activity;
 - alternative scenario IDs;
 - governance and preserved source fields.
 
-A proposed scenario remains non-authoritative until accepted under the authority boundary.
+A proposed scenario remains non-authoritative until accepted under the authority boundary. An approved or rejected scenario requires matching governance state, decision ID, actor and timestamp.
 
 ### Governance
 
@@ -163,18 +165,29 @@ Governance can record:
 
 The Phase 0 validator enforces rules that JSON Schema cannot express reliably by itself:
 
-- unique calendar, resource, activity, relationship, WBS, operational-constraint and per-activity mode IDs;
+- all semantic fixtures use canonical schema `0.1.3` and resolve to the exact frozen active `reference-v0.2` profile;
+- unique calendar, resource, activity, relationship, date-constraint, WBS, operational-constraint and per-activity mode IDs;
 - resolved calendar, WBS, resource, relationship, operational-constraint and scenario-state references;
+- acyclic WBS parent hierarchy;
 - half-open calendar intervals in canonical ascending order;
 - `0 <= start < finish <= horizon` for every working interval;
 - no overlapping working intervals;
 - complete expected activity times for every declared semantic fixture;
+- expected coordinates, milestones and project finish within the declared horizon;
+- zero expected span for milestones;
 - RFC 3339 date-time validation, including a timezone offset;
+- valid actual-start/actual-finish ordering, explicit remaining duration and an in-horizon status time not earlier than any in-progress actual start;
 - resolved resource assignments in baseline, approved-forecast and proposed-scenario activity states;
-- state start/finish ordering and horizon bounds;
+- state start/finish ordering, horizon bounds and duration/calendar satisfaction for unstarted work;
 - context-correct baseline and approved-forecast state types;
+- complete proposed-scenario activity coverage, preservation of every frozen coordinate and active objective-vector shape;
+- ordered, in-horizon operational windows;
 - explicit, ordered coordinates for every frozen activity;
-- the complete frozen register-file set.
+- exact fixture/catalogue metadata agreement;
+- exact frozen filename and header sequence for every evidence register;
+- the complete authoritative protocol chapter set.
+
+`fixed_start` and `fixed_finish` remain representable as preserved canonical source state, but they are not executable under `reference-v0.2` until direct semantic fixtures and expected results are approved.
 
 ## Native mapping policy
 

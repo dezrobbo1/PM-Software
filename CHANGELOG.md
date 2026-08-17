@@ -1,5 +1,18 @@
 # Changelog
 
+## phase0-0.1.3 — 2026-08-17
+
+- Addressed the remaining Codex review findings before any CPM, optimiser or native benchmark execution.
+- Advanced canonical, execution-record and structured-explanation schemas to `0.1.3`; migrated all 50 fixtures without changing calculation-bearing values or expected results and assigned stable IDs to the 13 existing date constraints.
+- Superseded `objective-v0.2` with fully machine-defined `objective-v0.3`, including the mandatory-milestone predicate, explicit level-five tuple, reserved zero-valued unsupported components and case-specific canonical tie vector.
+- Preserved historical `reference-v0.1`, introduced active `reference-v0.2`, and removed untested `fixed_start`/`fixed_finish` execution claims rather than inventing missing fixture coverage.
+- Froze every active semantic- and deterministic-profile field and bound all fixtures to `reference-v0.2`.
+- Added WBS-cycle, actual-state, operational-window, scenario-coverage, governance, native-round-trip, optimality-gap, calculation-trace, objective-vector, catalogue and authoritative-chapter validation.
+- Added state duration/calendar satisfaction and coordinate-derived explanation movement checks.
+- Added frozen-scenario preservation, status-time, explanation-namespace, JSON Pointer and exact register-header guards.
+- Added 32 regression tests; the guard suite now contains 53 tests.
+- Removed the failed one-time review applicator and temporary branch-export workflow.
+
 ## phase0-0.1.2 — 2026-08-16
 
 - Addressed nine follow-up Codex findings on PR #1 before any benchmark execution.

@@ -117,7 +117,7 @@ OR-Tools CP-SAT is the first research candidate. An exact version is not selecte
 
 ---
 
-# Reference Semantic Contract `reference-v0.1`
+# Reference Semantic Contract `reference-v0.2`
 
 ## Purpose
 
@@ -148,7 +148,7 @@ Let predecessor `i` and successor `j` have start `S` and finish `F`.
 - FF: `F_j >= add_lag(F_i, lag)`
 - SF: `F_j >= add_lag(S_i, lag)`
 
-For `reference-v0.1`:
+For `reference-v0.2`:
 
 - lag is consumed on the successor activity calendar unless a fixture explicitly declares another calendar;
 - positive lag adds working time;
@@ -159,7 +159,7 @@ For `reference-v0.1`:
 
 P6 and Microsoft Project lag/calendar rules are not assumed equivalent and require separate native profiles.
 
-## Constraints included in `reference-v0.1`
+## Constraints included in `reference-v0.2`
 
 - `start_no_earlier_than`
 - `finish_no_earlier_than`
@@ -167,7 +167,9 @@ P6 and Microsoft Project lag/calendar rules are not assumed equivalent and requi
 - fixed actual finish
 - frozen start/finish within a declared frozen horizon
 
-Other native constraints remain outside the reference subset until explicitly specified.
+The canonical model can preserve `fixed_start` and `fixed_finish` constraint records, but the executable reference profile does not claim those semantics because the frozen 50-case corpus contains no direct fixture for either type. They require a later profile and direct expected-result cases before execution.
+
+`reference-v0.2` supersedes the original preregistered `reference-v0.1` before any CPM result existed. The historical v0.1 profile remains in `config/` for auditability; it is not the active executable profile.
 
 ## Actuals and status
 
@@ -203,6 +205,7 @@ The following require later, separate profiles:
 
 - P6 retained-logic, progress-override and actual-dates parity beyond declared cases
 - P6 relationship-lag calendar options
+- canonical `fixed_start` and `fixed_finish` execution semantics
 - Microsoft manual task scheduling
 - native duration-type semantics
 - resource-dependent activity/task types
@@ -227,7 +230,7 @@ Any unexplained native difference is a failed compatibility claim, not a reason 
 - Unsupported native semantics remain labelled and preserved where possible.
 - Stable identifiers are unique within their declared scope and all references must resolve.
 
-The machine-readable schema is `schemas/canonical-schedule.schema.json`. The existing 50 Phase 0 fixtures remain canonical schema version `0.1.0`; Phase 0 release `0.1.2` expands and tightens the schema without changing their declared expected results.
+The machine-readable schema is `schemas/canonical-schedule.schema.json`, version `0.1.3`. All 50 Phase 0 fixtures have been migrated to that schema version. Their scheduling inputs and declared expected results remain unchanged.
 
 ## Core entities
 
@@ -266,6 +269,8 @@ The machine-readable schema is `schemas/canonical-schedule.schema.json`. The exi
 - optional canonical outline order
 - preserved source fields
 
+Parent references must resolve and the hierarchy must be acyclic, including multi-node cycles.
+
 ### Activity
 
 - stable `id`
@@ -284,7 +289,7 @@ The machine-readable schema is `schemas/canonical-schedule.schema.json`. The exi
 - milestone priority and due time where applicable
 - preserved source fields
 
-Start and finish milestones have zero duration. Their remaining duration must be zero or null.
+Every date constraint has a stable non-empty ID so that explanation records can resolve the governing constraint. Start and finish milestones have zero duration. Every eligible milestone mode also has zero duration. An `actual_finish` requires an `actual_start` and may not precede it. An in-progress activity—actual start present and actual finish absent—requires an explicit non-null remaining duration.
 
 ### Relationship
 
@@ -337,7 +342,7 @@ The schema can represent these bounded prototype classes:
 - frozen horizon;
 - explicitly preserved custom state.
 
-Each constraint has a stable ID, hard/soft classification, referenced activities/resources, applicable window/state and structured parameters. Referenced activities and resources must resolve.
+Each constraint has a stable ID, hard/soft classification, referenced activities/resources, applicable window/state and structured parameters. Referenced activities and resources must resolve. Every supplied time window is ordered and lies within the schedule horizon.
 
 ### Baseline and approved forecast
 
@@ -345,11 +350,11 @@ A baseline or approved forecast is an immutable schedule-state record containing
 
 - stable state ID and a container-matching state type (`baseline` or `approved_forecast`);
 - source snapshot and creation timestamp where available;
-- one state record per represented activity;
+- represented activity states;
 - start, finish, remaining duration, selected mode and assignments;
 - preserved source fields.
 
-This separate approved-forecast state is required to calculate objective level 4, movement from the approved forecast.
+For an ordinary unstarted activity, each saved state span must consume its selected activity/mode duration over the selected activity and resource calendars. A state cannot claim arbitrary start and finish coordinates inconsistent with its own canonical inputs.
 
 ### Proposed scenario
 
@@ -357,12 +362,12 @@ A proposed scenario contains:
 
 - stable scenario ID;
 - lifecycle status;
-- objective-policy ID and complete objective vector;
-- proposed activity states;
+- active objective-policy ID and complete case-specific objective vector;
+- one proposed state for every schedule activity;
 - alternative scenario IDs;
 - governance and preserved source fields.
 
-A proposed scenario remains non-authoritative until accepted under the authority boundary.
+A proposed scenario remains non-authoritative until accepted under the authority boundary. An approved or rejected scenario requires matching governance state, decision ID, actor and timestamp.
 
 ### Governance
 
@@ -381,18 +386,29 @@ Governance can record:
 
 The Phase 0 validator enforces rules that JSON Schema cannot express reliably by itself:
 
-- unique calendar, resource, activity, relationship, WBS, operational-constraint and per-activity mode IDs;
+- all semantic fixtures use canonical schema `0.1.3` and resolve to the exact frozen active `reference-v0.2` profile;
+- unique calendar, resource, activity, relationship, date-constraint, WBS, operational-constraint and per-activity mode IDs;
 - resolved calendar, WBS, resource, relationship, operational-constraint and scenario-state references;
+- acyclic WBS parent hierarchy;
 - half-open calendar intervals in canonical ascending order;
 - `0 <= start < finish <= horizon` for every working interval;
 - no overlapping working intervals;
 - complete expected activity times for every declared semantic fixture;
+- expected coordinates, milestones and project finish within the declared horizon;
+- zero expected span for milestones;
 - RFC 3339 date-time validation, including a timezone offset;
+- valid actual-start/actual-finish ordering, explicit remaining duration and an in-horizon status time not earlier than any in-progress actual start;
 - resolved resource assignments in baseline, approved-forecast and proposed-scenario activity states;
-- state start/finish ordering and horizon bounds;
+- state start/finish ordering, horizon bounds and duration/calendar satisfaction for unstarted work;
 - context-correct baseline and approved-forecast state types;
+- complete proposed-scenario activity coverage, preservation of every frozen coordinate and active objective-vector shape;
+- ordered, in-horizon operational windows;
 - explicit, ordered coordinates for every frozen activity;
-- the complete frozen register-file set.
+- exact fixture/catalogue metadata agreement;
+- exact frozen filename and header sequence for every evidence register;
+- the complete authoritative protocol chapter set.
+
+`fixed_start` and `fixed_finish` remain representable as preserved canonical source state, but they are not executable under `reference-v0.2` until direct semantic fixtures and expected results are approved.
 
 ## Native mapping policy
 
@@ -440,6 +456,12 @@ The execution identity is the SHA-256 digest of canonical JSON containing:
 - tie-breaking policy;
 - execution-platform fingerprint.
 
+## Frozen profile definition
+
+`config/deterministic-execution-profile-v0.1.json` is validated as one complete immutable object. Validation does not check only the tie-break field. Worker count, seed, normalisation, hash algorithm, time representation, termination policy, solver placeholders, tie-break reference and cross-version promise are all frozen values.
+
+Before the first execution, the placeholder canonical-JSON implementation and solver build must be replaced through change control with pinned executable values and a new deterministic-profile version.
+
 ## Canonicalisation
 
 - UTF-8;
@@ -461,7 +483,7 @@ Initial deterministic experiments use:
 - one solver worker;
 - fixed random seed `0`;
 - no wall-clock-dependent termination for semantic cases;
-- a declared deterministic tie-break;
+- the declared `objective-v0.3` canonical tie-break;
 - a pinned solver build;
 - no unrecorded warm start.
 
@@ -469,7 +491,7 @@ Parallel search may be tested separately but cannot enter the deterministic clai
 
 ## Required execution record
 
-The machine-readable contract is `schemas/execution-record.schema.json`, schema revision `0.1.2`. Every record contains the following fields, even where their value is null or `not_applicable`:
+The machine-readable contract is `schemas/execution-record.schema.json`, schema revision `0.1.3`. Every record contains the following fields, even where their value is null or `not_applicable`:
 
 - schema version;
 - execution ID and case ID;
@@ -484,9 +506,9 @@ The machine-readable contract is `schemas/execution-record.schema.json`, schema 
 - independent validator result;
 - feasibility status;
 - optimality status;
-- complete integer objective vector;
+- complete case-specific integer objective vector;
 - best bound and absolute optimality gap where available;
-- native round-trip result where applicable;
+- explicit native round-trip disposition;
 - evidence paths;
 - optional failure code and notes.
 
@@ -519,29 +541,42 @@ An `executed_pass` additionally requires:
 - a non-null explanation hash;
 - validator status `pass`;
 - feasibility status `feasible` or `not_applicable`;
-- optimality status `optimal`, `feasible_not_proven` or `not_applicable`.
+- optimality status `optimal`, `feasible_not_proven` or `not_applicable`;
+- an explicit native round-trip object whose status is attempted, required-not-run or not-applicable.
 
-An optimal or feasible-not-proven result must be feasible. An infeasible-proven result must be classified infeasible; contradictory feasibility and optimality states are invalid.
+An optimal or feasible-not-proven result must be feasible. An optimal result has absolute optimality gap exactly `0`. A proven-infeasible result must be classified infeasible. A non-optimisation semantic execution may remain `not_applicable` for feasibility and optimality and uses an empty objective vector.
+
+The cross-validator derives the complete objective-vector length from the case's mandatory milestone groups, activities, modes and resources. Merely requiring a non-empty array is insufficient.
 
 A failed or inconclusive execution may lack a selected scenario when failure occurred before one was produced, but the immutable failure evidence bundle remains mandatory.
 
-Non-executed result labels must not contain an input, execution, output, selected-scenario, explanation or evidence-bundle hash, and must not claim that validation ran. `native_validation_required` must explicitly record a native round-trip status of `required_not_run`.
-
+Non-executed result labels must not contain an input, execution, output, selected-scenario, explanation or evidence-bundle hash and must not claim that validation ran. `native_validation_required` must explicitly record a native round-trip status of `required_not_run`.
 
 ## Counterfactual execution evidence
 
-A counterfactual is a separate recomputation, not narrative inference. A feasible counterfactual must contain a validated output hash, a non-empty objective vector and validator status `pass`. A proven-infeasible counterfactual records no output schedule, an empty objective vector and validator status `pass`. The changed input, execution identity, result evidence hash and evidence paths remain mandatory in both cases.
+A counterfactual is a separate recomputation, not narrative inference. A feasible counterfactual must contain a validated output hash, a non-empty objective vector and validator status `pass`. A proven-infeasible counterfactual records no output schedule, an empty objective vector and validator status `pass`. An unknown result cannot claim an output or objective vector. The changed input, execution identity, result evidence hash and evidence paths remain mandatory.
+
+Counterfactual input changes use non-empty RFC 6901 JSON Pointer paths. Only `~0` and `~1` are valid escape sequences; malformed pointers are rejected before any recomputation is accepted.
 
 ## Native round-trip record
 
 Where native round-trip is attempted, record:
 
-- status: pass, fail or inconclusive;
-- native system;
+- status: `pass`, `fail` or `inconclusive`;
+- native system: `p6`, `microsoft_project` or an identified `other` system;
 - hash of the saved round-trip evidence;
 - optional notes.
 
-Where native testing does not apply, record `not_applicable` rather than omitting the field.
+An attempted round trip cannot name its native system `not_applicable`. A `required_not_run` record identifies the intended real native system but has no evidence hash. Where native testing does not apply, use status and system `not_applicable` with a null evidence hash.
+
+## Structured explanation and calculation traces
+
+The machine-readable explanation schema is revision `0.1.3`.
+
+- An optimisation explanation contains a scenario ID, complete case-specific objective vector, recomputed counterfactual evidence and explicit null calculation-trace disposition.
+- A calculation trace contains no optimisation scenario or counterfactual vector. It must instead carry a validated calculation-trace record identifying the rule, inputs, derived coordinates, recomputation hash and evidence paths.
+- `movement` is recomputed from the declared coordinate pair selected by `movement_basis`; a caller cannot write `movement: 0` to avoid causal requirements.
+- Every governing relationship, calendar, activity, resource, operational constraint, objective policy or actual event resolves against the hashed canonical input. Conflicting activities, affected milestones and counterfactual milestone impacts must also resolve, and milestone references must identify actual milestone activities.
 
 ## Failure rule
 
@@ -549,11 +584,11 @@ If the same execution identity produces a different selected-schedule hash or ex
 
 ---
 
-# Benchmark Objective Policy `objective-v0.2`
+# Benchmark Objective Policy `objective-v0.3`
 
 This is a transparent experimental policy. It is not a validated universal planner preference.
 
-`objective-v0.1` is retained in `config/objective-policy-v0.1.json` as the superseded preregistration. It was not executable deterministically because “equal priority is aggregated” did not define the aggregation. No benchmark result existed when the ambiguity was corrected.
+`objective-v0.1` and `objective-v0.2` remain in `config/` as superseded preregistrations. Version 0.1 left equal-priority milestone aggregation ambiguous. Version 0.2 fixed that ambiguity but did not completely define the mandatory-milestone predicate, the combined level-five metric or the final case-specific vector shape. No benchmark result existed when `objective-v0.3` superseded them.
 
 ## Lexicographic levels
 
@@ -561,19 +596,21 @@ This is a transparent experimental policy. It is not a validated universal plann
 2. Minimise mandatory milestone lateness using the exact priority-group rule below.
 3. Minimise project completion time.
 4. Minimise movement from the approved forecast.
-5. Minimise overtime, mobilisation events and resource peaks.
-6. Minimise crew and workface continuity interruptions.
-7. Resolve any remaining equality using stable ascending activity IDs, then stable mode IDs, then stable resource IDs.
+5. Minimise the ordered operational-resource tuple: overtime units, mobilisation blocks, then summed resource peak demand.
+6. Minimise continuity interruptions.
+7. Resolve remaining equality through the complete canonical scenario-decision vector.
 
 A lower level cannot improve at the expense of a higher level.
 
 ## Mandatory milestone definition
 
-A mandatory milestone for this benchmark policy is an activity where:
+A mandatory milestone is an activity where all of the following hold:
 
 - `kind` is `start_milestone` or `finish_milestone`;
 - `milestone_priority > 0`;
 - `due_time` is not null.
+
+A normal task does not become a mandatory milestone merely because it has a priority and due time.
 
 For each mandatory milestone `m`:
 
@@ -600,28 +637,85 @@ All values are integers in the schedule's declared time unit.
 4. Advance to the next lower-priority group only when the complete tuple for the current group is equal.
 5. Advance to project finish only when every priority-group tuple is equal.
 
-This rule makes equal-priority outcomes reproducible. It does not claim that sum-first aggregation is a universal planner preference; changing it creates a new objective-policy version.
+This rule makes equal-priority outcomes reproducible. It does not claim that sum-first aggregation is a universal planner preference.
 
-## Objective vector encoding
+## Approved-forecast movement
+
+For the same canonical input, objective level 4 is:
+
+```text
+sum over stable ascending activity IDs of:
+  abs(proposed_start - approved_start)
+  + abs(proposed_finish - approved_finish)
+```
+
+If the canonical input contains no approved forecast, the component is exactly `0`. Competing scenarios are never permitted to add or remove the approved forecast; it belongs to the immutable input snapshot.
+
+## Exact level-five tuple
+
+Level 5 is not a weighted composite. It is compared lexicographically as:
+
+```text
+(
+  overtime_units,
+  mobilisation_block_count,
+  resource_peak_demand_sum
+)
+```
+
+For canonical schema `0.1.3`:
+
+- `overtime_units` is fixed at `0` because overtime availability is not yet represented. Introducing non-zero overtime creates a new canonical-model and objective-policy version.
+- `mobilisation_block_count` is the sum, across stable resource IDs, of maximal contiguous or overlapping productive assignment blocks.
+- `resource_peak_demand_sum` is the sum, across stable resource IDs, of each resource's maximum concurrent integer assignment demand.
+
+This ordering means one less overtime unit is preferred before mobilisation or peak demand; one less mobilisation block is preferred before peak demand.
+
+## Continuity component
+
+`continuity_interruption_count` is fixed at `0` under canonical schema `0.1.3` because split execution is not yet represented. It is retained as an explicit reserved component rather than an undefined prose penalty. Enabling split work or a non-zero continuity metric requires a new canonical-model and objective-policy version.
+
+## Canonical tie-break vector
+
+For every activity in stable ascending activity-ID order, append:
+
+```text
+start,
+finish,
+mode_ordinal,
+assignment demand for every resource in stable ascending resource-ID order
+```
+
+`mode_ordinal` is `0` when no mode is selected. Otherwise it is one plus the selected mode's index in stable ascending mode-ID order. Missing resource assignments encode as `0`.
+
+This is a vector, not an opaque integer rank. Its exact length depends on the canonical input.
+
+## Complete objective-vector encoding
 
 The canonical integer vector is flattened in this order:
 
 ```text
 [
   hard_violation_count,
-  for each priority group in descending order:
+  for each mandatory-milestone priority group in descending order:
     group_sum_lateness,
     group_maximum_lateness,
-    each individual lateness in stable ascending milestone ID order,
+    each individual lateness in stable ascending milestone-ID order,
   project_finish,
   approved_forecast_movement,
-  overtime_mobilisation_peak_penalty,
-  continuity_interruption_penalty,
-  canonical_tie_rank
+  overtime_units,
+  mobilisation_block_count,
+  resource_peak_demand_sum,
+  continuity_interruption_count,
+  for each activity in stable ascending activity-ID order:
+    start,
+    finish,
+    mode_ordinal,
+    each resource demand in stable ascending resource-ID order
 ]
 ```
 
-The priority groups and stable milestone IDs used to decode the vector are part of the canonical input. No opaque weighted total is used for the initial benchmark.
+The Phase 0 validator derives the required vector layout from the canonical schedule and rejects incomplete or surplus entries. A fixed seven-entry vector is invalid because levels 2 and 7 are deliberately case-specific vectors.
 
 ## Required scenario comparison
 
@@ -629,7 +723,7 @@ For every candidate scenario, retain the full vector and separate metrics. Do no
 
 ## Change control
 
-Any change to level order, mandatory-milestone definition, aggregation, metric definition or tie-break creates a new objective-policy version and a new execution identity. It cannot be changed retroactively after benchmark outputs are inspected.
+Any change to level order, mandatory-milestone definition, aggregation, metric definition, reserved-component behaviour or tie-break creates a new objective-policy version and a new execution identity. It cannot be changed retroactively after benchmark outputs are inspected.
 
 ---
 
@@ -978,8 +1072,8 @@ Any change to semantics, objective levels, tie-breaking, comparator settings, me
 
 ## Phase 0 amendment `phase0-0.1.1`
 
-Date: 16 August 2026  
-Trigger: Codex review of PR #1  
+Date: 16 August 2026
+Trigger: Codex review of PR #1
 Results existing when proposed: **none**
 
 Classes: clarification, deterministic and validation.
@@ -995,15 +1089,15 @@ The amendment:
 - makes the manifest cover exactly the intended tracked repository file set;
 - adds negative regression tests and continuous validation.
 
-Affected semantic fixtures: none of the 50 inputs or expected outputs changed.  
+Affected semantic fixtures: none of the 50 inputs or expected outputs changed.
 Affected prior outputs: none; no CPM, optimiser, native or practitioner execution had occurred.
 
 The detailed amendment record is `docs/amendments/phase0-0.1.1-review-corrections.md`.
 
 ## Phase 0 amendment `phase0-0.1.2`
 
-Date: 16 August 2026  
-Trigger: follow-up Codex review of PR #1  
+Date: 16 August 2026
+Trigger: follow-up Codex review of PR #1
 Results existing when proposed: **none**
 
 Classes: clarification, deterministic and validation.
@@ -1021,7 +1115,7 @@ The amendment:
 - requires the complete frozen register set;
 - adds nine corresponding negative regression tests.
 
-Affected semantic fixtures: none of the 50 inputs or expected outputs changed.  
+Affected semantic fixtures: none of the 50 inputs or expected outputs changed.
 Affected prior outputs: none; no CPM, optimiser, native or practitioner execution had occurred.
 
 The detailed amendment record is `docs/amendments/phase0-0.1.2-follow-up-review-corrections.md`.
@@ -1039,6 +1133,34 @@ Before each new benchmark family begins, commit:
 - evidence location.
 
 Post-result changes must be explicitly labelled exploratory and cannot replace the preregistered result.
+
+## Phase 0 amendment `phase0-0.1.3`
+
+Date: 17 August 2026
+Trigger: remaining Codex review of PR #1 and review of the failed one-time correction attempt
+Results existing when proposed: **none**
+
+Classes: clarification, semantic-profile binding, deterministic, objective-policy, schema migration and validation.
+
+The amendment:
+
+- advances all active machine-readable schemas to revision `0.1.3`, migrates all 50 fixtures to canonical schema `0.1.3`, and assigns stable IDs to existing date constraints without changing calculation-bearing values or declared expected results;
+- supersedes incomplete `objective-v0.2` with exact `objective-v0.3`, including the mandatory milestone kind predicate, explicit level-five tuple and case-specific canonical tie vector;
+- preserves historical `reference-v0.1`, supersedes it with active `reference-v0.2`, and removes untested `fixed_start`/`fixed_finish` executable claims rather than inventing fixture coverage;
+- freezes every field of the active reference semantic profile and deterministic profile;
+- requires exact fixture/catalogue agreement and the exact numbered protocol chapter set;
+- rejects WBS cycles, invalid actual-state combinations, milestone modes with duration, invalid operational windows and out-of-horizon expected results;
+- validates complete proposed-scenario activity coverage, frozen-coordinate preservation, approval governance, objective-vector shape and saved state duration/calendar satisfaction;
+- validates in-progress status-time origin, coordinate-derived explanation movement, canonical cause namespaces, RFC 6901 counterfactual paths and explicit calculation-trace evidence;
+- freezes the exact header sequence of every evidence register;
+- requires explicit native round-trip disposition for passing executions and zero optimality gap for `optimal` results;
+- removes the failed one-time applicator and temporary export workflow;
+- adds 32 corresponding regression tests, bringing the guard suite to 53 tests.
+
+Affected semantic fixtures: their schema-version field changed from `0.1.0` to `0.1.3`, their semantic-profile reference changed from superseded `reference-v0.1` to active `reference-v0.2`, and 13 existing date constraints received stable IDs. All calculation-bearing duration, relationship, calendar, resource, project and expected-result values are unchanged.
+Affected prior outputs: none; no CPM, optimiser, native or practitioner execution had occurred.
+
+The detailed amendment record is `docs/amendments/phase0-0.1.3-remaining-review-corrections.md`.
 
 ---
 
@@ -1072,11 +1194,13 @@ Both commands must pass from a clean Git checkout. The manifest must exactly cov
 ### WP2 — Canonical loader
 
 - parse canonical schedule fixtures;
-- reject duplicate IDs and unresolved references;
+- reject duplicate IDs, unresolved references and WBS cycles;
 - reject invalid, overlapping or out-of-horizon calendar intervals;
 - expand explicit working intervals;
 - preserve source-specific fields without interpreting them;
-- represent baseline, approved forecast and proposed scenario separately.
+- represent baseline, approved forecast and proposed scenario separately;
+- enforce complete proposed-scenario coverage, preservation of frozen coordinates and case-specific objective-vector shape;
+- validate saved state spans against selected duration and calendar intersections.
 
 ### WP3 — Reference CPM kernel
 
@@ -1085,6 +1209,7 @@ Both commands must pass from a clean Git checkout. The manifest must exactly cov
 - signed lag;
 - milestones;
 - included constraints;
+- reject preserved-only `fixed_start` and `fixed_finish` from the active `reference-v0.2` execution path until direct fixtures exist;
 - restricted actual/status policies;
 - restricted float calculation.
 
@@ -1094,9 +1219,12 @@ Both commands must pass from a clean Git checkout. The manifest must exactly cov
 - duration/calendar satisfaction;
 - resource capacity where declared;
 - immutable actuals;
+- require deterministic in-progress status time;
 - expected assertion comparison;
 - deterministic serialisation and hash;
-- execution-record and explanation-schema validation.
+- execution-record and explanation-schema validation;
+- coordinate-derived movement checks, canonical cause resolution, RFC 6901 counterfactual patches and calculation-trace evidence;
+- explicit native round-trip disposition and zero-gap proof for optimal results.
 
 ### WP5 — Run 50 semantic fixtures
 
