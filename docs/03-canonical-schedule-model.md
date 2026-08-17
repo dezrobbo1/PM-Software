@@ -5,6 +5,7 @@
 - Neutral representation first; native adapters are explicit transformations.
 - Source-specific state is preserved rather than silently normalised away.
 - Historical facts, approved forecast and proposed scenario are distinct.
+- Every supplied approved forecast and proposed scenario must exactly cover the canonical activity set; partial state is rejected.
 - Every calculation is tied to an immutable source snapshot and versioned policy.
 - Unsupported native semantics remain labelled and preserved where possible.
 - Stable identifiers are unique within their declared scope and all references must resolve.
@@ -165,7 +166,7 @@ Governance can record:
 
 The Phase 0 validator enforces rules that JSON Schema cannot express reliably by itself:
 
-- all semantic fixtures use canonical schema `0.1.3` and resolve to the exact frozen active `reference-v0.2` profile;
+- all semantic fixtures use canonical schema `0.1.3` and resolve to the exact frozen active `reference-v0.3` profile;
 - unique calendar, resource, activity, relationship, date-constraint, WBS, operational-constraint and per-activity mode IDs;
 - resolved calendar, WBS, resource, relationship, operational-constraint and scenario-state references;
 - acyclic WBS parent hierarchy;
@@ -180,6 +181,7 @@ The Phase 0 validator enforces rules that JSON Schema cannot express reliably by
 - resolved resource assignments in baseline, approved-forecast and proposed-scenario activity states;
 - state start/finish ordering, horizon bounds and duration/calendar satisfaction for unstarted work;
 - context-correct baseline and approved-forecast state types;
+- complete approved-forecast activity coverage;
 - complete proposed-scenario activity coverage, preservation of every frozen coordinate and active objective-vector shape;
 - ordered, in-horizon operational windows;
 - explicit, ordered coordinates for every frozen activity;
@@ -187,7 +189,7 @@ The Phase 0 validator enforces rules that JSON Schema cannot express reliably by
 - exact frozen filename and header sequence for every evidence register;
 - the complete authoritative protocol chapter set.
 
-`fixed_start` and `fixed_finish` remain representable as preserved canonical source state, but they are not executable under `reference-v0.2` until direct semantic fixtures and expected results are approved.
+`fixed_start` and `fixed_finish` remain representable as preserved canonical source state, but they are not executable under `reference-v0.3` until direct semantic fixtures and expected results are approved.
 
 ## Native mapping policy
 

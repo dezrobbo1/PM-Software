@@ -26,7 +26,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "0.1.3"
+      "const": "0.1.4"
     },
     "execution_id": {
       "type": "string",
@@ -576,6 +576,18 @@
         "properties": {
           "feasibility_status": {
             "const": "infeasible"
+          },
+          "selected_scenario_hash": {
+            "type": "null"
+          },
+          "objective_vector": {
+            "maxItems": 0
+          },
+          "best_bound": {
+            "type": "null"
+          },
+          "optimality_gap": {
+            "type": "null"
           }
         }
       }

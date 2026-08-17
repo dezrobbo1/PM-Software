@@ -64,7 +64,7 @@ Parallel search may be tested separately but cannot enter the deterministic clai
 
 ## Required execution record
 
-The machine-readable contract is `schemas/execution-record.schema.json`, schema revision `0.1.3`. Every record contains the following fields, even where their value is null or `not_applicable`:
+The machine-readable contract is `schemas/execution-record.schema.json`, schema revision `0.1.4`. Every record contains the following fields, even where their value is null or `not_applicable`:
 
 - schema version;
 - execution ID and case ID;
@@ -117,7 +117,7 @@ An `executed_pass` additionally requires:
 - optimality status `optimal`, `feasible_not_proven` or `not_applicable`;
 - an explicit native round-trip object whose status is attempted, required-not-run or not-applicable.
 
-An optimal or feasible-not-proven result must be feasible. An optimal result has absolute optimality gap exactly `0`. A proven-infeasible result must be classified infeasible. A non-optimisation semantic execution may remain `not_applicable` for feasibility and optimality and uses an empty objective vector.
+An optimal or feasible-not-proven result must be feasible. An optimal result has absolute optimality gap exactly `0`. A proven-infeasible result must be classified infeasible, must have a null selected-scenario hash, must carry an empty objective vector, and must have null best-bound and optimality-gap values. Its output and explanation hashes may identify proof evidence, but they must not identify a feasible selected schedule. A non-optimisation semantic execution may remain `not_applicable` for feasibility and optimality and uses an empty objective vector.
 
 The cross-validator derives the complete objective-vector length from the case's mandatory milestone groups, activities, modes and resources. Merely requiring a non-empty array is insufficient.
 

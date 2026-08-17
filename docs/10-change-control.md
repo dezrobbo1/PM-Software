@@ -115,3 +115,25 @@ Affected semantic fixtures: their schema-version field changed from `0.1.0` to `
 Affected prior outputs: none; no CPM, optimiser, native or practitioner execution had occurred.
 
 The detailed amendment record is `docs/amendments/phase0-0.1.3-remaining-review-corrections.md`.
+
+## Phase 0 amendment `phase0-0.1.4`
+
+Date: 17 August 2026
+Trigger: fresh Codex review of PR #1
+Results existing when proposed: **none**
+
+Classes: semantic-profile binding, schema revision, benchmark identity freeze and validation.
+
+The amendment:
+
+- machine-validates all declared relationship formulas and signed successor-calendar lag against the expected oracle;
+- freezes the exact 50 fixture identities and canonical filename mapping;
+- preserves historical `reference-v0.1` and `reference-v0.2`, introduces active `reference-v0.3`, and removes untested alternate-lag-calendar and cumulative-capacity execution claims;
+- requires complete activity coverage for every supplied approved forecast and proposed scenario;
+- advances the execution-record schema to `0.1.4` and rejects selected-scenario/objective/bound/gap evidence for `infeasible_proven` results;
+- adds focused negative regression tests.
+
+Affected semantic fixtures: only the active semantic-profile reference changed from `reference-v0.2` to `reference-v0.3`. All calculation-bearing values and declared expected results remain unchanged.
+Affected prior outputs: none; no CPM, optimiser, native or practitioner execution had occurred.
+
+The detailed amendment record is `docs/amendments/phase0-0.1.4-executable-claim-and-oracle-hardening.md`.

@@ -63,7 +63,7 @@ sum over stable ascending activity IDs of:
   + abs(proposed_finish - approved_finish)
 ```
 
-If the canonical input contains no approved forecast, the component is exactly `0`. Competing scenarios are never permitted to add or remove the approved forecast; it belongs to the immutable input snapshot.
+If the canonical input contains no approved forecast, the component is exactly `0`. If an approved forecast is supplied, it must contain exactly one resolved, valid state for every canonical activity; partial supplied forecasts cannot use the zero fallback. Competing scenarios are never permitted to add or remove the approved forecast; it belongs to the immutable input snapshot.
 
 ## Exact level-five tuple
 

@@ -1,0 +1,34 @@
+{
+  "profile_id": "reference-v0.3",
+  "time_domain": "integer",
+  "duration_basis": "productive_working_time",
+  "relationship_types": [
+    "FS",
+    "SS",
+    "FF",
+    "SF"
+  ],
+  "lag_policy": "successor_calendar_only",
+  "negative_lag": "supported",
+  "project_start_lower_bound": true,
+  "constraints": [
+    "start_no_earlier_than",
+    "finish_no_earlier_than"
+  ],
+  "progress_policies": [
+    "none",
+    "retained_logic",
+    "progress_override"
+  ],
+  "actual_dates_policy": "native_validation_only",
+  "float_scope": "simple_24x7_acyclic_unconstrained_networks_only",
+  "native_equivalence": {
+    "p6": "not_claimed",
+    "microsoft_project": "not_claimed"
+  },
+  "supersedes": "reference-v0.2",
+  "change_reason": "explicit_alternate_lag_calendars_and_cumulative_capacity_removed_from_executable_claim_until_direct_semantic_fixtures_exist",
+  "explicit_lag_calendars": "preserved_in_canonical_model_but_not_executable_until_direct_fixture_exists",
+  "resource_capacity_semantics": "exclusive_capacity_one_only",
+  "cumulative_resources": "preserved_in_canonical_model_but_not_executable_until_direct_fixture_exists"
+}

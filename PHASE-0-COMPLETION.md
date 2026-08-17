@@ -2,19 +2,22 @@
 
 ## Decision
 
-The experiment-design pass is complete and frozen as version `phase0-0.1.3`. This patch incorporates all review corrections received before Phase 1 before any scheduling or optimisation results existed.
+The experiment-design pass is complete and frozen as version `phase0-0.1.4`. This patch incorporates all review corrections received before Phase 1 before any scheduling or optimisation results existed.
 
 ## What has been executed
 
 - The bounded prototype scope has been fixed.
-- Reference semantics have been declared as active `reference-v0.2`, separately from future P6 and Microsoft Project compatibility profiles; historical `reference-v0.1` is retained for auditability.
+- Reference semantics have been declared as active `reference-v0.3`, separately from future P6 and Microsoft Project compatibility profiles; historical `reference-v0.1` and `reference-v0.2` are retained for auditability.
 - The canonical model and four JSON Schemas have been created and meta-validated.
 - A deterministic execution identity and hash contract has been fixed.
 - A transparent, fully specified case-dependent lexicographic objective policy has been fixed as `objective-v0.3`, as a benchmark policy only.
 - The comparator protocol requires default native levelling, expert-configured native levelling, an experienced planner, the optimiser, and planner-reviewed optimiser output.
 - Fifty semantic micro-test schedules have been created with declared reference expectations or native-validation properties.
+- Declared relationship formulas are independently checked across all four relationship types with signed successor-calendar lag.
+- The exact 50 case identities and filenames are frozen; supplied approved forecasts must cover every activity.
+- Alternate lag-calendar and cumulative-capacity semantics remain preserved-only until direct fixtures exist, and infeasible proofs cannot publish selected-scenario or objective evidence.
 - Empty registers have been created for benchmark runs, semantic discrepancies, native round-trip loss, input economics, evidence and contradictions.
-- Fifty-three negative and positive guard tests cover the accepted review failure modes and preserved valid states.
+- Fifty-nine negative and positive guard tests cover the accepted review failure modes and preserved valid states.
 - The tracked protocol bundle, exact chapter/catalogue/register sets, consolidated document and SHA-256 manifest have been validated.
 
 ## What has deliberately not been executed

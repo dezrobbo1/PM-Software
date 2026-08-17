@@ -1,5 +1,14 @@
 # Changelog
 
+## phase0-0.1.4 — 2026-08-17
+
+- Added machine validation of all declared FS/SS/FF/SF relationship lower bounds, including signed working-time lag and the declared retained-logic/progress-override treatment.
+- Froze the exact 50 case identities and canonical filename mapping so a well-formed case cannot silently replace a preregistered fixture.
+- Preserved historical `reference-v0.1` and `reference-v0.2`, introduced active `reference-v0.3`, and narrowed executable claims to successor-calendar lag and capacity-one exclusive resources until direct alternate-lag/cumulative-capacity fixtures exist.
+- Required every supplied approved forecast to cover the full canonical activity set; objective-level-4 fallback now applies only when no approved forecast exists.
+- Advanced the execution-record schema to `0.1.4` and prohibited selected-scenario hashes, objective vectors, best bounds and gaps for `infeasible_proven` results.
+- Added six focused regression guards and retained all existing fixture inputs and expected calculation values.
+
 ## phase0-0.1.3 — 2026-08-17
 
 - Addressed the remaining Codex review findings before any CPM, optimiser or native benchmark execution.

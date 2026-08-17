@@ -33,17 +33,18 @@ Both commands must pass from a clean Git checkout. The manifest must exactly cov
 - expand explicit working intervals;
 - preserve source-specific fields without interpreting them;
 - represent baseline, approved forecast and proposed scenario separately;
-- enforce complete proposed-scenario coverage, preservation of frozen coordinates and case-specific objective-vector shape;
+- enforce complete coverage for every supplied approved forecast and proposed scenario, preservation of frozen coordinates and case-specific objective-vector shape;
 - validate saved state spans against selected duration and calendar intersections.
 
 ### WP3 — Reference CPM kernel
 
 - activity-calendar duration arithmetic;
 - FS, SS, FF, SF;
-- signed lag;
+- signed lag on the successor activity calendar;
+- reject non-null explicit lag calendars from the active profile until a direct fixture exists;
 - milestones;
 - included constraints;
-- reject preserved-only `fixed_start` and `fixed_finish` from the active `reference-v0.2` execution path until direct fixtures exist;
+- reject preserved-only `fixed_start` and `fixed_finish` from the active `reference-v0.3` execution path until direct fixtures exist;
 - restricted actual/status policies;
 - restricted float calculation.
 
@@ -51,7 +52,7 @@ Both commands must pass from a clean Git checkout. The manifest must exactly cov
 
 - relationship satisfaction;
 - duration/calendar satisfaction;
-- resource capacity where declared;
+- capacity-one exclusive resources; reject cumulative capacity from the active profile until a direct fixture exists;
 - immutable actuals;
 - require deterministic in-progress status time;
 - expected assertion comparison;

@@ -1,7 +1,7 @@
 PHASE 0 VALIDATION: PASS
-- 50 unique semantic fixtures validated
+- 50 exact preregistered semantic fixtures validated
 - JSON Schemas resolved and meta-validated
-- IDs, references, hierarchies, calendars, status, states, and expected results validated
+- IDs, references, hierarchies, calendars, status, states, expected spans, and relationship formulas validated
 - Frozen scenarios, explanation causes, counterfactual paths, spans, and objective vectors validated
 - Register filenames, header sequences, and authoritative protocol chapters validated
 - Objective, semantic, and deterministic profiles match frozen definitions

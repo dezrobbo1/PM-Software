@@ -1,4 +1,4 @@
-# Reference Semantic Contract `reference-v0.2`
+# Reference Semantic Contract `reference-v0.3`
 
 ## Purpose
 
@@ -29,18 +29,21 @@ Let predecessor `i` and successor `j` have start `S` and finish `F`.
 - FF: `F_j >= add_lag(F_i, lag)`
 - SF: `F_j >= add_lag(S_i, lag)`
 
-For `reference-v0.2`:
+For `reference-v0.3`:
 
-- lag is consumed on the successor activity calendar unless a fixture explicitly declares another calendar;
-- positive lag adds working time;
-- negative lag subtracts working time;
+- lag is consumed only on the successor activity calendar;
+- positive lag adds productive working time;
+- negative lag subtracts productive working time;
+- zero lag preserves the predecessor event coordinate;
 - all activities are bounded by project start unless an actual start precedes it;
 - when several bounds apply, the latest feasible start governs;
-- for finish-based bounds, the activity start is derived by subtracting its productive duration on its calendar.
+- for finish-based bounds, the activity start is derived by subtracting its productive duration on its calendar;
+- for an in-progress successor under `retained_logic`, a start-governed relationship is tested against `remaining_start` when that coordinate exists;
+- for an in-progress successor under `progress_override`, unfinished predecessor logic may be intentionally non-governing for remaining start, as declared by the profile.
 
-P6 and Microsoft Project lag/calendar rules are not assumed equivalent and require separate native profiles.
+The canonical schema can preserve a non-null `lag_calendar`, but the active executable profile rejects it. Alternate lag-calendar semantics require a new profile and a direct expected-result fixture before execution. P6 and Microsoft Project lag/calendar rules are not assumed equivalent and require separate native profiles.
 
-## Constraints included in `reference-v0.2`
+## Constraints included in `reference-v0.3`
 
 - `start_no_earlier_than`
 - `finish_no_earlier_than`
@@ -48,9 +51,15 @@ P6 and Microsoft Project lag/calendar rules are not assumed equivalent and requi
 - fixed actual finish
 - frozen start/finish within a declared frozen horizon
 
-The canonical model can preserve `fixed_start` and `fixed_finish` constraint records, but the executable reference profile does not claim those semantics because the frozen 50-case corpus contains no direct fixture for either type. They require a later profile and direct expected-result cases before execution.
+The canonical model can preserve `fixed_start` and `fixed_finish` constraint records, but the executable reference profile does not claim those semantics because the frozen corpus contains no direct fixture for either type. They require a later profile and direct expected-result cases before execution.
 
-`reference-v0.2` supersedes the original preregistered `reference-v0.1` before any CPM result existed. The historical v0.1 profile remains in `config/` for auditability; it is not the active executable profile.
+## Profile history
+
+- `reference-v0.1` is the original preregistered profile.
+- `reference-v0.2` removed untested `fixed_start` and `fixed_finish` execution claims.
+- `reference-v0.3` removes untested alternate lag-calendar and cumulative-capacity execution claims.
+
+All superseded profiles remain in `config/` for auditability. No CPM, optimiser or native result existed when v0.3 was declared.
 
 ## Actuals and status
 
@@ -63,11 +72,14 @@ The canonical model can preserve `fixed_start` and `fixed_finish` constraint rec
 
 ## Resources
 
-- A cumulative resource has integer capacity.
-- An exclusive resource has capacity one.
-- Activity demand must not exceed capacity at any time.
+The active executable profile claims only capacity-one exclusive resources because that is the only resource-capacity semantic directly represented in the frozen corpus.
+
+- An executable reference resource has type `exclusive` and capacity `1`.
+- Activity demand must not exceed that exclusive capacity at any time.
 - Resource calendar availability intersects with the activity calendar.
 - Equal-quality choices are resolved by the declared objective policy and stable activity-ID tie-break.
+
+The canonical schema may preserve renewable, cumulative and non-renewable resource records. Cumulative capacity greater than one is not executable under `reference-v0.3`; it requires a new profile and direct expected-result fixtures.
 
 ## Float for reference micro-tests
 
@@ -84,16 +96,18 @@ No claim is made that this restricted float profile matches every native product
 
 The following require later, separate profiles:
 
-- P6 retained-logic, progress-override and actual-dates parity beyond declared cases
-- P6 relationship-lag calendar options
-- canonical `fixed_start` and `fixed_finish` execution semantics
-- Microsoft manual task scheduling
-- native duration-type semantics
-- resource-dependent activity/task types
-- summary and level-of-effort semantics
-- suspend/resume behaviour
-- multiple float paths
-- cross-project relationships
-- full constraint hierarchies
+- explicit alternate relationship-lag calendars;
+- cumulative or renewable resource-capacity semantics beyond one exclusive unit;
+- P6 retained-logic, progress-override and actual-dates parity beyond declared cases;
+- P6 relationship-lag calendar options;
+- canonical `fixed_start` and `fixed_finish` execution semantics;
+- Microsoft manual task scheduling;
+- native duration-type semantics;
+- resource-dependent activity/task types;
+- summary and level-of-effort semantics;
+- suspend/resume behaviour;
+- multiple float paths;
+- cross-project relationships;
+- full constraint hierarchies.
 
 Any unexplained native difference is a failed compatibility claim, not a reason to modify the reference result after the fact.

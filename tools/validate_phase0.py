@@ -31,9 +31,9 @@ SCHEMAS = ROOT / "schemas"
 CASES = ROOT / "benchmarks" / "semantic" / "cases"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _CANONICAL_SCHEMA_VERSION = "0.1.3"
-_EXECUTION_SCHEMA_VERSION = "0.1.3"
+_EXECUTION_SCHEMA_VERSION = "0.1.4"
 _EXPLANATION_SCHEMA_VERSION = "0.1.3"
-_ACTIVE_SEMANTIC_PROFILE_ID = "reference-v0.2"
+_ACTIVE_SEMANTIC_PROFILE_ID = "reference-v0.3"
 _ACTIVE_OBJECTIVE_POLICY_ID = "objective-v0.3"
 
 _EXPECTED_REGISTERS: dict[str, list[str]] = {
@@ -148,6 +148,60 @@ _EXPECTED_CATALOGUE_FIELDS = [
     "p6_validation",
     "microsoft_project_validation",
 ]
+_EXPECTED_CASE_IDS = (
+    "SEM-REL-001",
+    "SEM-REL-002",
+    "SEM-REL-003",
+    "SEM-REL-004",
+    "SEM-REL-005",
+    "SEM-REL-006",
+    "SEM-REL-007",
+    "SEM-REL-008",
+    "SEM-REL-009",
+    "SEM-REL-010",
+    "SEM-REL-011",
+    "SEM-REL-012",
+    "SEM-NET-013",
+    "SEM-NET-014",
+    "SEM-NET-015",
+    "SEM-NET-016",
+    "SEM-NET-017",
+    "SEM-NET-018",
+    "SEM-NET-019",
+    "SEM-NET-020",
+    "SEM-CAL-021",
+    "SEM-CAL-022",
+    "SEM-CAL-023",
+    "SEM-CAL-024",
+    "SEM-CAL-025",
+    "SEM-CAL-026",
+    "SEM-CAL-027",
+    "SEM-CAL-028",
+    "SEM-CAL-029",
+    "SEM-CAL-030",
+    "SEM-MIL-031",
+    "SEM-MIL-032",
+    "SEM-MIL-033",
+    "SEM-MIL-034",
+    "SEM-CON-035",
+    "SEM-CON-036",
+    "SEM-CON-037",
+    "SEM-CON-038",
+    "SEM-STA-039",
+    "SEM-STA-040",
+    "SEM-STA-041",
+    "SEM-STA-042",
+    "SEM-STA-043",
+    "SEM-STA-044",
+    "SEM-STA-045",
+    "SEM-STA-046",
+    "SEM-FLT-047",
+    "SEM-FLT-048",
+    "SEM-DET-049",
+    "SEM-DET-050",
+)
+_EXPECTED_CASE_FILE_BY_ID = {case_id: f"{case_id.lower()}.json" for case_id in _EXPECTED_CASE_IDS}
+_EXPECTED_CASE_ID_BY_FILE = {name: case_id for case_id, name in _EXPECTED_CASE_FILE_BY_ID.items()}
 _EXPECTED_CONFIG_FILES = {
     "deterministic-execution-profile-v0.1.json",
     "objective-policy-v0.1.json",
@@ -155,6 +209,7 @@ _EXPECTED_CONFIG_FILES = {
     "objective-policy-v0.3.json",
     "semantic-profile-reference-v0.1.json",
     "semantic-profile-reference-v0.2.json",
+    "semantic-profile-reference-v0.3.json",
 }
 _EXPECTED_OBJECTIVE_POLICY: dict[str, Any] = {
     "policy_id": "objective-v0.3",
@@ -271,12 +326,22 @@ _EXPECTED_SEMANTIC_PROFILE_V1: dict[str, Any] = {
     "float_scope": "simple_24x7_acyclic_unconstrained_networks_only",
     "native_equivalence": {"p6": "not_claimed", "microsoft_project": "not_claimed"},
 }
-_EXPECTED_SEMANTIC_PROFILE: dict[str, Any] = {
+_EXPECTED_SEMANTIC_PROFILE_V2: dict[str, Any] = {
     **_EXPECTED_SEMANTIC_PROFILE_V1,
     "profile_id": "reference-v0.2",
     "constraints": ["start_no_earlier_than", "finish_no_earlier_than"],
     "supersedes": "reference-v0.1",
     "change_reason": "fixed_start_and_fixed_finish_removed_from_executable_claim_until_direct_semantic_fixtures_exist",
+}
+_EXPECTED_SEMANTIC_PROFILE: dict[str, Any] = {
+    **_EXPECTED_SEMANTIC_PROFILE_V2,
+    "profile_id": "reference-v0.3",
+    "lag_policy": "successor_calendar_only",
+    "explicit_lag_calendars": "preserved_in_canonical_model_but_not_executable_until_direct_fixture_exists",
+    "resource_capacity_semantics": "exclusive_capacity_one_only",
+    "cumulative_resources": "preserved_in_canonical_model_but_not_executable_until_direct_fixture_exists",
+    "supersedes": "reference-v0.2",
+    "change_reason": "explicit_alternate_lag_calendars_and_cumulative_capacity_removed_from_executable_claim_until_direct_semantic_fixtures_exist",
 }
 
 
@@ -420,6 +485,46 @@ def _consume_working_duration(
             if next_start >= current:
                 current = next_start
                 break
+    return None
+
+
+def _add_working_lag(
+    anchor: int, lag: int, intervals: Sequence[Sequence[int]]
+) -> int | None:
+    """Shift an event coordinate by signed productive working time.
+
+    Positive lag snaps forward to the next working interval before consuming work;
+    negative lag snaps backward to the preceding interval finish. Zero lag preserves
+    the event coordinate exactly.
+    """
+
+    if lag == 0:
+        return anchor
+    if lag > 0:
+        remaining = lag
+        cursor = anchor
+        for interval_start, interval_finish in intervals:
+            if cursor >= interval_finish:
+                continue
+            position = max(cursor, interval_start)
+            available = interval_finish - position
+            if remaining <= available:
+                return position + remaining
+            remaining -= available
+            cursor = interval_finish
+        return None
+
+    remaining = -lag
+    cursor = anchor
+    for interval_start, interval_finish in reversed(intervals):
+        if cursor <= interval_start:
+            continue
+        position = min(cursor, interval_finish)
+        available = position - interval_start
+        if remaining <= available:
+            return position - remaining
+        remaining -= available
+        cursor = interval_start
     return None
 
 
@@ -678,6 +783,19 @@ def validate_execution_record(
     optimality = record.get("optimality_status")
     if optimality in {"optimal", "feasible_not_proven"}:
         errors.extend(validate_objective_vector(record.get("objective_vector"), schedule, context))
+    elif optimality == "infeasible_proven":
+        if record.get("feasibility_status") != "infeasible":
+            errors.append(f"{context}: infeasible proof must be classified infeasible")
+        if record.get("selected_scenario_hash") is not None:
+            errors.append(
+                f"{context}: infeasible proof must not publish a selected-scenario hash"
+            )
+        if record.get("objective_vector") != []:
+            errors.append(f"{context}: infeasible proof must have an empty objective vector")
+        if record.get("best_bound") is not None:
+            errors.append(f"{context}: infeasible proof must not publish a best bound")
+        if record.get("optimality_gap") is not None:
+            errors.append(f"{context}: infeasible proof must not publish an optimality gap")
     elif optimality == "not_applicable" and record.get("objective_vector") not in ([], None):
         errors.append(f"{context}: not-applicable optimisation must have an empty objective vector")
     return errors
@@ -856,6 +974,79 @@ def validate_explanation_document(
     return errors
 
 
+def _validate_declared_relationship_oracles(
+    schedule: dict[str, Any],
+    expected_times: dict[str, Any],
+    activities_by_id: dict[str, dict[str, Any]],
+    calendars_by_id: dict[str, dict[str, Any]],
+    case_name: str,
+    errors: list[str],
+) -> None:
+    """Independently verify the declared FS/SS/FF/SF lower bounds."""
+
+    progress_policy = schedule.get("project", {}).get("progress_policy")
+    for relationship in schedule.get("relationships", []):
+        relationship_id = relationship.get("id", "<missing>")
+        predecessor_id = relationship.get("predecessor_id")
+        successor_id = relationship.get("successor_id")
+        relation_type = relationship.get("type")
+        lag = relationship.get("lag")
+        if (
+            predecessor_id not in expected_times
+            or successor_id not in expected_times
+            or predecessor_id not in activities_by_id
+            or successor_id not in activities_by_id
+            or relation_type not in {"FS", "SS", "FF", "SF"}
+            or not _is_int(lag)
+        ):
+            continue
+        if relationship.get("lag_calendar") is not None:
+            # Active-profile validation reports the unsupported semantic separately.
+            continue
+
+        predecessor_record = expected_times.get(predecessor_id, {})
+        successor_record = expected_times.get(successor_id, {})
+        predecessor_event_name = "finish" if relation_type[0] == "F" else "start"
+        successor_event_name = "start" if relation_type[1] == "S" else "finish"
+        predecessor_event = predecessor_record.get(predecessor_event_name)
+
+        predecessor_activity = activities_by_id[predecessor_id]
+        successor_activity = activities_by_id[successor_id]
+        successor_event = successor_record.get(successor_event_name)
+
+        if successor_event_name == "start" and _is_int(successor_activity.get("actual_start")):
+            if (
+                progress_policy == "progress_override"
+                and not _is_int(predecessor_activity.get("actual_finish"))
+            ):
+                # The profile explicitly allows unfinished predecessor logic to be
+                # non-governing for remaining successor work in this state.
+                continue
+            if progress_policy == "retained_logic" and _is_int(
+                successor_record.get("remaining_start")
+            ):
+                successor_event = successor_record["remaining_start"]
+
+        calendar_id = successor_activity.get("calendar_id")
+        calendar = calendars_by_id.get(calendar_id)
+        if not (_is_int(predecessor_event) and _is_int(successor_event) and calendar):
+            continue
+        bound = _add_working_lag(
+            predecessor_event, lag, calendar.get("working_intervals", [])
+        )
+        if bound is None:
+            errors.append(
+                f"{case_name}: relationship {relationship_id} cannot consume signed lag {lag} "
+                f"from predecessor {predecessor_event_name} {predecessor_event} on successor calendar {calendar_id}"
+            )
+        elif successor_event < bound:
+            errors.append(
+                f"{case_name}: relationship {relationship_id} ({relation_type}) expected "
+                f"{successor_id}.{successor_event_name} {successor_event} violates lower bound {bound} "
+                f"from {predecessor_id}.{predecessor_event_name} {predecessor_event} with lag {lag}"
+            )
+
+
 def validate_case_document(data: dict[str, Any], case_name: str) -> list[str]:
     """Run semantic cross-reference checks not expressible cleanly in JSON Schema."""
 
@@ -1025,6 +1216,14 @@ def validate_case_document(data: dict[str, Any], case_name: str) -> list[str]:
     for resource in resources:
         if resource.get("calendar_id") not in calendar_ids:
             errors.append(f"{case_name}: unknown resource calendar {resource.get('calendar_id')}")
+        if declared_reference and (
+            resource.get("type") != "exclusive" or resource.get("capacity") != 1
+        ):
+            errors.append(
+                f"{case_name}: resource {resource.get('id')} uses {resource.get('type')} capacity "
+                f"{resource.get('capacity')}, which is preserved by the canonical model but is not "
+                f"executable under {_ACTIVE_SEMANTIC_PROFILE_ID}; use native_validation_only"
+            )
 
     for relationship in relationships:
         predecessor_id = relationship.get("predecessor_id")
@@ -1037,6 +1236,12 @@ def validate_case_document(data: dict[str, Any], case_name: str) -> list[str]:
         if lag_calendar is not None and lag_calendar not in calendar_ids:
             errors.append(
                 f"{case_name}: relationship {relationship.get('id')} references unknown lag calendar {lag_calendar}"
+            )
+        if declared_reference and lag_calendar is not None:
+            errors.append(
+                f"{case_name}: relationship {relationship.get('id')} explicit lag calendar "
+                f"{lag_calendar} is preserved by the canonical model but is not executable under "
+                f"{_ACTIVE_SEMANTIC_PROFILE_ID}; use native_validation_only"
             )
 
     for constraint in operational_constraints:
@@ -1089,7 +1294,7 @@ def validate_case_document(data: dict[str, Any], case_name: str) -> list[str]:
             valid_horizon,
             case_name,
             errors,
-            require_complete=state_name == "proposed_scenario" and isinstance(state, dict),
+            require_complete=state_name in {"approved_forecast", "proposed_scenario"} and isinstance(state, dict),
         )
 
     proposed = schedule.get("proposed_scenario")
@@ -1167,6 +1372,15 @@ def validate_case_document(data: dict[str, Any], case_name: str) -> list[str]:
                     errors.append(
                         f"{case_name}: declared project_finish {project_finish} does not equal max activity finish {calculated_finish}"
                     )
+        if isinstance(expected_times, dict):
+            _validate_declared_relationship_oracles(
+                schedule,
+                expected_times,
+                activities_by_id,
+                calendars_by_id,
+                case_name,
+                errors,
+            )
 
     driving_relationships = expected.get("driving_relationships", [])
     for relationship_id in driving_relationships:
@@ -1237,8 +1451,16 @@ def validate_cases(root: Path = ROOT) -> list[str]:
     errors.extend(schema_errors)
     cases_dir = root / "benchmarks" / "semantic" / "cases"
     case_files = sorted(cases_dir.glob("*.json"))
-    if len(case_files) != 50:
-        errors.append(f"Expected 50 case files, found {len(case_files)}")
+    discovered_names = {path.name for path in case_files}
+    expected_names = set(_EXPECTED_CASE_ID_BY_FILE)
+    if len(case_files) != len(_EXPECTED_CASE_IDS):
+        errors.append(
+            f"Expected {len(_EXPECTED_CASE_IDS)} case files, found {len(case_files)}"
+        )
+    for missing in sorted(expected_names - discovered_names):
+        errors.append(f"Frozen semantic fixture is missing: {missing}")
+    for unexpected in sorted(discovered_names - expected_names):
+        errors.append(f"Unexpected semantic fixture identity: {unexpected}")
 
     fixtures: dict[str, dict[str, Any]] = {}
     for path in case_files:
@@ -1248,6 +1470,11 @@ def validate_cases(root: Path = ROOT) -> list[str]:
             errors.append(f"{path.name}: invalid JSON: {exc}")
             continue
         case_id = data.get("case_id", "<missing>")
+        expected_case_id = _EXPECTED_CASE_ID_BY_FILE.get(path.name)
+        if expected_case_id is not None and case_id != expected_case_id:
+            errors.append(
+                f"{path.name}: frozen case_id must be {expected_case_id}, found {case_id}"
+            )
         if case_id in fixtures:
             errors.append(f"Duplicate case_id: {case_id}")
         elif isinstance(case_id, str):
@@ -1270,9 +1497,13 @@ def validate_cases(root: Path = ROOT) -> list[str]:
         errors.append(
             f"catalogue.csv: header must equal {','.join(_EXPECTED_CATALOGUE_FIELDS)}"
         )
-    if len(rows) != 50:
-        errors.append(f"Expected 50 catalogue rows, found {len(rows)}")
+    if len(rows) != len(_EXPECTED_CASE_IDS):
+        errors.append(
+            f"Expected {len(_EXPECTED_CASE_IDS)} catalogue rows, found {len(rows)}"
+        )
     catalogue_ids = [row.get("case_id") for row in rows]
+    if tuple(catalogue_ids) != _EXPECTED_CASE_IDS:
+        errors.append("Catalogue case IDs/order do not match the frozen preregistered identity sequence")
     for duplicate in _duplicate_values(catalogue_ids):
         errors.append(f"Duplicate catalogue case_id: {duplicate}")
     if set(catalogue_ids) != set(fixtures):
@@ -1333,7 +1564,8 @@ def validate_configuration(root: Path = ROOT) -> list[str]:
         ("objective-policy-v0.3.json", _EXPECTED_OBJECTIVE_POLICY),
         ("deterministic-execution-profile-v0.1.json", _EXPECTED_DETERMINISTIC_PROFILE),
         ("semantic-profile-reference-v0.1.json", _EXPECTED_SEMANTIC_PROFILE_V1),
-        ("semantic-profile-reference-v0.2.json", _EXPECTED_SEMANTIC_PROFILE),
+        ("semantic-profile-reference-v0.2.json", _EXPECTED_SEMANTIC_PROFILE_V2),
+        ("semantic-profile-reference-v0.3.json", _EXPECTED_SEMANTIC_PROFILE),
     ]
     for name, expected in checks:
         path = config_dir / name
@@ -1443,9 +1675,9 @@ def main() -> int:
             print(f"- {error}")
         return 1
     print("PHASE 0 VALIDATION: PASS")
-    print("- 50 unique semantic fixtures validated")
+    print("- 50 exact preregistered semantic fixtures validated")
     print("- JSON Schemas resolved and meta-validated")
-    print("- IDs, references, hierarchies, calendars, status, states, and expected results validated")
+    print("- IDs, references, hierarchies, calendars, status, states, expected spans, and relationship formulas validated")
     print("- Frozen scenarios, explanation causes, counterfactual paths, spans, and objective vectors validated")
     print("- Register filenames, header sequences, and authoritative protocol chapters validated")
     print("- Objective, semantic, and deterministic profiles match frozen definitions")

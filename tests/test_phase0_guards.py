@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import csv
 import hashlib
 import json
 import subprocess
@@ -100,9 +101,19 @@ class Phase0GuardTests(unittest.TestCase):
                 )
 
     def test_unknown_explicit_lag_calendar_is_rejected(self) -> None:
-        data = copy.deepcopy(self.relationship_case)
-        data["schedule"]["relationships"][0]["lag_calendar"] = "CAL-MISSING"
-        self.assertTrue(any("unknown lag calendar" in error for error in self.cross_errors(data)))
+        unknown = copy.deepcopy(self.relationship_case)
+        unknown["schedule"]["relationships"][0]["lag_calendar"] = "CAL-MISSING"
+        self.assertTrue(any("unknown lag calendar" in error for error in self.cross_errors(unknown)))
+
+        known_but_unsupported = copy.deepcopy(self.relationship_case)
+        known_but_unsupported["schedule"]["relationships"][0]["lag_calendar"] = "CAL-24X7"
+        self.assertTrue(
+            any(
+                "explicit lag calendar CAL-24X7" in error
+                and "not executable under reference-v0.3" in error
+                for error in self.cross_errors(known_but_unsupported)
+            )
+        )
 
     def test_invalid_calendar_intervals_are_rejected(self) -> None:
         cases = {
@@ -164,7 +175,8 @@ class Phase0GuardTests(unittest.TestCase):
             "state_id": "FCST-1",
             "state_type": "approved_forecast",
             "activity_states": [
-                {"activity_id": "A", "start": 0, "finish": 4, "mode_id": "MODE-1"}
+                {"activity_id": "A", "start": 0, "finish": 4, "mode_id": "MODE-1"},
+                {"activity_id": "B", "start": 4, "finish": 7},
             ],
         }
         schedule["proposed_scenario"] = {
@@ -191,7 +203,7 @@ class Phase0GuardTests(unittest.TestCase):
                 "evidence_hash": None,
             }
         return {
-            "schema_version": "0.1.3",
+            "schema_version": "0.1.4",
             "execution_id": f"EX-{status}",
             "case_id": "SEM-REL-001",
             "executed_at": None,
@@ -240,7 +252,7 @@ class Phase0GuardTests(unittest.TestCase):
 
     def test_complete_executed_pass_record_is_valid(self) -> None:
         valid = {
-            "schema_version": "0.1.3",
+            "schema_version": "0.1.4",
             "execution_id": "EX-1",
             "case_id": "SEM-REL-001",
             "executed_at": "2026-08-16T12:00:00+08:00",
@@ -424,7 +436,7 @@ class Phase0GuardTests(unittest.TestCase):
 
     def test_passing_execution_rejects_infeasible_optimality(self) -> None:
         data = {
-            "schema_version": "0.1.3",
+            "schema_version": "0.1.4",
             "execution_id": "EX-CONTRADICTORY",
             "case_id": "SEM-REL-001",
             "executed_at": "2026-08-16T12:00:00+08:00",
@@ -509,7 +521,7 @@ class Phase0GuardTests(unittest.TestCase):
 
     def test_attempted_native_roundtrip_requires_real_system(self) -> None:
         data = {
-            "schema_version": "0.1.3",
+            "schema_version": "0.1.4",
             "execution_id": "EX-NATIVE",
             "case_id": "SEM-REL-001",
             "executed_at": "2026-08-16T12:00:00+08:00",
@@ -688,9 +700,9 @@ class Phase0GuardTests(unittest.TestCase):
             config.mkdir()
             for name in validate_phase0._EXPECTED_CONFIG_FILES:
                 shutil.copy2(ROOT / "config" / name, config / name)
-            profile = load_json(config / "semantic-profile-reference-v0.2.json")
+            profile = load_json(config / "semantic-profile-reference-v0.3.json")
             profile["lag_policy"] = "changed"
-            (config / "semantic-profile-reference-v0.2.json").write_text(
+            (config / "semantic-profile-reference-v0.3.json").write_text(
                 json.dumps(profile), encoding="utf-8"
             )
             self.assertTrue(any("complete frozen definition" in error for error in validate_phase0.validate_configuration(root)))
@@ -753,7 +765,7 @@ class Phase0GuardTests(unittest.TestCase):
 
     def test_passing_execution_requires_explicit_roundtrip_disposition(self) -> None:
         data = {
-            "schema_version": "0.1.3",
+            "schema_version": "0.1.4",
             "execution_id": "EX-1",
             "case_id": "SEM-REL-001",
             "executed_at": "2026-08-16T12:00:00+08:00",
@@ -806,7 +818,7 @@ class Phase0GuardTests(unittest.TestCase):
 
     def test_optimal_result_requires_zero_gap(self) -> None:
         data = {
-            "schema_version": "0.1.3",
+            "schema_version": "0.1.4",
             "execution_id": "EX-OPT",
             "case_id": "SEM-REL-001",
             "executed_at": "2026-08-16T12:00:00+08:00",
@@ -847,7 +859,7 @@ class Phase0GuardTests(unittest.TestCase):
 
     def test_passing_semantic_execution_can_be_not_applicable_to_optimisation(self) -> None:
         data = {
-            "schema_version": "0.1.3",
+            "schema_version": "0.1.4",
             "execution_id": "EX-SEMANTIC",
             "case_id": "SEM-REL-001",
             "executed_at": "2026-08-16T12:00:00+08:00",
@@ -915,19 +927,23 @@ class Phase0GuardTests(unittest.TestCase):
 
     def test_unexercised_fixed_constraints_are_not_claimed_by_reference_profile(self) -> None:
         historical = load_json(ROOT / "config" / "semantic-profile-reference-v0.1.json")
-        active = load_json(ROOT / "config" / "semantic-profile-reference-v0.2.json")
+        intermediate = load_json(ROOT / "config" / "semantic-profile-reference-v0.2.json")
+        active = load_json(ROOT / "config" / "semantic-profile-reference-v0.3.json")
         self.assertIn("fixed_start", historical["constraints"])
         self.assertIn("fixed_finish", historical["constraints"])
-        self.assertNotIn("fixed_start", active["constraints"])
+        self.assertNotIn("fixed_start", intermediate["constraints"])
         self.assertNotIn("fixed_finish", active["constraints"])
-        self.assertEqual("reference-v0.1", active["supersedes"])
+        self.assertEqual("reference-v0.1", intermediate["supersedes"])
+        self.assertEqual("reference-v0.2", active["supersedes"])
+        self.assertEqual("successor_calendar_only", active["lag_policy"])
+        self.assertEqual("exclusive_capacity_one_only", active["resource_capacity_semantics"])
 
         data = copy.deepcopy(self.relationship_case)
         data["schedule"]["activities"][0]["constraints"].append(
             {"id": "C-FIXED", "type": "fixed_start", "value": 0}
         )
         self.assertTrue(
-            any("is not executable under reference-v0.2" in error for error in self.cross_errors(data))
+            any("is not executable under reference-v0.3" in error for error in self.cross_errors(data))
         )
 
     def test_explanation_causes_resolve_against_canonical_input(self) -> None:
@@ -985,6 +1001,215 @@ class Phase0GuardTests(unittest.TestCase):
                 )
             ),
         )
+
+    def test_declared_relationship_oracle_enforces_all_formulas_and_signed_lags(self) -> None:
+        mutations = {
+            "sem-rel-001.json": ("B", {"start": 3, "finish": 6}),
+            "sem-rel-002.json": ("A", {"start": 1, "finish": 5}),
+            "sem-rel-003.json": ("A", {"start": 1, "finish": 5}),
+            "sem-rel-004.json": ("A", {"start": 5, "finish": 9}),
+            "sem-rel-005.json": ("B", {"start": 5, "finish": 8}),
+            "sem-rel-006.json": ("B", {"start": 1, "finish": 4}),
+            "sem-rel-007.json": ("B", {"start": 2, "finish": 5}),
+            "sem-rel-008.json": ("B", {"start": 2, "finish": 5}),
+            "sem-rel-009.json": ("B", {"start": 5, "finish": 8}),
+            "sem-rel-010.json": ("B", {"start": 1, "finish": 4}),
+            "sem-rel-011.json": ("B", {"start": 2, "finish": 5}),
+            "sem-rel-012.json": ("B", {"start": 2, "finish": 5}),
+        }
+        for filename, (activity_id, coordinates) in mutations.items():
+            with self.subTest(filename=filename):
+                data = load_json(ROOT / "benchmarks" / "semantic" / "cases" / filename)
+                data["expected"]["activity_times"][activity_id].update(coordinates)
+                data["expected"]["project_finish"] = max(
+                    record["finish"]
+                    for record in data["expected"]["activity_times"].values()
+                )
+                self.assertTrue(
+                    any(
+                        "violates lower bound" in error
+                        for error in self.cross_errors(data)
+                    )
+                )
+
+    def test_declared_cumulative_resource_is_not_claimed_without_a_fixture(self) -> None:
+        data = copy.deepcopy(self.resource_case)
+        data["schedule"]["resources"][0]["type"] = "cumulative"
+        data["schedule"]["resources"][0]["capacity"] = 2
+        self.assertEqual([], self.schema_errors(data))
+        self.assertTrue(
+            any(
+                "cumulative capacity 2" in error
+                and "not executable under reference-v0.3" in error
+                for error in self.cross_errors(data)
+            )
+        )
+
+    def test_frozen_fixture_identities_reject_well_formed_replacement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shutil.copytree(ROOT / "schemas", root / "schemas")
+            shutil.copytree(ROOT / "benchmarks" / "semantic", root / "benchmarks" / "semantic")
+            cases = root / "benchmarks" / "semantic" / "cases"
+            old_path = cases / "sem-rel-001.json"
+            replacement = load_json(old_path)
+            replacement["case_id"] = "SEM-REL-099"
+            old_path.unlink()
+            (cases / "sem-rel-099.json").write_text(
+                json.dumps(replacement, indent=2) + "\n", encoding="utf-8"
+            )
+
+            catalogue = root / "benchmarks" / "semantic" / "catalogue.csv"
+            with catalogue.open("r", encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+                fieldnames = list(rows[0])
+            rows[0]["case_id"] = "SEM-REL-099"
+            with catalogue.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+
+            errors = validate_phase0.validate_cases(root)
+            self.assertTrue(any("Frozen semantic fixture is missing: sem-rel-001.json" in error for error in errors))
+            self.assertTrue(any("Unexpected semantic fixture identity: sem-rel-099.json" in error for error in errors))
+
+    def test_approved_forecast_must_cover_every_activity(self) -> None:
+        valid = {
+            "state_id": "FCST-VALID",
+            "state_type": "approved_forecast",
+            "activity_states": [
+                {"activity_id": "A", "start": 0, "finish": 4},
+                {"activity_id": "B", "start": 4, "finish": 7},
+            ],
+        }
+
+        missing = copy.deepcopy(self.relationship_case)
+        missing["schedule"]["approved_forecast"] = copy.deepcopy(valid)
+        missing["schedule"]["approved_forecast"]["activity_states"].pop()
+        self.assertTrue(
+            any(
+                "approved_forecast activity states must exactly cover" in error
+                for error in self.cross_errors(missing)
+            )
+        )
+
+        invalid_states = {
+            "unknown activity": {"activity_id": "UNKNOWN", "start": 4, "finish": 7},
+            "duplicate activity state": {"activity_id": "A", "start": 4, "finish": 8},
+            "unknown resource": {
+                "activity_id": "B",
+                "start": 4,
+                "finish": 7,
+                "assignments": [{"resource_id": "R-MISSING", "demand": 1}],
+            },
+            "unknown mode": {
+                "activity_id": "B",
+                "start": 4,
+                "finish": 7,
+                "mode_id": "MODE-MISSING",
+            },
+            "calendar-derived finish": {"activity_id": "B", "start": 4, "finish": 6},
+        }
+        for expected_error, invalid_state in invalid_states.items():
+            with self.subTest(expected_error=expected_error):
+                data = copy.deepcopy(self.relationship_case)
+                data["schedule"]["approved_forecast"] = copy.deepcopy(valid)
+                data["schedule"]["approved_forecast"]["activity_states"][1] = invalid_state
+                self.assertTrue(
+                    any(expected_error in error for error in self.cross_errors(data))
+                )
+
+        absent = copy.deepcopy(self.relationship_case)
+        absent["schedule"]["approved_forecast"] = None
+        self.assertFalse(
+            any("approved_forecast" in error for error in self.cross_errors(absent))
+        )
+
+    def test_infeasible_proven_result_clears_selected_schedule_and_objective_evidence(self) -> None:
+        record = {
+            "schema_version": "0.1.4",
+            "execution_id": "EX-INFEASIBLE",
+            "case_id": "SEM-REL-001",
+            "executed_at": "2026-08-17T12:00:00+08:00",
+            "execution_identity": HASH_A,
+            "status": "executed_fail",
+            "input_hash": HASH_B,
+            "output_hash": None,
+            "selected_scenario_hash": None,
+            "explanation_hash": None,
+            "evidence_bundle_hash": HASH_C,
+            "validator_status": "pass",
+            "feasibility_status": "infeasible",
+            "optimality_status": "infeasible_proven",
+            "objective_vector": [],
+            "best_bound": None,
+            "optimality_gap": None,
+            "native_roundtrip_result": None,
+            "evidence_paths": ["evidence/infeasible.json"],
+        }
+        self.assertEqual([], list(self.execution_validator.iter_errors(record)))
+        self.assertEqual(
+            [],
+            validate_phase0.validate_execution_record(
+                record, self.relationship_case["schedule"]
+            ),
+        )
+
+        proof_evidence = copy.deepcopy(record)
+        proof_evidence["output_hash"] = HASH_D
+        proof_evidence["explanation_hash"] = HASH_A
+        self.assertEqual([], list(self.execution_validator.iter_errors(proof_evidence)))
+        self.assertEqual(
+            [],
+            validate_phase0.validate_execution_record(
+                proof_evidence, self.relationship_case["schedule"]
+            ),
+        )
+
+        invalid_fields = {
+            "feasibility_status": (
+                "feasibility_status",
+                "feasible",
+                "must be classified infeasible",
+            ),
+            "selected_scenario_hash": (
+                "selected_scenario_hash",
+                HASH_D,
+                "must not publish a selected-scenario hash",
+            ),
+            "objective_vector_nonempty": (
+                "objective_vector",
+                [0],
+                "must have an empty objective vector",
+            ),
+            "objective_vector_null": (
+                "objective_vector",
+                None,
+                "must have an empty objective vector",
+            ),
+            "best_bound": ("best_bound", 0, "must not publish a best bound"),
+            "optimality_gap": (
+                "optimality_gap",
+                0,
+                "must not publish an optimality gap",
+            ),
+        }
+        for label, (field, invalid_value, expected_error) in invalid_fields.items():
+            with self.subTest(field=label):
+                invalid = copy.deepcopy(record)
+                invalid[field] = invalid_value
+                self.assertTrue(list(self.execution_validator.iter_errors(invalid)))
+                self.assertTrue(
+                    any(
+                        expected_error in error
+                        for error in validate_phase0.validate_execution_record(
+                            invalid, self.relationship_case["schedule"]
+                        )
+                    )
+                )
+
+    def test_frozen_semantic_corpus_validates(self) -> None:
+        self.assertEqual([], validate_phase0.validate_cases(ROOT))
 
     def test_in_progress_activity_requires_valid_status_time(self) -> None:
         data = copy.deepcopy(self.relationship_case)

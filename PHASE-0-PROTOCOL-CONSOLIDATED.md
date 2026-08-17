@@ -117,7 +117,7 @@ OR-Tools CP-SAT is the first research candidate. An exact version is not selecte
 
 ---
 
-# Reference Semantic Contract `reference-v0.2`
+# Reference Semantic Contract `reference-v0.3`
 
 ## Purpose
 
@@ -148,18 +148,21 @@ Let predecessor `i` and successor `j` have start `S` and finish `F`.
 - FF: `F_j >= add_lag(F_i, lag)`
 - SF: `F_j >= add_lag(S_i, lag)`
 
-For `reference-v0.2`:
+For `reference-v0.3`:
 
-- lag is consumed on the successor activity calendar unless a fixture explicitly declares another calendar;
-- positive lag adds working time;
-- negative lag subtracts working time;
+- lag is consumed only on the successor activity calendar;
+- positive lag adds productive working time;
+- negative lag subtracts productive working time;
+- zero lag preserves the predecessor event coordinate;
 - all activities are bounded by project start unless an actual start precedes it;
 - when several bounds apply, the latest feasible start governs;
-- for finish-based bounds, the activity start is derived by subtracting its productive duration on its calendar.
+- for finish-based bounds, the activity start is derived by subtracting its productive duration on its calendar;
+- for an in-progress successor under `retained_logic`, a start-governed relationship is tested against `remaining_start` when that coordinate exists;
+- for an in-progress successor under `progress_override`, unfinished predecessor logic may be intentionally non-governing for remaining start, as declared by the profile.
 
-P6 and Microsoft Project lag/calendar rules are not assumed equivalent and require separate native profiles.
+The canonical schema can preserve a non-null `lag_calendar`, but the active executable profile rejects it. Alternate lag-calendar semantics require a new profile and a direct expected-result fixture before execution. P6 and Microsoft Project lag/calendar rules are not assumed equivalent and require separate native profiles.
 
-## Constraints included in `reference-v0.2`
+## Constraints included in `reference-v0.3`
 
 - `start_no_earlier_than`
 - `finish_no_earlier_than`
@@ -167,9 +170,15 @@ P6 and Microsoft Project lag/calendar rules are not assumed equivalent and requi
 - fixed actual finish
 - frozen start/finish within a declared frozen horizon
 
-The canonical model can preserve `fixed_start` and `fixed_finish` constraint records, but the executable reference profile does not claim those semantics because the frozen 50-case corpus contains no direct fixture for either type. They require a later profile and direct expected-result cases before execution.
+The canonical model can preserve `fixed_start` and `fixed_finish` constraint records, but the executable reference profile does not claim those semantics because the frozen corpus contains no direct fixture for either type. They require a later profile and direct expected-result cases before execution.
 
-`reference-v0.2` supersedes the original preregistered `reference-v0.1` before any CPM result existed. The historical v0.1 profile remains in `config/` for auditability; it is not the active executable profile.
+## Profile history
+
+- `reference-v0.1` is the original preregistered profile.
+- `reference-v0.2` removed untested `fixed_start` and `fixed_finish` execution claims.
+- `reference-v0.3` removes untested alternate lag-calendar and cumulative-capacity execution claims.
+
+All superseded profiles remain in `config/` for auditability. No CPM, optimiser or native result existed when v0.3 was declared.
 
 ## Actuals and status
 
@@ -182,11 +191,14 @@ The canonical model can preserve `fixed_start` and `fixed_finish` constraint rec
 
 ## Resources
 
-- A cumulative resource has integer capacity.
-- An exclusive resource has capacity one.
-- Activity demand must not exceed capacity at any time.
+The active executable profile claims only capacity-one exclusive resources because that is the only resource-capacity semantic directly represented in the frozen corpus.
+
+- An executable reference resource has type `exclusive` and capacity `1`.
+- Activity demand must not exceed that exclusive capacity at any time.
 - Resource calendar availability intersects with the activity calendar.
 - Equal-quality choices are resolved by the declared objective policy and stable activity-ID tie-break.
+
+The canonical schema may preserve renewable, cumulative and non-renewable resource records. Cumulative capacity greater than one is not executable under `reference-v0.3`; it requires a new profile and direct expected-result fixtures.
 
 ## Float for reference micro-tests
 
@@ -203,17 +215,19 @@ No claim is made that this restricted float profile matches every native product
 
 The following require later, separate profiles:
 
-- P6 retained-logic, progress-override and actual-dates parity beyond declared cases
-- P6 relationship-lag calendar options
-- canonical `fixed_start` and `fixed_finish` execution semantics
-- Microsoft manual task scheduling
-- native duration-type semantics
-- resource-dependent activity/task types
-- summary and level-of-effort semantics
-- suspend/resume behaviour
-- multiple float paths
-- cross-project relationships
-- full constraint hierarchies
+- explicit alternate relationship-lag calendars;
+- cumulative or renewable resource-capacity semantics beyond one exclusive unit;
+- P6 retained-logic, progress-override and actual-dates parity beyond declared cases;
+- P6 relationship-lag calendar options;
+- canonical `fixed_start` and `fixed_finish` execution semantics;
+- Microsoft manual task scheduling;
+- native duration-type semantics;
+- resource-dependent activity/task types;
+- summary and level-of-effort semantics;
+- suspend/resume behaviour;
+- multiple float paths;
+- cross-project relationships;
+- full constraint hierarchies.
 
 Any unexplained native difference is a failed compatibility claim, not a reason to modify the reference result after the fact.
 
@@ -226,6 +240,7 @@ Any unexplained native difference is a failed compatibility claim, not a reason 
 - Neutral representation first; native adapters are explicit transformations.
 - Source-specific state is preserved rather than silently normalised away.
 - Historical facts, approved forecast and proposed scenario are distinct.
+- Every supplied approved forecast and proposed scenario must exactly cover the canonical activity set; partial state is rejected.
 - Every calculation is tied to an immutable source snapshot and versioned policy.
 - Unsupported native semantics remain labelled and preserved where possible.
 - Stable identifiers are unique within their declared scope and all references must resolve.
@@ -386,7 +401,7 @@ Governance can record:
 
 The Phase 0 validator enforces rules that JSON Schema cannot express reliably by itself:
 
-- all semantic fixtures use canonical schema `0.1.3` and resolve to the exact frozen active `reference-v0.2` profile;
+- all semantic fixtures use canonical schema `0.1.3` and resolve to the exact frozen active `reference-v0.3` profile;
 - unique calendar, resource, activity, relationship, date-constraint, WBS, operational-constraint and per-activity mode IDs;
 - resolved calendar, WBS, resource, relationship, operational-constraint and scenario-state references;
 - acyclic WBS parent hierarchy;
@@ -401,6 +416,7 @@ The Phase 0 validator enforces rules that JSON Schema cannot express reliably by
 - resolved resource assignments in baseline, approved-forecast and proposed-scenario activity states;
 - state start/finish ordering, horizon bounds and duration/calendar satisfaction for unstarted work;
 - context-correct baseline and approved-forecast state types;
+- complete approved-forecast activity coverage;
 - complete proposed-scenario activity coverage, preservation of every frozen coordinate and active objective-vector shape;
 - ordered, in-horizon operational windows;
 - explicit, ordered coordinates for every frozen activity;
@@ -408,7 +424,7 @@ The Phase 0 validator enforces rules that JSON Schema cannot express reliably by
 - exact frozen filename and header sequence for every evidence register;
 - the complete authoritative protocol chapter set.
 
-`fixed_start` and `fixed_finish` remain representable as preserved canonical source state, but they are not executable under `reference-v0.2` until direct semantic fixtures and expected results are approved.
+`fixed_start` and `fixed_finish` remain representable as preserved canonical source state, but they are not executable under `reference-v0.3` until direct semantic fixtures and expected results are approved.
 
 ## Native mapping policy
 
@@ -491,7 +507,7 @@ Parallel search may be tested separately but cannot enter the deterministic clai
 
 ## Required execution record
 
-The machine-readable contract is `schemas/execution-record.schema.json`, schema revision `0.1.3`. Every record contains the following fields, even where their value is null or `not_applicable`:
+The machine-readable contract is `schemas/execution-record.schema.json`, schema revision `0.1.4`. Every record contains the following fields, even where their value is null or `not_applicable`:
 
 - schema version;
 - execution ID and case ID;
@@ -544,7 +560,7 @@ An `executed_pass` additionally requires:
 - optimality status `optimal`, `feasible_not_proven` or `not_applicable`;
 - an explicit native round-trip object whose status is attempted, required-not-run or not-applicable.
 
-An optimal or feasible-not-proven result must be feasible. An optimal result has absolute optimality gap exactly `0`. A proven-infeasible result must be classified infeasible. A non-optimisation semantic execution may remain `not_applicable` for feasibility and optimality and uses an empty objective vector.
+An optimal or feasible-not-proven result must be feasible. An optimal result has absolute optimality gap exactly `0`. A proven-infeasible result must be classified infeasible, must have a null selected-scenario hash, must carry an empty objective vector, and must have null best-bound and optimality-gap values. Its output and explanation hashes may identify proof evidence, but they must not identify a feasible selected schedule. A non-optimisation semantic execution may remain `not_applicable` for feasibility and optimality and uses an empty objective vector.
 
 The cross-validator derives the complete objective-vector length from the case's mandatory milestone groups, activities, modes and resources. Merely requiring a non-empty array is insufficient.
 
@@ -649,7 +665,7 @@ sum over stable ascending activity IDs of:
   + abs(proposed_finish - approved_finish)
 ```
 
-If the canonical input contains no approved forecast, the component is exactly `0`. Competing scenarios are never permitted to add or remove the approved forecast; it belongs to the immutable input snapshot.
+If the canonical input contains no approved forecast, the component is exactly `0`. If an approved forecast is supplied, it must contain exactly one resolved, valid state for every canonical activity; partial supplied forecasts cannot use the zero fallback. Competing scenarios are never permitted to add or remove the approved forecast; it belongs to the immutable input snapshot.
 
 ## Exact level-five tuple
 
@@ -1162,6 +1178,28 @@ Affected prior outputs: none; no CPM, optimiser, native or practitioner executio
 
 The detailed amendment record is `docs/amendments/phase0-0.1.3-remaining-review-corrections.md`.
 
+## Phase 0 amendment `phase0-0.1.4`
+
+Date: 17 August 2026
+Trigger: fresh Codex review of PR #1
+Results existing when proposed: **none**
+
+Classes: semantic-profile binding, schema revision, benchmark identity freeze and validation.
+
+The amendment:
+
+- machine-validates all declared relationship formulas and signed successor-calendar lag against the expected oracle;
+- freezes the exact 50 fixture identities and canonical filename mapping;
+- preserves historical `reference-v0.1` and `reference-v0.2`, introduces active `reference-v0.3`, and removes untested alternate-lag-calendar and cumulative-capacity execution claims;
+- requires complete activity coverage for every supplied approved forecast and proposed scenario;
+- advances the execution-record schema to `0.1.4` and rejects selected-scenario/objective/bound/gap evidence for `infeasible_proven` results;
+- adds focused negative regression tests.
+
+Affected semantic fixtures: only the active semantic-profile reference changed from `reference-v0.2` to `reference-v0.3`. All calculation-bearing values and declared expected results remain unchanged.
+Affected prior outputs: none; no CPM, optimiser, native or practitioner execution had occurred.
+
+The detailed amendment record is `docs/amendments/phase0-0.1.4-executable-claim-and-oracle-hardening.md`.
+
 ---
 
 # Phase 1 Entry Plan
@@ -1199,17 +1237,18 @@ Both commands must pass from a clean Git checkout. The manifest must exactly cov
 - expand explicit working intervals;
 - preserve source-specific fields without interpreting them;
 - represent baseline, approved forecast and proposed scenario separately;
-- enforce complete proposed-scenario coverage, preservation of frozen coordinates and case-specific objective-vector shape;
+- enforce complete coverage for every supplied approved forecast and proposed scenario, preservation of frozen coordinates and case-specific objective-vector shape;
 - validate saved state spans against selected duration and calendar intersections.
 
 ### WP3 — Reference CPM kernel
 
 - activity-calendar duration arithmetic;
 - FS, SS, FF, SF;
-- signed lag;
+- signed lag on the successor activity calendar;
+- reject non-null explicit lag calendars from the active profile until a direct fixture exists;
 - milestones;
 - included constraints;
-- reject preserved-only `fixed_start` and `fixed_finish` from the active `reference-v0.2` execution path until direct fixtures exist;
+- reject preserved-only `fixed_start` and `fixed_finish` from the active `reference-v0.3` execution path until direct fixtures exist;
 - restricted actual/status policies;
 - restricted float calculation.
 
@@ -1217,7 +1256,7 @@ Both commands must pass from a clean Git checkout. The manifest must exactly cov
 
 - relationship satisfaction;
 - duration/calendar satisfaction;
-- resource capacity where declared;
+- capacity-one exclusive resources; reject cumulative capacity from the active profile until a direct fixture exists;
 - immutable actuals;
 - require deterministic in-progress status time;
 - expected assertion comparison;

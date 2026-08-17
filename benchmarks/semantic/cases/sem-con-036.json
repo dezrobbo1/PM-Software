@@ -7,7 +7,7 @@
     "schema_version": "0.1.3",
     "schedule_id": "SEM-CON-036",
     "name": "SEM-CON-036",
-    "semantic_profile": "reference-v0.2",
+    "semantic_profile": "reference-v0.3",
     "source_system": null,
     "source_snapshot_id": null,
     "time_axis": {
