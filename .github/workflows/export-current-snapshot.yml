@@ -1,0 +1,32 @@
+name: Export current Phase 0 snapshot
+
+on:
+  push:
+    branches:
+      - snapshot-phase0-20260817
+    paths:
+      - .github/workflows/export-current-snapshot.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out snapshot branch
+        uses: actions/checkout@v4
+        with:
+          ref: snapshot-phase0-20260817
+          fetch-depth: 0
+
+      - name: Create source archive
+        run: tar --exclude=.git --exclude=.github/workflows/export-current-snapshot.yml -czf /tmp/pm-software-current.tgz .
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: pm-software-current
+          path: /tmp/pm-software-current.tgz
+          if-no-files-found: error
+          retention-days: 1
