@@ -1,0 +1,32 @@
+name: Export branch snapshot
+
+on:
+  push:
+    branches:
+      - phase0-protocol-freeze
+    paths:
+      - .github/workflows/export-branch-snapshot.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: phase0-protocol-freeze
+          fetch-depth: 0
+
+      - name: Create source archive
+        run: tar --exclude=.git -czf /tmp/pm-software-phase0.tgz .
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase0-branch-snapshot
+          path: /tmp/pm-software-phase0.tgz
+          if-no-files-found: error
+          retention-days: 1
