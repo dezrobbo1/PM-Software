@@ -1,0 +1,1 @@
+run_id,case_id,comparator,product_version,settings_snapshot,input_hash,output_hash,project_finish,milestone_lateness,hard_violations,resource_overload,activities_moved,movement_hours,runtime_seconds,memory_mb,planner_minutes,acceptance,evidence_path

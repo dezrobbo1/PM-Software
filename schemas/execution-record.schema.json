@@ -1,0 +1,671 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/dsc/execution-record.schema.json",
+  "title": "Execution Record",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "execution_id",
+    "case_id",
+    "executed_at",
+    "execution_identity",
+    "status",
+    "input_hash",
+    "output_hash",
+    "selected_scenario_hash",
+    "explanation_hash",
+    "evidence_bundle_hash",
+    "validator_status",
+    "feasibility_status",
+    "optimality_status",
+    "objective_vector",
+    "best_bound",
+    "optimality_gap",
+    "native_roundtrip_result",
+    "evidence_paths"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1.4"
+    },
+    "execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "execution_identity": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hash"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "status": {
+      "enum": [
+        "executed_pass",
+        "executed_fail",
+        "executed_inconclusive",
+        "not_executed",
+        "not_accessible",
+        "native_validation_required",
+        "practitioner_validation_required",
+        "buyer_validation_required"
+      ]
+    },
+    "input_hash": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hash"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "output_hash": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hash"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "selected_scenario_hash": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hash"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "explanation_hash": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hash"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "evidence_bundle_hash": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hash"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "validator_status": {
+      "enum": [
+        "pass",
+        "fail",
+        "not_run"
+      ]
+    },
+    "feasibility_status": {
+      "enum": [
+        "feasible",
+        "infeasible",
+        "unknown",
+        "not_applicable",
+        "not_run"
+      ]
+    },
+    "optimality_status": {
+      "enum": [
+        "optimal",
+        "feasible_not_proven",
+        "infeasible_proven",
+        "unknown",
+        "not_applicable",
+        "not_run"
+      ]
+    },
+    "objective_vector": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "best_bound": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "optimality_gap": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "native_roundtrip_result": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "status",
+            "native_system",
+            "evidence_hash"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "pass",
+                "fail",
+                "inconclusive",
+                "required_not_run",
+                "not_applicable"
+              ]
+            },
+            "native_system": {
+              "enum": [
+                "p6",
+                "microsoft_project",
+                "other",
+                "not_applicable"
+              ]
+            },
+            "evidence_hash": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/hash"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "notes": {
+              "type": "string"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "pass",
+                      "fail",
+                      "inconclusive"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "native_system": {
+                    "enum": [
+                      "p6",
+                      "microsoft_project",
+                      "other"
+                    ]
+                  },
+                  "evidence_hash": {
+                    "$ref": "#/$defs/hash"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "required_not_run"
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "native_system": {
+                    "enum": [
+                      "p6",
+                      "microsoft_project",
+                      "other"
+                    ]
+                  },
+                  "evidence_hash": {
+                    "type": "null"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "not_applicable"
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "native_system": {
+                    "const": "not_applicable"
+                  },
+                  "evidence_hash": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "evidence_paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "failure_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "executed_pass",
+              "executed_fail",
+              "executed_inconclusive"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "executed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "execution_identity": {
+            "$ref": "#/$defs/hash"
+          },
+          "input_hash": {
+            "$ref": "#/$defs/hash"
+          },
+          "evidence_bundle_hash": {
+            "$ref": "#/$defs/hash"
+          },
+          "validator_status": {
+            "enum": [
+              "pass",
+              "fail"
+            ]
+          },
+          "feasibility_status": {
+            "enum": [
+              "feasible",
+              "infeasible",
+              "unknown",
+              "not_applicable"
+            ]
+          },
+          "optimality_status": {
+            "enum": [
+              "optimal",
+              "feasible_not_proven",
+              "infeasible_proven",
+              "unknown",
+              "not_applicable"
+            ]
+          },
+          "evidence_paths": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "executed_pass"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "output_hash": {
+            "$ref": "#/$defs/hash"
+          },
+          "selected_scenario_hash": {
+            "$ref": "#/$defs/hash"
+          },
+          "explanation_hash": {
+            "$ref": "#/$defs/hash"
+          },
+          "validator_status": {
+            "const": "pass"
+          },
+          "feasibility_status": {
+            "enum": [
+              "feasible",
+              "not_applicable"
+            ]
+          },
+          "optimality_status": {
+            "enum": [
+              "optimal",
+              "feasible_not_proven",
+              "not_applicable"
+            ]
+          },
+          "native_roundtrip_result": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "enum": [
+                  "pass",
+                  "fail",
+                  "inconclusive",
+                  "required_not_run",
+                  "not_applicable"
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "native_system",
+              "evidence_hash"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "not_executed",
+              "not_accessible",
+              "native_validation_required",
+              "practitioner_validation_required",
+              "buyer_validation_required"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "executed_at": {
+            "type": "null"
+          },
+          "execution_identity": {
+            "type": "null"
+          },
+          "output_hash": {
+            "type": "null"
+          },
+          "selected_scenario_hash": {
+            "type": "null"
+          },
+          "explanation_hash": {
+            "type": "null"
+          },
+          "evidence_bundle_hash": {
+            "type": "null"
+          },
+          "validator_status": {
+            "const": "not_run"
+          },
+          "feasibility_status": {
+            "const": "not_run"
+          },
+          "optimality_status": {
+            "const": "not_run"
+          },
+          "objective_vector": {
+            "maxItems": 0
+          },
+          "best_bound": {
+            "type": "null"
+          },
+          "optimality_gap": {
+            "type": "null"
+          },
+          "evidence_paths": {
+            "maxItems": 0
+          },
+          "input_hash": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "native_validation_required"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "native_roundtrip_result": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "required_not_run"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "optimality_status": {
+            "enum": [
+              "optimal",
+              "feasible_not_proven"
+            ]
+          }
+        },
+        "required": [
+          "optimality_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "objective_vector": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "optimality_status": {
+            "enum": [
+              "optimal",
+              "feasible_not_proven"
+            ]
+          }
+        },
+        "required": [
+          "optimality_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "feasibility_status": {
+            "const": "feasible"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "optimality_status": {
+            "const": "infeasible_proven"
+          }
+        },
+        "required": [
+          "optimality_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "feasibility_status": {
+            "const": "infeasible"
+          },
+          "selected_scenario_hash": {
+            "type": "null"
+          },
+          "objective_vector": {
+            "maxItems": 0
+          },
+          "best_bound": {
+            "type": "null"
+          },
+          "optimality_gap": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "not_executed",
+              "not_accessible",
+              "practitioner_validation_required",
+              "buyer_validation_required"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "native_roundtrip_result": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "optimality_status": {
+            "const": "optimal"
+          }
+        },
+        "required": [
+          "optimality_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "optimality_gap": {
+            "const": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "optimality_status": {
+            "const": "not_applicable"
+          }
+        },
+        "required": [
+          "optimality_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "objective_vector": {
+            "maxItems": 0
+          },
+          "best_bound": {
+            "type": "null"
+          },
+          "optimality_gap": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "additionalProperties": false
+}

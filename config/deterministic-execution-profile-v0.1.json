@@ -1,0 +1,14 @@
+{
+  "profile_id": "deterministic-v0.1",
+  "canonical_json": "implementation_to_be_pinned_before_execution",
+  "unicode_normalization": "NFC",
+  "hash_algorithm": "SHA-256",
+  "time_representation": "integer",
+  "worker_count": 1,
+  "random_seed": 0,
+  "wall_clock_termination_for_semantic_tests": false,
+  "solver_name": "to_be_pinned_in_phase1",
+  "solver_build": "to_be_pinned_in_phase1",
+  "tie_break_policy": "objective-v0.3-level-7",
+  "cross_version_determinism_promised": false
+}

@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/dsc/semantic-test-case.schema.json",
+  "title": "Semantic Test Case",
+  "type": "object",
+  "required": [
+    "case_id",
+    "title",
+    "category",
+    "purpose",
+    "schedule",
+    "expected",
+    "native_validation"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "pattern": "^SEM-[A-Z]+-[0-9]{3}$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "category": {
+      "enum": [
+        "relationship",
+        "network",
+        "calendar",
+        "milestone_constraint",
+        "status_progress",
+        "float",
+        "resource_determinism"
+      ]
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schedule": {
+      "$ref": "canonical-schedule.schema.json"
+    },
+    "expected": {
+      "type": "object",
+      "required": [
+        "reference_status",
+        "activity_times",
+        "project_finish",
+        "assertions"
+      ],
+      "properties": {
+        "reference_status": {
+          "enum": [
+            "declared",
+            "native_validation_only"
+          ]
+        },
+        "activity_times": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/activityTime"
+          }
+        },
+        "project_finish": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "driving_relationships": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "resource_order": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "assertions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reference_status": {
+                "const": "declared"
+              }
+            },
+            "required": [
+              "reference_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "activity_times": {
+                "additionalProperties": {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/activityTime"
+                    },
+                    {
+                      "required": [
+                        "start",
+                        "finish"
+                      ],
+                      "properties": {
+                        "start": {
+                          "type": "integer"
+                        },
+                        "finish": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "project_finish": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "native_validation": {
+      "type": "object",
+      "required": [
+        "p6",
+        "microsoft_project"
+      ],
+      "properties": {
+        "p6": {
+          "enum": [
+            "required",
+            "not_applicable"
+          ]
+        },
+        "microsoft_project": {
+          "enum": [
+            "required",
+            "not_applicable"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "activityTime": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "finish": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "remaining_start": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "total_float": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "free_float": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

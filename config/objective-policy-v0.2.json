@@ -1,0 +1,63 @@
+{
+  "policy_id": "objective-v0.2",
+  "type": "lexicographic",
+  "levels": [
+    {
+      "level": 1,
+      "metric": "hard_violation_count",
+      "direction": "minimize"
+    },
+    {
+      "level": 2,
+      "metric": "mandatory_milestone_lateness_lexicographic_vector",
+      "direction": "minimize"
+    },
+    {
+      "level": 3,
+      "metric": "project_finish",
+      "direction": "minimize"
+    },
+    {
+      "level": 4,
+      "metric": "approved_forecast_movement",
+      "direction": "minimize"
+    },
+    {
+      "level": 5,
+      "metric": "overtime_mobilisation_peak_penalty",
+      "direction": "minimize"
+    },
+    {
+      "level": 6,
+      "metric": "continuity_interruption_penalty",
+      "direction": "minimize"
+    },
+    {
+      "level": 7,
+      "metric": "canonical_activity_mode_resource_id_rank",
+      "direction": "minimize"
+    }
+  ],
+  "status": "benchmark_policy_not_practitioner_validated",
+  "milestone_priority_aggregation": {
+    "priority_order": "descending_integer_priority",
+    "mandatory_definition": "milestone_priority_greater_than_zero_and_due_time_not_null",
+    "lateness_definition": "max(0, milestone_finish_minus_due_time)",
+    "group_primary": "sum_lateness",
+    "group_secondary": "maximum_lateness",
+    "group_tertiary": "individual_lateness_vector_in_ascending_stable_milestone_id_order",
+    "advance_rule": "advance_to_the_next_lower_priority_only_when_the_entire_current_priority_tuple_is_equal"
+  },
+  "objective_vector_encoding": [
+    "hard_violation_count",
+    "for_each_priority_descending:sum_lateness",
+    "for_each_priority_descending:maximum_lateness",
+    "for_each_priority_descending:individual_lateness_by_stable_milestone_id",
+    "project_finish",
+    "approved_forecast_movement",
+    "overtime_mobilisation_peak_penalty",
+    "continuity_interruption_penalty",
+    "canonical_tie_rank"
+  ],
+  "final_tie_break": "stable_ascending_activity_id_then_mode_id_then_resource_id"
+}

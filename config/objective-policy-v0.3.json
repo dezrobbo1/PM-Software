@@ -1,0 +1,98 @@
+{
+  "policy_id": "objective-v0.3",
+  "type": "lexicographic",
+  "levels": [
+    {
+      "level": 1,
+      "metric": "hard_violation_count",
+      "direction": "minimize"
+    },
+    {
+      "level": 2,
+      "metric": "mandatory_milestone_lateness_lexicographic_vector",
+      "direction": "minimize"
+    },
+    {
+      "level": 3,
+      "metric": "project_finish",
+      "direction": "minimize"
+    },
+    {
+      "level": 4,
+      "metric": "approved_forecast_movement",
+      "direction": "minimize"
+    },
+    {
+      "level": 5,
+      "metric": "operational_resource_penalty_lexicographic_tuple",
+      "direction": "minimize"
+    },
+    {
+      "level": 6,
+      "metric": "continuity_interruption_count",
+      "direction": "minimize"
+    },
+    {
+      "level": 7,
+      "metric": "canonical_scenario_decision_vector",
+      "direction": "minimize"
+    }
+  ],
+  "status": "benchmark_policy_not_practitioner_validated",
+  "milestone_priority_aggregation": {
+    "priority_order": "descending_integer_priority",
+    "mandatory_definition": "kind_in_start_or_finish_milestone_and_milestone_priority_greater_than_zero_and_due_time_not_null",
+    "lateness_definition": "max(0, milestone_finish_minus_due_time)",
+    "group_primary": "sum_lateness",
+    "group_secondary": "maximum_lateness",
+    "group_tertiary": "individual_lateness_vector_in_ascending_stable_milestone_id_order",
+    "advance_rule": "advance_to_the_next_lower_priority_only_when_the_entire_current_priority_tuple_is_equal"
+  },
+  "approved_forecast_movement": {
+    "missing_forecast_value": 0,
+    "activity_order": "stable_ascending_activity_id",
+    "formula": "sum_abs_proposed_start_minus_approved_start_plus_abs_proposed_finish_minus_approved_finish"
+  },
+  "operational_resource_penalty": {
+    "ordering": "lexicographic",
+    "components": [
+      "overtime_units",
+      "mobilisation_block_count",
+      "resource_peak_demand_sum"
+    ],
+    "overtime_units_definition": "constant_zero_in_canonical_schema_0.1.3_overtime_not_yet_modelled",
+    "mobilisation_block_count_definition": "sum_over_resources_of_maximal_contiguous_or_overlapping_productive_assignment_blocks",
+    "resource_peak_demand_sum_definition": "sum_over_resources_of_maximum_concurrent_integer_assignment_demand"
+  },
+  "continuity_interruption": {
+    "definition": "constant_zero_in_canonical_schema_0.1.3_split_execution_not_yet_modelled"
+  },
+  "canonical_tie_break": {
+    "activity_order": "stable_ascending_activity_id",
+    "resource_order": "stable_ascending_resource_id",
+    "mode_ordinal": "zero_for_no_mode_otherwise_one_plus_index_in_stable_ascending_mode_id_order",
+    "per_activity_encoding": [
+      "start",
+      "finish",
+      "mode_ordinal",
+      "for_each_resource_in_stable_order:assignment_demand_or_zero"
+    ]
+  },
+  "objective_vector_encoding": [
+    "hard_violation_count",
+    "for_each_priority_descending:sum_lateness",
+    "for_each_priority_descending:maximum_lateness",
+    "for_each_priority_descending:individual_lateness_by_stable_milestone_id",
+    "project_finish",
+    "approved_forecast_movement",
+    "overtime_units",
+    "mobilisation_block_count",
+    "resource_peak_demand_sum",
+    "continuity_interruption_count",
+    "for_each_activity_id_ascending:start",
+    "for_each_activity_id_ascending:finish",
+    "for_each_activity_id_ascending:mode_ordinal",
+    "for_each_activity_id_ascending_and_resource_id_ascending:assignment_demand_or_zero"
+  ],
+  "final_tie_break": "lexicographic_canonical_scenario_decision_vector"
+}
