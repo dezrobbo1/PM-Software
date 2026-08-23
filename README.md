@@ -1,10 +1,13 @@
-# Deterministic Scheduling Core — Phase 0 Protocol Freeze
+# Deterministic Scheduling Core — Phase 1 Reference Prototype
 
-Status: **Phase 0 complete at `phase0-0.1.4`; implementation not started**
+Status: **Phase 0 frozen at `phase0-0.1.4`; bounded Phase 1 reference prototype implemented**
 Research date: **16 August 2026**
 Scope: **Separate from Shutdown Tracker**
 
-This repository-ready bundle freezes the experiment before any scheduling or optimisation code is written. Its purpose is to prevent the prototype from being adjusted after results are seen.
+The Phase 0 protocol remains frozen. Phase 1 adds a small standard-library CPM
+research kernel, a canonical loader, an independent result validator and a
+deterministic execution harness for the preregistered semantic corpus. Frozen
+fixture inputs and expected results remain unchanged.
 
 The bounded thesis is:
 
@@ -35,25 +38,36 @@ This bundle does **not** claim:
 - Schemas and blank experiment registers
 - Structural and negative-regression validation, continuous integration, and complete SHA-256 manifest
 
-## Validate the bundle
+## Validate the protocol and prototype
 
 Run the negative regression suite and the full protocol validator from a clean Git checkout:
 
 ```bash
 python -m unittest discover -s tests -v
 python tools/validate_phase0.py
+python -m deterministic_scheduling_core run-semantic-suite
 ```
 
 The checks validate all JSON Schemas and 50 fixtures, enforce date-time formats, stable-ID and reference integrity across current and scenario states, preserve frozen coordinates, require deterministic status time for in-progress work, reject invalid calendars, WBS cycles, actual-state contradictions, malformed scenario spans and incomplete expected results; resolve structured explanation causes and counterfactual milestones against the canonical input; enforce RFC 6901 patch paths; verify the exact frozen semantic, objective and deterministic profiles; enforce the exact header sequence for every evidence register; enforce the exact preregistered fixture identities and catalogue order; independently recompute every declared relationship formula and all 49 declared canonical coordinate sets; check productive duration, supported date bounds, exclusive-resource feasibility, restricted float and curated driving relationships; recompute complete objective-vector values from complete feasible selected states; require complete approved-forecast and proposed-scenario activity coverage; ensure the authoritative chapter set and consolidated protocol are exact; and require the SHA-256 manifest to cover exactly the intended tracked files.
 
-## Immediate next implementation milestone
+The Phase 1 command discovers the exact 50 frozen identities, calculates all 49
+declared reference results, retains `SEM-STA-045` as
+`native_validation_required`, independently validates every calculated result,
+and writes deterministic evidence beneath `results/phase1-semantic-suite/`.
+The `results/` directory is intentionally untracked.
 
-Phase 1 may begin only after this protocol is reviewed and accepted. Phase 1 is limited to:
+## Implemented Phase 1 boundary
 
-1. a canonical-model loader;
-2. a reference CPM kernel for the declared `reference-v0.3` subset;
-3. an independent validator;
-4. execution of the 50 semantic fixtures;
-5. Microsoft Project native comparison where access is available.
+The executable package under `src/deterministic_scheduling_core/` is limited to:
 
-The optimiser is not the first implementation milestone.
+1. canonical-model and semantic-fixture loading with schema and reference validation;
+2. the declared `reference-v0.3` CPM subset;
+3. an independent unit-coordinate validation path;
+4. exact execution of the 50 frozen semantic fixtures;
+5. canonical JSON, SHA-256 provenance and schema-valid evidence records.
+
+No optimiser, production scheduler, native P6/MS Project adapter or compatibility
+claim is included. Alternate lag calendars, cumulative capacity, fixed dates,
+execution modes, operational constraints and product-specific Actual Dates
+forecasting fail closed at the execution boundary. See
+`PHASE-1-REFERENCE-PROTOTYPE.md` for the architecture and evidence contract.

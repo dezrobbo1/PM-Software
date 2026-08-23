@@ -3,19 +3,26 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "deterministic-scheduling-core-phase0"
-version = "0.1.4"
-description = "Frozen experiment design and semantic fixtures for a deterministic scheduling-core benchmark"
+name = "deterministic-scheduling-core"
+version = "0.2.0"
+description = "Bounded reference CPM research kernel for the frozen deterministic scheduling protocol"
 requires-python = ">=3.11"
 dependencies = [
   "jsonschema==4.26.0",
+  "referencing==0.37.0",
   "rfc3339-validator==0.1.4"
 ]
 
+[project.scripts]
+deterministic-scheduling-core = "deterministic_scheduling_core.cli:main"
+
 [tool.setuptools]
-packages = []
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.dsc]
-phase = "0"
-status = "protocol-frozen"
-implementation_started = false
+phase = "1"
+status = "reference-prototype"
+implementation_started = true
