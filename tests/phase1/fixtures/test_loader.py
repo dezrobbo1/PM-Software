@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import csv
 import json
 import shutil
 import tempfile
@@ -39,10 +40,32 @@ class CanonicalLoaderTests(unittest.TestCase):
             shutil.copytree(ROOT / "benchmarks" / "semantic" / "cases", cases_dir)
             replacement = json.loads((cases_dir / "sem-rel-002.json").read_text())
             (cases_dir / "sem-rel-001.json").write_text(json.dumps(replacement), encoding="utf-8")
-            with self.assertRaisesRegex(CanonicalValidationError, "expected frozen case_id"):
+            with self.assertRaisesRegex(CanonicalValidationError, "fixture digest"):
                 self.loader.discover_frozen_suite(
                     cases_dir, ROOT / "benchmarks" / "semantic" / "catalogue.csv"
                 )
+
+    def test_correspondingly_modified_fixture_and_catalogue_cannot_impersonate_frozen_suite(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_root = Path(temporary)
+            cases_dir = temporary_root / "cases"
+            catalogue_path = temporary_root / "catalogue.csv"
+            shutil.copytree(ROOT / "benchmarks" / "semantic" / "cases", cases_dir)
+            shutil.copy2(ROOT / "benchmarks" / "semantic" / "catalogue.csv", catalogue_path)
+            fixture_path = cases_dir / "sem-rel-001.json"
+            fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+            fixture["title"] = f"{fixture['title']} altered"
+            fixture_path.write_text(json.dumps(fixture), encoding="utf-8")
+            with catalogue_path.open("r", encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+                fieldnames = list(rows[0])
+            rows[0]["title"] = fixture["title"]
+            with catalogue_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+            with self.assertRaisesRegex(CanonicalValidationError, "preregistered frozen identity"):
+                self.loader.discover_frozen_suite(cases_dir, catalogue_path)
 
     def test_duplicate_ids_are_rejected(self) -> None:
         data = copy.deepcopy(self.base)

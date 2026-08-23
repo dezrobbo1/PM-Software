@@ -13,7 +13,8 @@ profile, decision gates and stop conditions are unchanged.
 ## Package architecture
 
 - `canonical`: schema loading, stable ordering, reference resolution, complete
-  supplied-state coverage and exact frozen-suite discovery;
+  supplied-state coverage, exact frozen-suite discovery and pinned raw fixture
+  and catalogue byte identities;
 - `calendars`: half-open interval intersection, productive duration and signed
   successor-calendar lag;
 - `cpm`: the bounded reference producer and objective-v0.3 ranking used only for
@@ -56,6 +57,13 @@ before first execution. Each declared case saves:
 - a runtime/execution identity with exact Python version and a non-identifying
   platform fingerprint;
 - an evidence bundle and schema-valid execution record.
+
+Calculation traces identify and bind the actual governing calendar, relationship,
+date constraint, preserved actual event or capacity-one resource order for their
+focus activity. Complete selected-state hashes include the distinct
+`remaining_start` coordinate for in-progress work. Reusing a managed suite output
+directory first removes the prior generated evidence tree; unrelated directory
+entries are rejected and preserved instead of being deleted.
 
 All deterministic paths are relative POSIX paths. Hashed artifacts contain no
 hostnames, usernames or absolute local paths. The execution record retains an

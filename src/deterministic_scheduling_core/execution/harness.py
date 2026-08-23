@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+import shutil
 from typing import Any
 
 from rfc3339_validator import validate_rfc3339
@@ -14,6 +15,11 @@ from deterministic_scheduling_core import (
     SEMANTIC_PROFILE,
 )
 from deterministic_scheduling_core.canonical import CanonicalLoader, LoadedCase
+from deterministic_scheduling_core.calendars.arithmetic import (
+    earliest_span,
+    intersect_intervals,
+    shift_working_time,
+)
 from deterministic_scheduling_core.cpm import ReferenceCPMKernel
 from deterministic_scheduling_core.errors import UnsupportedSemanticError, ValidationFailure
 from deterministic_scheduling_core.provenance.canonical_json import (
@@ -59,6 +65,197 @@ def _native_roundtrip(case: LoadedCase) -> dict[str, Any]:
     }
 
 
+def _allowed_intervals(
+    schedule: dict[str, Any], activity: dict[str, Any]
+) -> tuple[tuple[int, int], ...]:
+    calendars = {item["id"]: item for item in schedule["calendars"]}
+    resources = {item["id"]: item for item in schedule.get("resources", [])}
+    intervals = tuple(
+        tuple(item) for item in calendars[activity["calendar_id"]]["working_intervals"]
+    )
+    for assignment in activity.get("assignments", []):
+        resource = resources[assignment["resource_id"]]
+        intervals = intersect_intervals(
+            intervals, calendars[resource["calendar_id"]]["working_intervals"]
+        )
+    return intervals
+
+
+def _trace_details(
+    case: LoadedCase, result: dict[str, Any]
+) -> tuple[str, str, dict[str, Any], str, dict[str, Any], str | None]:
+    """Select one honestly governing, independently checkable cause for the case."""
+
+    schedule = case.schedule
+    activities = {item["id"]: item for item in schedule["activities"]}
+    records = result["activity_times"]
+    project = schedule["project"]
+    horizon = schedule["time_axis"]["horizon"]
+
+    actual_ids = sorted(
+        activity_id
+        for activity_id, activity in activities.items()
+        if activity.get("actual_start") is not None
+    )
+    if actual_ids:
+        activity_id = actual_ids[0]
+        activity = activities[activity_id]
+        source_field = (
+            "actual_finish" if activity.get("actual_finish") is not None else "actual_start"
+        )
+        rule_id = (
+            "reference-v0.3-preserve-completed-actual"
+            if source_field == "actual_finish"
+            else "reference-v0.3-remaining-work-from-status-time"
+        )
+        return (
+            activity_id,
+            "actual_progress",
+            {"type": "actual_event", "id": activity_id, "source_field": source_field},
+            rule_id,
+            {
+                "activity_id": activity_id,
+                "actual_start": activity.get("actual_start"),
+                "actual_finish": activity.get("actual_finish"),
+                "remaining_duration": activity.get("remaining_duration"),
+                "status_time": project.get("status_time"),
+                "calendar_id": activity["calendar_id"],
+                "allowed_intervals": [list(item) for item in _allowed_intervals(schedule, activity)],
+            },
+            None,
+        )
+
+    resource_order = result.get("resource_order", [])
+    if len(resource_order) >= 2:
+        conflicting_id, activity_id = resource_order[0], resource_order[1]
+        conflicting_resources = {
+            assignment["resource_id"]
+            for assignment in activities[conflicting_id].get("assignments", [])
+        }
+        activity_resources = {
+            assignment["resource_id"]
+            for assignment in activities[activity_id].get("assignments", [])
+        }
+        resource_id = sorted(conflicting_resources & activity_resources)[0]
+        activity = activities[activity_id]
+        return (
+            activity_id,
+            "resource_conflict",
+            {"type": "resource", "id": resource_id, "source_field": None},
+            "reference-v0.3-exclusive-capacity-one-order",
+            {
+                "activity_id": activity_id,
+                "duration": activity["duration"],
+                "calendar_id": activity["calendar_id"],
+                "allowed_intervals": [list(item) for item in _allowed_intervals(schedule, activity)],
+                "resource_id": resource_id,
+                "conflicting_activity_id": conflicting_id,
+                "conflicting_activity_finish": records[conflicting_id]["finish"],
+                "selected_resource_order": list(resource_order),
+            },
+            conflicting_id,
+        )
+
+    for activity_id in sorted(activities):
+        activity = activities[activity_id]
+        intervals = _allowed_intervals(schedule, activity)
+        for constraint in sorted(activity.get("constraints", []), key=lambda item: item["id"]):
+            start_lower = project["project_start"]
+            finish_lower = project["project_start"]
+            if constraint["type"] == "start_no_earlier_than":
+                start_lower = max(start_lower, constraint["value"])
+            elif constraint["type"] == "finish_no_earlier_than":
+                finish_lower = max(finish_lower, constraint["value"])
+            else:
+                continue
+            constraint_span = earliest_span(
+                start_lower,
+                finish_lower,
+                activity["duration"],
+                intervals,
+                horizon,
+            )
+            record = records[activity_id]
+            if constraint_span != (record["start"], record["finish"]):
+                continue
+            return (
+                activity_id,
+                "date_constraint",
+                {"type": "constraint", "id": constraint["id"], "source_field": None},
+                f"reference-v0.3-{constraint['type']}",
+                {
+                    "activity_id": activity_id,
+                    "duration": activity["duration"],
+                    "calendar_id": activity["calendar_id"],
+                    "allowed_intervals": [list(item) for item in intervals],
+                    "project_start": project["project_start"],
+                    "constraint_id": constraint["id"],
+                    "constraint_type": constraint["type"],
+                    "constraint_value": constraint["value"],
+                },
+                None,
+            )
+
+    relationships = {item["id"]: item for item in schedule.get("relationships", [])}
+    driving_relationships = case.expected.get("driving_relationships", [])
+    if driving_relationships:
+        relationship = relationships[driving_relationships[0]]
+        activity_id = relationship["successor_id"]
+        activity = activities[activity_id]
+        relation_type = relationship["type"]
+        predecessor_record = records[relationship["predecessor_id"]]
+        predecessor_event_name = "finish" if relation_type[0] == "F" else "start"
+        predecessor_event = predecessor_record[predecessor_event_name]
+        successor_calendar = next(
+            item for item in schedule["calendars"] if item["id"] == activity["calendar_id"]
+        )
+        relationship_bound = shift_working_time(
+            predecessor_event,
+            relationship["lag"],
+            successor_calendar["working_intervals"],
+        )
+        return (
+            activity_id,
+            "precedence",
+            {"type": "relationship", "id": relationship["id"], "source_field": None},
+            "reference-v0.3-relationship-lower-bound",
+            {
+                "activity_id": activity_id,
+                "duration": activity.get("remaining_duration")
+                if activity.get("actual_start") is not None
+                else activity["duration"],
+                "calendar_id": activity["calendar_id"],
+                "allowed_intervals": [list(item) for item in _allowed_intervals(schedule, activity)],
+                "relationship_id": relationship["id"],
+                "relationship_type": relation_type,
+                "predecessor_id": relationship["predecessor_id"],
+                "predecessor_event": predecessor_event_name,
+                "predecessor_coordinate": predecessor_event,
+                "lag": relationship["lag"],
+                "lag_calendar": "successor_activity_calendar",
+                "relationship_bound": relationship_bound,
+            },
+            None,
+        )
+
+    activity_id = sorted(activities)[0]
+    activity = activities[activity_id]
+    return (
+        activity_id,
+        "calendar",
+        {"type": "calendar", "id": activity["calendar_id"], "source_field": None},
+        "reference-v0.3-project-start-and-productive-calendar",
+        {
+            "activity_id": activity_id,
+            "duration": activity["duration"],
+            "calendar_id": activity["calendar_id"],
+            "project_start": project["project_start"],
+            "allowed_intervals": [list(item) for item in _allowed_intervals(schedule, activity)],
+        },
+        None,
+    )
+
+
 class SemanticSuiteHarness:
     def __init__(self, repository_root: Path):
         self.root = repository_root.resolve()
@@ -76,21 +273,21 @@ class SemanticSuiteHarness:
         catalogue_path: Path | None = None,
         executed_at: str | None = None,
     ) -> SuiteRun:
+        if output_dir.is_symlink():
+            raise ValueError("output_dir must not be a symbolic link")
         output_dir = output_dir.resolve()
-        output_dir.mkdir(parents=True, exist_ok=True)
         suite_executed_at = executed_at or _utc_now()
         if not validate_rfc3339(suite_executed_at):
             raise ValueError("executed_at must be a timezone-qualified RFC 3339 timestamp")
         cases = self.loader.discover_frozen_suite(cases_dir, catalogue_path)
+        self._prepare_output_directory(output_dir)
         case_summaries: list[dict[str, Any]] = []
         for case in cases:
-            if case.expected["reference_status"] == "native_validation_only":
-                case_summaries.append(
-                    self._write_native_disposition(case, output_dir)
-                )
-                continue
             try:
-                case_summary = self._execute_case(case, output_dir, suite_executed_at)
+                if case.expected["reference_status"] == "native_validation_only":
+                    case_summary = self._write_native_disposition(case, output_dir)
+                else:
+                    case_summary = self._execute_case(case, output_dir, suite_executed_at)
             except Exception as exc:  # Retain every unexplained discrepancy as evidence.
                 case_summary = self._write_failure(case, output_dir, suite_executed_at, exc)
             case_summaries.append(case_summary)
@@ -123,6 +320,27 @@ class SemanticSuiteHarness:
         }
         return SuiteRun(summary=summary, passed=passed, output_dir=output_dir)
 
+    def _prepare_output_directory(self, output_dir: Path) -> None:
+        if output_dir == self.root:
+            raise ValueError("output_dir must not be the repository root")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        allowed_entries = {"cases", "suite-summary.json"}
+        unexpected = sorted(path.name for path in output_dir.iterdir() if path.name not in allowed_entries)
+        if unexpected:
+            raise ValueError(
+                f"output_dir contains non-suite entries and was preserved unchanged: {unexpected}"
+            )
+        cases_path = output_dir / "cases"
+        if cases_path.exists() or cases_path.is_symlink():
+            if cases_path.is_symlink() or not cases_path.is_dir():
+                raise ValueError("output_dir/cases must be a real directory")
+            shutil.rmtree(cases_path)
+        summary_path = output_dir / "suite-summary.json"
+        if summary_path.exists() or summary_path.is_symlink():
+            if summary_path.is_symlink() or not summary_path.is_file():
+                raise ValueError("output_dir/suite-summary.json must be a regular file")
+            summary_path.unlink()
+
     def _execute_case(
         self, case: LoadedCase, output_dir: Path, executed_at: str
     ) -> dict[str, Any]:
@@ -137,17 +355,20 @@ class SemanticSuiteHarness:
         if report.status != "pass":
             raise ValidationFailure("; ".join(report.errors))
 
+        selected_activity_states = []
+        for activity_id, record in sorted(result["activity_times"].items()):
+            state = {
+                "activity_id": activity_id,
+                "start": record["start"],
+                "finish": record["finish"],
+            }
+            if "remaining_start" in record:
+                state["remaining_start"] = record["remaining_start"]
+            selected_activity_states.append(state)
         selected_state = {
             "schema_version": "phase1-selected-state-v0.1",
             "case_id": case.case_id,
-            "activity_states": [
-                {
-                    "activity_id": activity_id,
-                    "start": record["start"],
-                    "finish": record["finish"],
-                }
-                for activity_id, record in sorted(result["activity_times"].items())
-            ],
+            "activity_states": selected_activity_states,
             "resource_order": result["resource_order"],
             "selection_objective_vector": result["selection_objective_vector"],
         }
@@ -166,28 +387,15 @@ class SemanticSuiteHarness:
             f"{prefix}/explanation.json",
             f"{prefix}/execution-identity.json",
         ]
-        focus_activity_id = sorted(result["activity_times"])[0]
-        focus_activity = next(
-            activity for activity in case.schedule["activities"] if activity["id"] == focus_activity_id
-        )
+        (
+            focus_activity_id,
+            reason_type,
+            governing_entity,
+            rule_id,
+            trace_inputs,
+            conflicting_activity_id,
+        ) = _trace_details(case, result)
         focus_record = result["activity_times"][focus_activity_id]
-        if focus_activity.get("actual_start") is not None:
-            reason_type = "actual_progress"
-            source_field = (
-                "actual_finish" if focus_activity.get("actual_finish") is not None else "actual_start"
-            )
-            governing_entity = {
-                "type": "actual_event",
-                "id": focus_activity_id,
-                "source_field": source_field,
-            }
-        else:
-            reason_type = "calendar"
-            governing_entity = {
-                "type": "calendar",
-                "id": focus_activity["calendar_id"],
-                "source_field": None,
-            }
         explanation = {
             "schema_version": "0.1.3",
             "explanation_id": f"TRACE-{case.case_id}",
@@ -215,20 +423,17 @@ class SemanticSuiteHarness:
                 "evidence_paths": [f"{prefix}/validation.json"],
             },
             "calculation_trace": {
-                "rule_id": "reference-v0.3-earliest-supported-span",
-                "input_values": {
-                    "activity_id": focus_activity_id,
-                    "duration": focus_activity["duration"],
-                    "calendar_id": focus_activity["calendar_id"],
-                    "project_start": case.schedule["project"]["project_start"],
-                },
-                "derived_start": focus_record["start"],
+                "rule_id": rule_id,
+                "input_values": trace_inputs,
+                "derived_start": focus_record.get("remaining_start", focus_record["start"]),
                 "derived_finish": focus_record["finish"],
                 "recomputation_hash": validation_hash,
                 "validator_status": "pass",
                 "evidence_paths": [f"{prefix}/validation.json"],
             },
         }
+        if conflicting_activity_id is not None:
+            explanation["conflicting_activity_id"] = conflicting_activity_id
         explanation_hash = sha256_digest(explanation)
         bundle = {
             "schema_version": "phase1-evidence-bundle-v0.1",

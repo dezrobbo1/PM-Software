@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import csv
+import hashlib
 import json
 import unicodedata
 from pathlib import Path
@@ -14,7 +15,13 @@ from deterministic_scheduling_core import SEMANTIC_PROFILE
 from deterministic_scheduling_core.errors import CanonicalValidationError
 from deterministic_scheduling_core.provenance.canonical_json import sha256_digest
 
-from .frozen_suite import EXPECTED_CASE_IDS, EXPECTED_FILENAME_BY_ID, EXPECTED_ID_BY_FILENAME
+from .frozen_suite import (
+    EXPECTED_CASE_IDS,
+    EXPECTED_CATALOGUE_SHA256,
+    EXPECTED_FILENAME_BY_ID,
+    EXPECTED_FIXTURE_SHA256_BY_FILENAME,
+    EXPECTED_ID_BY_FILENAME,
+)
 from .model import LoadedCase
 
 
@@ -234,6 +241,26 @@ class CanonicalLoader:
             errors.append(f"frozen suite is missing filenames {missing}")
         if additional:
             errors.append(f"frozen suite contains additional filenames {additional}")
+        for filename in sorted(expected_names & set(discovered)):
+            try:
+                actual_digest = hashlib.sha256(discovered[filename].read_bytes()).hexdigest()
+            except OSError as exc:
+                errors.append(f"{filename}: frozen fixture bytes cannot be read: {exc}")
+                continue
+            expected_digest = EXPECTED_FIXTURE_SHA256_BY_FILENAME[filename]
+            if actual_digest != expected_digest:
+                errors.append(
+                    f"{filename}: fixture digest does not match the preregistered frozen identity"
+                )
+        try:
+            catalogue_digest = hashlib.sha256(catalogue_path.read_bytes()).hexdigest()
+        except OSError as exc:
+            errors.append(f"catalogue bytes cannot be read: {exc}")
+        else:
+            if catalogue_digest != EXPECTED_CATALOGUE_SHA256:
+                errors.append(
+                    "catalogue digest does not match the preregistered frozen identity"
+                )
         if errors:
             raise CanonicalValidationError(errors)
 

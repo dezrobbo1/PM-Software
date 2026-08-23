@@ -11,6 +11,62 @@ from deterministic_scheduling_core.canonical.model import LoadedCase
 from deterministic_scheduling_core.provenance.canonical_json import canonical_bytes, sha256_digest
 
 
+def _units(intervals: list[list[int]]) -> frozenset[int]:
+    return frozenset(unit for start, finish in intervals for unit in range(start, finish))
+
+
+def _allowed_units(schedule: dict[str, Any], activity: dict[str, Any]) -> frozenset[int]:
+    calendars = {item["id"]: item for item in schedule["calendars"]}
+    resources = {item["id"]: item for item in schedule.get("resources", [])}
+    allowed = _units(calendars[activity["calendar_id"]]["working_intervals"])
+    for assignment in activity.get("assignments", []):
+        resource = resources[assignment["resource_id"]]
+        allowed &= _units(calendars[resource["calendar_id"]]["working_intervals"])
+    return allowed
+
+
+def _finish_from_units(
+    start: int, duration: int, working: frozenset[int], horizon: int
+) -> int | None:
+    if duration == 0:
+        return start if start in working else None
+    if start not in working:
+        return None
+    remaining = duration
+    for coordinate in range(start, horizon):
+        if coordinate in working:
+            remaining -= 1
+            if remaining == 0:
+                return coordinate + 1
+    return None
+
+
+def _earliest_span_units(
+    start_lower: int,
+    finish_lower: int,
+    duration: int,
+    working: frozenset[int],
+    horizon: int,
+) -> tuple[int, int] | None:
+    for start in range(max(0, start_lower), horizon + 1):
+        finish = _finish_from_units(start, duration, working, horizon)
+        if finish is not None and finish >= finish_lower:
+            return start, finish
+    return None
+
+
+def _lag_from_units(
+    anchor: int, lag: int, working: frozenset[int], horizon: int
+) -> int | None:
+    if lag == 0:
+        return anchor
+    if lag > 0:
+        available = [unit for unit in range(max(0, anchor), horizon) if unit in working]
+        return available[lag - 1] + 1 if len(available) >= lag else None
+    available = [unit for unit in range(min(anchor, horizon) - 1, -1, -1) if unit in working]
+    return available[-lag - 1] if len(available) >= -lag else None
+
+
 def execution_record_hash(record: dict[str, Any]) -> str:
     """Hash the deterministic record identity projection.
 
@@ -144,7 +200,12 @@ class EvidenceValidator:
             errors.append("selected state does not completely cover the calculated output")
         else:
             for activity_id in sorted(output_times):
-                for field in ("start", "finish"):
+                for field in ("start", "finish", "remaining_start"):
+                    if (field in selected_by_id[activity_id]) != (field in output_times[activity_id]):
+                        errors.append(
+                            f"selected state {activity_id}.{field} presence differs from calculated output"
+                        )
+                        continue
                     if selected_by_id[activity_id].get(field) != output_times[activity_id].get(field):
                         errors.append(
                             f"selected state {activity_id}.{field} differs from calculated output"
@@ -183,6 +244,7 @@ class EvidenceValidator:
             }
             if entity_id not in resolved_ids.get(entity_type, set()):
                 errors.append("explanation governing entity is unresolved")
+        errors.extend(self._calculation_trace_errors(case, output, explanation))
         previous_start = explanation.get("previous_start")
         previous_finish = explanation.get("previous_finish")
         proposed_start = explanation.get("proposed_start")
@@ -216,6 +278,188 @@ class EvidenceValidator:
         ):
             canonical_bytes(artifact)
             errors.extend(self._volatile_key_errors(artifact, label))
+        return errors
+
+    @staticmethod
+    def _calculation_trace_errors(
+        case: LoadedCase,
+        output: dict[str, Any],
+        explanation: dict[str, Any],
+    ) -> list[str]:
+        errors: list[str] = []
+        trace = explanation.get("calculation_trace")
+        if not isinstance(trace, dict):
+            return ["calculation trace is missing"]
+        inputs = trace.get("input_values")
+        if not isinstance(inputs, dict):
+            return ["calculation trace input_values are missing"]
+        schedule = case.schedule
+        activities = {item["id"]: item for item in schedule["activities"]}
+        resources = {item["id"]: item for item in schedule.get("resources", [])}
+        relationships = {item["id"]: item for item in schedule.get("relationships", [])}
+        activity_id = explanation.get("activity_id")
+        activity = activities.get(activity_id)
+        record = output.get("activity_times", {}).get(activity_id)
+        if activity is None or not isinstance(record, dict):
+            return ["calculation trace activity is absent from the calculated output"]
+        expected_start = record.get("remaining_start", record.get("start"))
+        if trace.get("derived_start") != expected_start:
+            errors.append("calculation trace derived_start differs from the calculated forecast state")
+        if trace.get("derived_finish") != record.get("finish"):
+            errors.append("calculation trace derived_finish differs from the calculated forecast state")
+        if inputs.get("activity_id") != activity_id:
+            errors.append("calculation trace input activity_id is inconsistent")
+
+        governing = explanation.get("governing_entity")
+        governing_type = governing.get("type") if isinstance(governing, dict) else None
+        governing_id = governing.get("id") if isinstance(governing, dict) else None
+        reason = explanation.get("reason_type")
+        horizon = schedule["time_axis"]["horizon"]
+        allowed = _allowed_units(schedule, activity)
+        trace_intervals = inputs.get("allowed_intervals")
+        if not isinstance(trace_intervals, list) or _units(trace_intervals) != allowed:
+            errors.append("calculation trace allowed_intervals do not match canonical availability")
+
+        if reason == "actual_progress":
+            expected_source = (
+                "actual_finish" if activity.get("actual_finish") is not None else "actual_start"
+            )
+            if (
+                activity.get("actual_start") is None
+                or governing_type != "actual_event"
+                or governing_id != activity_id
+                or governing.get("source_field") != expected_source
+            ):
+                errors.append("actual-progress trace does not identify the preserved actual event")
+            for field in ("actual_start", "actual_finish", "remaining_duration"):
+                if inputs.get(field) != activity.get(field):
+                    errors.append(f"actual-progress trace {field} is inconsistent")
+            if inputs.get("status_time") != schedule["project"].get("status_time"):
+                errors.append("actual-progress trace status_time is inconsistent")
+        elif reason == "calendar":
+            if governing_type != "calendar" or governing_id != activity["calendar_id"]:
+                errors.append("calendar trace does not identify the activity calendar")
+            if inputs.get("calendar_id") != activity["calendar_id"]:
+                errors.append("calendar trace calendar_id is inconsistent")
+            if inputs.get("project_start") != schedule["project"]["project_start"]:
+                errors.append("calendar trace project_start is inconsistent")
+            if inputs.get("duration") != activity["duration"]:
+                errors.append("calendar trace duration is inconsistent")
+        elif reason == "date_constraint":
+            constraints = {
+                constraint["id"]: constraint
+                for candidate in schedule["activities"]
+                if candidate["id"] == activity_id
+                for constraint in candidate.get("constraints", [])
+            }
+            constraint = constraints.get(governing_id)
+            if governing_type != "constraint" or constraint is None:
+                errors.append("date-constraint trace does not identify a constraint on the activity")
+            else:
+                expected_inputs = {
+                    "constraint_id": constraint["id"],
+                    "constraint_type": constraint["type"],
+                    "constraint_value": constraint["value"],
+                    "duration": activity["duration"],
+                    "calendar_id": activity["calendar_id"],
+                    "project_start": schedule["project"]["project_start"],
+                }
+                for field, expected in expected_inputs.items():
+                    if inputs.get(field) != expected:
+                        errors.append(f"date-constraint trace {field} is inconsistent")
+                start_lower = schedule["project"]["project_start"]
+                finish_lower = schedule["project"]["project_start"]
+                if constraint["type"] == "start_no_earlier_than":
+                    start_lower = max(start_lower, constraint["value"])
+                elif constraint["type"] == "finish_no_earlier_than":
+                    finish_lower = max(finish_lower, constraint["value"])
+                expected_span = _earliest_span_units(
+                    start_lower, finish_lower, activity["duration"], allowed, horizon
+                )
+                if expected_span != (record.get("start"), record.get("finish")):
+                    errors.append("declared date constraint is not the governing supported span")
+        elif reason == "resource_conflict":
+            conflicting_id = explanation.get("conflicting_activity_id")
+            conflicting = activities.get(conflicting_id)
+            order = output.get("resource_order")
+            if (
+                governing_type != "resource"
+                or governing_id not in resources
+                or conflicting is None
+                or not isinstance(order, list)
+                or len(order) < 2
+                or order[:2] != [conflicting_id, activity_id]
+            ):
+                errors.append("resource-conflict trace does not identify the selected capacity-one order")
+            else:
+                assigned = {
+                    item["resource_id"] for item in activity.get("assignments", [])
+                }
+                conflicting_assigned = {
+                    item["resource_id"] for item in conflicting.get("assignments", [])
+                }
+                if governing_id not in assigned & conflicting_assigned:
+                    errors.append("resource-conflict trace resource is not shared by both activities")
+                conflict_finish = output["activity_times"][conflicting_id]["finish"]
+                expected_inputs = {
+                    "resource_id": governing_id,
+                    "conflicting_activity_id": conflicting_id,
+                    "conflicting_activity_finish": conflict_finish,
+                    "selected_resource_order": order,
+                    "duration": activity["duration"],
+                    "calendar_id": activity["calendar_id"],
+                }
+                for field, expected in expected_inputs.items():
+                    if inputs.get(field) != expected:
+                        errors.append(f"resource-conflict trace {field} is inconsistent")
+                expected_span = _earliest_span_units(
+                    conflict_finish,
+                    conflict_finish,
+                    activity["duration"],
+                    allowed,
+                    horizon,
+                )
+                if expected_span != (record.get("start"), record.get("finish")):
+                    errors.append("declared resource conflict is not the governing supported span")
+        elif reason == "precedence":
+            relationship = relationships.get(governing_id)
+            if (
+                governing_type != "relationship"
+                or relationship is None
+                or relationship.get("successor_id") != activity_id
+                or governing_id not in case.expected.get("driving_relationships", [])
+            ):
+                errors.append("precedence trace does not identify a curated governing relationship")
+            else:
+                relation_type = relationship["type"]
+                predecessor_record = output["activity_times"][relationship["predecessor_id"]]
+                predecessor_event_name = "finish" if relation_type[0] == "F" else "start"
+                predecessor_coordinate = predecessor_record[predecessor_event_name]
+                calendar = next(
+                    item for item in schedule["calendars"] if item["id"] == activity["calendar_id"]
+                )
+                bound = _lag_from_units(
+                    predecessor_coordinate,
+                    relationship["lag"],
+                    _units(calendar["working_intervals"]),
+                    horizon,
+                )
+                expected_inputs = {
+                    "relationship_id": relationship["id"],
+                    "relationship_type": relation_type,
+                    "predecessor_id": relationship["predecessor_id"],
+                    "predecessor_event": predecessor_event_name,
+                    "predecessor_coordinate": predecessor_coordinate,
+                    "lag": relationship["lag"],
+                    "lag_calendar": "successor_activity_calendar",
+                    "relationship_bound": bound,
+                    "calendar_id": activity["calendar_id"],
+                }
+                for field, expected in expected_inputs.items():
+                    if inputs.get(field) != expected:
+                        errors.append(f"precedence trace {field} is inconsistent")
+        else:
+            errors.append(f"calculation trace reason {reason!r} is not supported by Phase 1 evidence")
         return errors
 
     def validate_native_record(self, record: dict[str, Any]) -> list[str]:
