@@ -1,0 +1,207 @@
+{
+  "$schema": "../../schemas/native-validation-preregistration.schema.json",
+  "document_type": "native_validation_preregistration",
+  "schema_version": "native-validation-preregistration-v0.1",
+  "preregistration_id": "microsoft-project-semantic-microcases-v0.1",
+  "native_system": "microsoft_project",
+  "status": "preregistered_not_executed",
+  "preregistered_on": "2026-08-24",
+  "research_state_at_preregistration": {
+    "reference_execution_results_existed": true,
+    "reference_execution_profile": "deterministic-v0.2",
+    "reference_semantic_profile": "reference-v0.3",
+    "reference_suite_hash": "66e667afc94f4f32dad3cd098e933113645e6047669951e6cc39fde4ec4bef6c",
+    "native_results_existed": false,
+    "optimizer_benchmark_existed": false,
+    "native_round_trip_result_existed": false,
+    "practitioner_trial_existed": false,
+    "buyer_trial_existed": false,
+    "historical_result_note": "The retained hash identifies the historical deterministic-v0.2 reference-suite result. It predates the portable/environment projection terminology and is not described as a v0.2 portable projection."
+  },
+  "hypothesis": "For one identified Microsoft Project edition, version, build and frozen configuration, the 45 claim-eligible cases in microsoft-project-semantic-comparison-profile-v0.1 will exactly match their reference-v0.3 normalized semantic oracles after only the transformations preregistered in that profile.",
+  "profile_binding": {
+    "profile_id": "microsoft-project-semantic-comparison-profile-v0.1",
+    "path": "native-validation/profiles/microsoft-project-semantic-comparison-profile-v0.1.json",
+    "raw_file_sha256": "8ab9c47395897e13f5b6cf36773757f4bd5a273e997b81de78585d76e872a469"
+  },
+  "execution_track_separation": [
+    {
+      "track_id": "manual_native_semantic_parity",
+      "only_gate_it_may_satisfy": "native_semantic_subset",
+      "manual_transcription_allowed": true,
+      "cannot_satisfy": [
+        "reopen_stability_subset",
+        "adapter_interchange_subset",
+        "safe_production_round_trip"
+      ]
+    },
+    {
+      "track_id": "saved_file_reopen_recalculate_stability",
+      "only_gate_it_may_satisfy": "reopen_stability_subset",
+      "manual_transcription_allowed": true,
+      "cannot_satisfy": [
+        "native_semantic_subset",
+        "adapter_interchange_subset",
+        "safe_production_round_trip"
+      ]
+    },
+    {
+      "track_id": "adapter_interchange_round_trip",
+      "only_gate_it_may_satisfy": "adapter_interchange_subset",
+      "manual_transcription_allowed": false,
+      "cannot_satisfy": [
+        "native_semantic_subset",
+        "reopen_stability_subset",
+        "safe_production_round_trip"
+      ]
+    }
+  ],
+  "required_environment_capture": [
+    "product_name",
+    "edition",
+    "version",
+    "build",
+    "operating_system",
+    "machine_architecture",
+    "machine_time_zone",
+    "locale",
+    "execution_operator_id",
+    "independent_reviewer_id",
+    "native_file_format",
+    "native_file_hashes_by_stage",
+    "Microsoft_Project_project_calendar_and_scheduling_options",
+    "Microsoft_Project_task_calendars",
+    "Microsoft_Project_resource_calendars_and_capacities",
+    "Microsoft_Project_task_scheduling_mode_type_and_effort_driven_fields",
+    "Microsoft_Project_relationship_and_lag_settings",
+    "Microsoft_Project_constraint_settings",
+    "Microsoft_Project_project_start_and_status_date",
+    "Microsoft_Project_calculation_and_progress_rescheduling_options",
+    "Microsoft_Project_leveling_disabled_attestation",
+    "manual_actions_by_stage"
+  ],
+  "native_run_record_contract": {
+    "run_record_schema_ref": "schemas/native-validation-preregistration.schema.json#/$defs/nativeRunEvidenceRecord",
+    "required_fields": [
+      "run_id",
+      "preregistration_id",
+      "preregistration_raw_sha256",
+      "comparison_profile_id",
+      "comparison_profile_raw_sha256",
+      "case_id",
+      "execution_track_id",
+      "status",
+      "executed_at",
+      "operator_id",
+      "independent_reviewer_id",
+      "environment_capture",
+      "fixture_raw_sha256",
+      "case_realization_manifest_sha256",
+      "native_artifact_hashes_by_stage",
+      "normalized_output_sha256",
+      "field_difference_manifest_sha256",
+      "manual_action_log_sha256",
+      "evidence_bundle_sha256",
+      "failure_or_inconclusive_reason",
+      "review_disposition"
+    ],
+    "allowed_statuses": [
+      "executed_pass",
+      "executed_fail",
+      "executed_inconclusive",
+      "not_executed",
+      "not_accessible"
+    ],
+    "executed_status_requirements": "Every executed status requires an immutable timestamp, environment capture, artifact hashes, a field-level difference manifest and reviewer disposition. A pass additionally requires every track artifact required by the bound profile.",
+    "nonexecuted_status_requirements": "not_executed and not_accessible contain no fabricated native output or pass classification and must state a reason.",
+    "difference_record_fields": [
+      "case_id",
+      "activity_or_entity_id",
+      "field_path",
+      "expected_normalized_value",
+      "observed_normalized_value",
+      "approved_transformation_id_or_null",
+      "classification",
+      "evidence_artifact_sha256"
+    ],
+    "difference_classifications": [
+      "exact_match",
+      "approved_transformation_match",
+      "claim_field_mismatch",
+      "missing_claim_field",
+      "extra_unclaimed_field"
+    ]
+  },
+  "evidence_manifest_contract": {
+    "manifest_schema_ref": "schemas/native-validation-preregistration.schema.json#/$defs/redactedEvidenceManifest",
+    "raw_evidence_root": "native-files/microsoft-project/microsoft-project-semantic-microcases-v0.1",
+    "raw_evidence_may_remain_gitignored": true,
+    "committed_redacted_manifest_required_before_claim": true,
+    "committed_manifest_path_template": "native-validation/evidence-index/microsoft-project-semantic-microcases-v0.1/{run_id}/manifest.json",
+    "hash_algorithm": "sha256",
+    "path_policy": "relative_posix_paths_only",
+    "required_manifest_fields": [
+      "schema_version",
+      "run_id",
+      "preregistration_id",
+      "preregistration_raw_sha256",
+      "comparison_profile_id",
+      "comparison_profile_raw_sha256",
+      "native_system",
+      "product_edition_version_build",
+      "execution_track_id",
+      "case_outcomes",
+      "artifact_index",
+      "environment_capture_sha256",
+      "difference_manifest_sha256",
+      "review_disposition",
+      "created_at"
+    ],
+    "required_artifact_index_fields": [
+      "artifact_role",
+      "relative_or_controlled_external_location",
+      "sha256",
+      "byte_size",
+      "media_type",
+      "contains_restricted_data",
+      "retention_owner"
+    ],
+    "required_artifact_roles": [
+      "preregistration",
+      "comparison_profile",
+      "case_realization_manifest",
+      "environment_capture",
+      "native_input",
+      "native_stage_output",
+      "normalized_output",
+      "field_difference_manifest",
+      "manual_action_log",
+      "independent_review"
+    ],
+    "restricted_data_rule": "The public manifest records hashes, metadata and a controlled location, not proprietary schedule content, usernames or customer data.",
+    "durability_rule": "A local ignored file without a committed redacted manifest and retention owner cannot support a repository claim."
+  },
+  "status_and_decision_rules": {
+    "preregistration_file_status_is_immutable": true,
+    "result_records_are_separate": true,
+    "protocol_change_requires_new_preregistration_id": true,
+    "all_claim_eligible_cases_must_pass_the_relevant_track": true,
+    "characterization_only_cases_must_be_recorded_but_cannot_satisfy_a_gate": true,
+    "explained_but_unapproved_difference_is_fail": true,
+    "inconclusive_or_inaccessible_leaves_gate_open": true,
+    "post_result_oracle_change_is_forbidden": true,
+    "full_compatibility_status_does_not_exist": true
+  },
+  "claim_boundary": {
+    "native_semantic_subset": "unclaimed_until_all_45_claim_eligible_cases_pass_manual_native_semantic_parity_and_are_independently_reviewed",
+    "reopen_stability_subset": "unclaimed_until_all_45_claim_eligible_cases_pass_saved_file_reopen_recalculate_stability_and_are_independently_reviewed",
+    "adapter_interchange_subset": "unclaimed_until_all_45_claim_eligible_cases_pass_the_MSPDI_XML_adapter_track_and_are_independently_reviewed",
+    "full_microsoft_project_compatibility": "not_claimed_even_after_a_profile_pass",
+    "mpp_binary_compatibility": "not_claimed_even_after_a_profile_pass",
+    "safe_production_round_trip": "not_claimed_even_after_an_adapter_profile_pass",
+    "p6_parity": "not_claimed",
+    "optimizer_superiority": "not_claimed",
+    "practitioner_acceptance": "not_claimed",
+    "buyer_validation": "not_claimed"
+  }
+}

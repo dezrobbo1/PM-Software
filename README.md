@@ -43,8 +43,11 @@ This bundle does **not** claim:
 Run the negative regression suite and the full protocol validator from a clean Git checkout:
 
 ```bash
+python -m pip install --require-hashes --only-binary=:all: -r requirements/phase1-ci.lock
+python -m pip install --no-deps --no-build-isolation -e .
 python -m unittest discover -s tests -v
 python tools/validate_phase0.py
+python tools/validate_phase1_governance.py
 python -m deterministic_scheduling_core run-semantic-suite
 ```
 
@@ -54,7 +57,12 @@ The Phase 1 command discovers the exact 50 frozen identities, calculates all 49
 declared reference results, retains `SEM-STA-045` as
 `native_validation_required`, independently validates every calculated result,
 and writes deterministic evidence beneath `results/phase1-semantic-suite/`.
-The `results/` directory is intentionally untracked.
+The `results/` directory is intentionally untracked. `deterministic-v0.3`
+publishes portable success/failure result hashes separately from the environment-bound
+evidence hash, verifies the locked dependency closure and exact source inventory, and
+will only replace an output tree carrying the exact harness ownership marker.
+Every case also carries a hashed native-requirements sidecar that records P6 and
+Microsoft Project separately; neither product has been executed by this suite.
 
 ## Implemented Phase 1 boundary
 

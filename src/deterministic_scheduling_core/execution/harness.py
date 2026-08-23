@@ -23,17 +23,27 @@ from deterministic_scheduling_core.calendars.arithmetic import (
 from deterministic_scheduling_core.cpm import ReferenceCPMKernel
 from deterministic_scheduling_core.errors import UnsupportedSemanticError, ValidationFailure
 from deterministic_scheduling_core.provenance.canonical_json import (
+    canonical_text,
     sha256_digest,
     write_canonical_json,
 )
 from deterministic_scheduling_core.provenance.runtime import (
     execution_identity_document,
     load_execution_profile,
+    verified_source_manifest_hash,
 )
 from deterministic_scheduling_core.validation import (
     EvidenceValidator,
     IndependentResultValidator,
+    environment_evidence_document,
     execution_record_hash,
+    failure_evidence_bundle_document,
+    failure_evidence_document,
+    failure_execution_record_document,
+    native_requirements_document,
+    native_roundtrip_document,
+    portable_failure_result_document,
+    portable_semantic_result_document,
 )
 
 
@@ -46,23 +56,6 @@ class SuiteRun:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
-
-
-def _native_roundtrip(case: LoadedCase) -> dict[str, Any]:
-    native = case.document["native_validation"]
-    if native.get("p6") == "not_applicable" and native.get("microsoft_project") == "not_applicable":
-        return {
-            "status": "not_applicable",
-            "native_system": "not_applicable",
-            "evidence_hash": None,
-            "notes": "The preregistered case does not require a native round trip.",
-        }
-    return {
-        "status": "required_not_run",
-        "native_system": "p6",
-        "evidence_hash": None,
-        "notes": "P6 and Microsoft Project native validation remain required and were not run by the reference kernel.",
-    }
 
 
 def _allowed_intervals(
@@ -262,8 +255,13 @@ class SemanticSuiteHarness:
         self.loader = CanonicalLoader(self.root)
         self.kernel = ReferenceCPMKernel()
         self.result_validator = IndependentResultValidator()
-        self.evidence_validator = EvidenceValidator(self.root)
         self.profile = load_execution_profile(self.root)
+        self.source_manifest_hash = verified_source_manifest_hash(self.root)
+        self.evidence_validator = EvidenceValidator(
+            self.root,
+            profile=self.profile,
+            source_manifest_hash=self.source_manifest_hash,
+        )
 
     def run(
         self,
@@ -301,16 +299,64 @@ class SemanticSuiteHarness:
             "total": len(case_summaries),
         }
         base_summary = {
-            "schema_version": "phase1-semantic-suite-summary-v0.1",
+            "schema_version": "phase1-semantic-suite-summary-v0.2",
             "semantic_profile": SEMANTIC_PROFILE,
             "deterministic_profile": DETERMINISTIC_PROFILE,
             "objective_policy": OBJECTIVE_POLICY,
             "kernel_version": KERNEL_VERSION,
+            "source_manifest_hash": self.source_manifest_hash,
+            "dependency_lock_sha256": self.profile["dependency_lock_sha256"],
             "case_order": [item["case_id"] for item in case_summaries],
             "counts": counts,
             "cases": case_summaries,
         }
-        summary = {**base_summary, "suite_hash": sha256_digest(base_summary)}
+        portable_projection = {
+            "schema_version": "phase1-portable-suite-result-v0.1",
+            "semantic_profile": SEMANTIC_PROFILE,
+            "deterministic_profile": DETERMINISTIC_PROFILE,
+            "objective_policy": OBJECTIVE_POLICY,
+            "kernel_version": KERNEL_VERSION,
+            "source_manifest_hash": self.source_manifest_hash,
+            "dependency_lock_sha256": self.profile["dependency_lock_sha256"],
+            "case_order": base_summary["case_order"],
+            "cases": [
+                {
+                    "case_id": item["case_id"],
+                    "status": item["status"],
+                    "fixture_hash": item["fixture_hash"],
+                    "input_hash": item["input_hash"],
+                    "portable_semantic_result_hash": item[
+                        "portable_semantic_result_hash"
+                    ],
+                    "portable_failure_result_hash": item[
+                        "portable_failure_result_hash"
+                    ],
+                    "native_requirements_hash": item["native_requirements_hash"],
+                    "native_disposition_hash": item["native_disposition_hash"],
+                }
+                for item in case_summaries
+            ],
+        }
+        portable_suite_result_hash = sha256_digest(portable_projection)
+        environment_projection = {
+            "schema_version": "phase1-environment-suite-evidence-v0.1",
+            "portable_suite_result_hash": portable_suite_result_hash,
+            "case_order": base_summary["case_order"],
+            "cases": [
+                {
+                    "case_id": item["case_id"],
+                    "status": item["status"],
+                    "environment_evidence_hash": item["environment_evidence_hash"],
+                    "execution_record_hash": item["execution_record_hash"],
+                }
+                for item in case_summaries
+            ],
+        }
+        summary = {
+            **base_summary,
+            "portable_suite_result_hash": portable_suite_result_hash,
+            "environment_suite_evidence_hash": sha256_digest(environment_projection),
+        }
         write_canonical_json(output_dir / "suite-summary.json", summary)
         passed = counts == {
             "executed_pass": 49,
@@ -323,8 +369,29 @@ class SemanticSuiteHarness:
     def _prepare_output_directory(self, output_dir: Path) -> None:
         if output_dir == self.root:
             raise ValueError("output_dir must not be the repository root")
+        if output_dir.exists() and not output_dir.is_dir():
+            raise ValueError("output_dir must be a real directory")
         output_dir.mkdir(parents=True, exist_ok=True)
-        allowed_entries = {"cases", "suite-summary.json"}
+        marker_name = self.profile["output_directory_owner_marker"]
+        marker_path = output_dir / marker_name
+        marker = {
+            "schema_version": "phase1-owned-output-directory-v0.1",
+            "owner": "deterministic-scheduling-core",
+            "purpose": "phase1-semantic-suite",
+            "managed_entries": ["cases", "suite-summary.json"],
+        }
+        existing_entries = list(output_dir.iterdir())
+        if not existing_entries:
+            write_canonical_json(marker_path, marker)
+        else:
+            if marker_path.is_symlink() or not marker_path.is_file():
+                raise ValueError(
+                    "existing non-empty output_dir is not owned by the Phase 1 suite harness"
+                )
+            marker_text = marker_path.read_text(encoding="utf-8")
+            if marker_text != canonical_text(marker) + "\n":
+                raise ValueError("output_dir ownership marker does not match the harness contract")
+        allowed_entries = {marker_name, "cases", "suite-summary.json"}
         unexpected = sorted(path.name for path in output_dir.iterdir() if path.name not in allowed_entries)
         if unexpected:
             raise ValueError(
@@ -334,11 +401,13 @@ class SemanticSuiteHarness:
         if cases_path.exists() or cases_path.is_symlink():
             if cases_path.is_symlink() or not cases_path.is_dir():
                 raise ValueError("output_dir/cases must be a real directory")
-            shutil.rmtree(cases_path)
         summary_path = output_dir / "suite-summary.json"
         if summary_path.exists() or summary_path.is_symlink():
             if summary_path.is_symlink() or not summary_path.is_file():
                 raise ValueError("output_dir/suite-summary.json must be a regular file")
+        if cases_path.exists():
+            shutil.rmtree(cases_path)
+        if summary_path.exists():
             summary_path.unlink()
 
     def _execute_case(
@@ -374,8 +443,13 @@ class SemanticSuiteHarness:
         }
         selected_hash = sha256_digest(selected_state)
         validation_hash = sha256_digest(validation)
+        native_requirements = native_requirements_document(case)
+        native_requirements_hash = sha256_digest(native_requirements)
         identity = execution_identity_document(
-            schedule=case.schedule, input_hash=case.input_hash, profile=self.profile
+            schedule=case.schedule,
+            input_hash=case.input_hash,
+            profile=self.profile,
+            source_manifest_hash=self.source_manifest_hash,
         )
         identity_hash = sha256_digest(identity)
         prefix = f"cases/{case.case_id}"
@@ -386,6 +460,8 @@ class SemanticSuiteHarness:
             f"{prefix}/validation.json",
             f"{prefix}/explanation.json",
             f"{prefix}/execution-identity.json",
+            f"{prefix}/native-requirements.json",
+            f"{prefix}/portable-semantic-result.json",
         ]
         (
             focus_activity_id,
@@ -435,6 +511,17 @@ class SemanticSuiteHarness:
         if conflicting_activity_id is not None:
             explanation["conflicting_activity_id"] = conflicting_activity_id
         explanation_hash = sha256_digest(explanation)
+        portable_result = portable_semantic_result_document(
+            case=case,
+            profile=self.profile,
+            source_manifest_hash=self.source_manifest_hash,
+            output_hash=output_hash,
+            selected_state_hash=selected_hash,
+            validation_hash=validation_hash,
+            explanation=explanation,
+            native_requirements_hash=native_requirements_hash,
+        )
+        portable_result_hash = sha256_digest(portable_result)
         bundle = {
             "schema_version": "phase1-evidence-bundle-v0.1",
             "case_id": case.case_id,
@@ -445,6 +532,8 @@ class SemanticSuiteHarness:
             "validation_hash": validation_hash,
             "explanation_hash": explanation_hash,
             "execution_identity": identity_hash,
+            "native_requirements_hash": native_requirements_hash,
+            "portable_semantic_result_hash": portable_result_hash,
             "evidence_paths": evidence_paths,
         }
         bundle_hash = sha256_digest(bundle)
@@ -466,11 +555,13 @@ class SemanticSuiteHarness:
             "objective_vector": [],
             "best_bound": None,
             "optimality_gap": None,
-            "native_roundtrip_result": _native_roundtrip(case),
+            "native_roundtrip_result": native_roundtrip_document(case),
             "evidence_paths": [
                 f"{prefix}/evidence-bundle.json",
                 f"{prefix}/validation.json",
                 f"{prefix}/explanation.json",
+                f"{prefix}/native-requirements.json",
+                f"{prefix}/portable-semantic-result.json",
             ],
             "failure_code": None,
             "notes": (
@@ -485,6 +576,8 @@ class SemanticSuiteHarness:
             validation=validation,
             explanation=explanation,
             identity=identity,
+            native_requirements=native_requirements,
+            portable_result=portable_result,
             bundle=bundle,
             record=record,
         )
@@ -492,6 +585,18 @@ class SemanticSuiteHarness:
             raise ValidationFailure("; ".join(evidence_errors))
 
         case_dir = output_dir / "cases" / case.case_id
+        record_hash = execution_record_hash(record)
+        environment_evidence = environment_evidence_document(
+            profile=self.profile,
+            case_id=case.case_id,
+            portable_semantic_result_hash=portable_result_hash,
+            portable_failure_result_hash=None,
+            execution_identity_hash=identity_hash,
+            explanation_hash=explanation_hash,
+            evidence_bundle_hash=bundle_hash,
+            execution_record_hash_value=record_hash,
+        )
+        environment_evidence_hash = sha256_digest(environment_evidence)
         artifacts = {
             "canonical-input.json": case.schedule,
             "calculated-output.json": result,
@@ -499,8 +604,11 @@ class SemanticSuiteHarness:
             "validation.json": validation,
             "explanation.json": explanation,
             "execution-identity.json": identity,
+            "native-requirements.json": native_requirements,
+            "portable-semantic-result.json": portable_result,
             "evidence-bundle.json": bundle,
             "execution-record.json": record,
+            "environment-evidence.json": environment_evidence,
         }
         for filename, artifact in artifacts.items():
             write_canonical_json(case_dir / filename, artifact)
@@ -515,7 +623,11 @@ class SemanticSuiteHarness:
             "explanation_hash": explanation_hash,
             "evidence_bundle_hash": bundle_hash,
             "execution_identity": identity_hash,
-            "execution_record_hash": execution_record_hash(record),
+            "execution_record_hash": record_hash,
+            "portable_semantic_result_hash": portable_result_hash,
+            "portable_failure_result_hash": None,
+            "environment_evidence_hash": environment_evidence_hash,
+            "native_requirements_hash": native_requirements_hash,
             "native_disposition_hash": None,
         }
 
@@ -560,6 +672,8 @@ class SemanticSuiteHarness:
             "required_native_systems": ["p6", "microsoft_project"],
             "notes": "No reference-v0.3 forecast was calculated for product-specific Actual Dates behaviour.",
         }
+        native_requirements = native_requirements_document(case)
+        native_requirements_hash = sha256_digest(native_requirements)
         record = {
             "schema_version": "0.1.4",
             "execution_id": f"PHASE1-{case.case_id}",
@@ -582,17 +696,24 @@ class SemanticSuiteHarness:
                 "status": "required_not_run",
                 "native_system": "p6",
                 "evidence_hash": None,
-                "notes": "P6 and Microsoft Project native execution remain required.",
+                "notes": (
+                    "This frozen execution-record field carries the P6 disposition. "
+                    "The native-requirements sidecar separately records both products."
+                ),
             },
             "evidence_paths": [],
             "failure_code": None,
             "notes": "Non-executed native-validation-only disposition; hashes are null by protocol.",
         }
         schema_errors = self.evidence_validator.validate_native_record(record)
+        schema_errors.extend(
+            self.evidence_validator.validate_native_requirements(case, native_requirements)
+        )
         if schema_errors:
             raise ValidationFailure("; ".join(schema_errors))
         case_dir = output_dir / "cases" / case.case_id
         write_canonical_json(case_dir / "native-disposition.json", disposition)
+        write_canonical_json(case_dir / "native-requirements.json", native_requirements)
         write_canonical_json(case_dir / "execution-record.json", record)
         return {
             "case_id": case.case_id,
@@ -606,6 +727,10 @@ class SemanticSuiteHarness:
             "evidence_bundle_hash": None,
             "execution_identity": None,
             "execution_record_hash": execution_record_hash(record),
+            "portable_semantic_result_hash": None,
+            "portable_failure_result_hash": None,
+            "environment_evidence_hash": None,
+            "native_requirements_hash": native_requirements_hash,
             "native_disposition_hash": sha256_digest(disposition),
         }
 
@@ -616,60 +741,80 @@ class SemanticSuiteHarness:
         executed_at: str,
         error: Exception,
     ) -> dict[str, Any]:
-        code = error.code if isinstance(error, UnsupportedSemanticError) else type(error).__name__
-        failure = {
-            "schema_version": "phase1-failure-evidence-v0.1",
-            "case_id": case.case_id,
-            "input_hash": case.input_hash,
-            "failure_code": code,
-            "message": str(error),
-        }
+        code = str(
+            error.code if isinstance(error, UnsupportedSemanticError) else type(error).__name__
+        )
+        failure = failure_evidence_document(
+            case=case,
+            failure_code=code,
+            message=str(error),
+        )
         identity = execution_identity_document(
-            schedule=case.schedule, input_hash=case.input_hash, profile=self.profile
+            schedule=case.schedule,
+            input_hash=case.input_hash,
+            profile=self.profile,
+            source_manifest_hash=self.source_manifest_hash,
         )
         identity_hash = sha256_digest(identity)
+        native_requirements = native_requirements_document(case)
+        native_requirements_hash = sha256_digest(native_requirements)
         failure_hash = sha256_digest(failure)
-        prefix = f"cases/{case.case_id}"
-        bundle = {
-            "schema_version": "phase1-failure-bundle-v0.1",
-            "case_id": case.case_id,
-            "input_hash": case.input_hash,
-            "execution_identity": identity_hash,
-            "failure_hash": failure_hash,
-            "evidence_paths": [f"{prefix}/failure.json", f"{prefix}/execution-identity.json"],
-        }
-        record = {
-            "schema_version": "0.1.4",
-            "execution_id": f"PHASE1-{case.case_id}",
-            "case_id": case.case_id,
-            "executed_at": executed_at,
-            "execution_identity": identity_hash,
-            "status": "executed_fail",
-            "input_hash": case.input_hash,
-            "output_hash": None,
-            "selected_scenario_hash": None,
-            "explanation_hash": None,
-            "evidence_bundle_hash": sha256_digest(bundle),
-            "validator_status": "fail",
-            "feasibility_status": "unknown",
-            "optimality_status": "unknown",
-            "objective_vector": [],
-            "best_bound": None,
-            "optimality_gap": None,
-            "native_roundtrip_result": _native_roundtrip(case),
-            "evidence_paths": [f"{prefix}/evidence-bundle.json", f"{prefix}/failure.json"],
-            "failure_code": str(code),
-            "notes": "Unexplained calculation or evidence discrepancy retained by the suite harness.",
-        }
-        schema_errors = self.evidence_validator.validate_native_record(record)
-        if schema_errors:
-            raise ValidationFailure("; ".join(schema_errors)) from error
+        portable_failure_result = portable_failure_result_document(
+            case=case,
+            profile=self.profile,
+            source_manifest_hash=self.source_manifest_hash,
+            failure=failure,
+            native_requirements_hash=native_requirements_hash,
+        )
+        portable_failure_result_hash = sha256_digest(portable_failure_result)
+        bundle = failure_evidence_bundle_document(
+            case=case,
+            execution_identity_hash=identity_hash,
+            failure_hash=failure_hash,
+            native_requirements_hash=native_requirements_hash,
+            portable_failure_result_hash=portable_failure_result_hash,
+        )
+        bundle_hash = sha256_digest(bundle)
+        record = failure_execution_record_document(
+            case=case,
+            executed_at=executed_at,
+            execution_identity_hash=identity_hash,
+            evidence_bundle_hash=bundle_hash,
+            failure_code=code,
+        )
+        evidence_errors = self.evidence_validator.validate_failure_artifacts(
+            case=case,
+            failure=failure,
+            identity=identity,
+            native_requirements=native_requirements,
+            portable_failure_result=portable_failure_result,
+            bundle=bundle,
+            record=record,
+        )
+        if evidence_errors:
+            raise ValidationFailure("; ".join(evidence_errors)) from error
+
         case_dir = output_dir / "cases" / case.case_id
+        record_hash = execution_record_hash(record)
+        environment_evidence = environment_evidence_document(
+            profile=self.profile,
+            case_id=case.case_id,
+            portable_semantic_result_hash=None,
+            portable_failure_result_hash=portable_failure_result_hash,
+            execution_identity_hash=identity_hash,
+            explanation_hash=None,
+            evidence_bundle_hash=bundle_hash,
+            execution_record_hash_value=record_hash,
+        )
+        environment_evidence_hash = sha256_digest(environment_evidence)
         for filename, artifact in (
             ("failure.json", failure),
             ("execution-identity.json", identity),
+            ("native-requirements.json", native_requirements),
+            ("portable-failure-result.json", portable_failure_result),
             ("evidence-bundle.json", bundle),
             ("execution-record.json", record),
+            ("environment-evidence.json", environment_evidence),
         ):
             write_canonical_json(case_dir / filename, artifact)
         return {
@@ -681,8 +826,12 @@ class SemanticSuiteHarness:
             "selected_scenario_hash": None,
             "validation_hash": None,
             "explanation_hash": None,
-            "evidence_bundle_hash": sha256_digest(bundle),
+            "evidence_bundle_hash": bundle_hash,
             "execution_identity": identity_hash,
-            "execution_record_hash": execution_record_hash(record),
+            "execution_record_hash": record_hash,
+            "portable_semantic_result_hash": None,
+            "portable_failure_result_hash": portable_failure_result_hash,
+            "environment_evidence_hash": environment_evidence_hash,
+            "native_requirements_hash": native_requirements_hash,
             "native_disposition_hash": None,
         }

@@ -1,5 +1,16 @@
 # Changelog
 
+## phase1-evidence-governance-v0.1 — 2026-08-24
+
+- Added append-only `deterministic-v0.3`, preserving `deterministic-v0.2` and its recorded result while splitting portable semantic-result hashes from environment-bound evidence hashes.
+- Locked and SHA-256 hashed the complete Phase 1 runtime/build dependency closure and made both validation workflows install it without dependency resolution.
+- Bound the exact source inventory, locked dependency closure and full recorded runtime identity into evidence; validators now reconstruct the expected identity, reject incomplete manifests and retain portable failed-case outcomes without hash collisions.
+- Reconstruct and validate the complete P6/Microsoft Project requirements sidecar for passing, failing and native-only cases; duplicate selected activity IDs remain rejected before coverage checks.
+- Added an exact output-directory ownership marker so stale evidence is replaced only inside a harness-owned tree and unmarked or altered trees are preserved.
+- Added separate, unexecuted P6 and Microsoft Project preregistrations and a hashed per-case native-requirements sidecar; no native compatibility result was added.
+- Made both uniquely named CI checks run on `main` pushes and pull requests targeting `main`, and recorded the required live default-branch governance policy.
+- Preserved all 50 fixtures, expected results, `reference-v0.3`, `objective-v0.3`, execution-record schema `0.1.4` and kernel calculation semantics.
+
 ## phase1-reference-prototype-v0.1 — 2026-08-23
 
 - Added the importable `deterministic_scheduling_core` package and command-line semantic-suite harness.
@@ -7,7 +18,7 @@
 - Added an independent unit-coordinate validator that does not call the CPM producer.
 - Added canonical JSON, SHA-256 input/output/evidence identities, schema-valid execution records and calculation-trace explanations.
 - Pinned `deterministic-v0.2` before first execution without changing `reference-v0.3`, `objective-v0.3` or frozen expected results.
-- Added 50 Phase 1 tests; the combined suite contains 117 tests while retaining all 67 Phase 0 guards.
+- Added 57 Phase 1 tests; the combined suite contains 124 tests while retaining all 67 Phase 0 guards.
 - Added a separate Phase 1 CI workflow that always reruns the frozen Phase 0 safeguards.
 
 ## phase0-0.1.4 — 2026-08-17
