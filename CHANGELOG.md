@@ -1,5 +1,15 @@
 # Changelog
 
+## phase1-reference-prototype-v0.1 — 2026-08-23
+
+- Added the importable `deterministic_scheduling_core` package and command-line semantic-suite harness.
+- Implemented productive calendar arithmetic, FS/SS/FF/SF signed-lag bounds, supported date constraints, status handling, restricted float and the two frozen capacity-one resource-order cases.
+- Added an independent unit-coordinate validator that does not call the CPM producer.
+- Added canonical JSON, SHA-256 input/output/evidence identities, schema-valid execution records and calculation-trace explanations.
+- Pinned `deterministic-v0.2` before first execution without changing `reference-v0.3`, `objective-v0.3` or frozen expected results.
+- Added 50 Phase 1 tests; the combined suite contains 117 tests while retaining all 67 Phase 0 guards.
+- Added a separate Phase 1 CI workflow that always reruns the frozen Phase 0 safeguards.
+
 ## phase0-0.1.4 — 2026-08-17
 
 - Added machine validation of all declared FS/SS/FF/SF relationship lower bounds, including signed working-time lag and the declared retained-logic/progress-override treatment.

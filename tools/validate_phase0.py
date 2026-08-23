@@ -205,6 +205,7 @@ _EXPECTED_CASE_FILE_BY_ID = {case_id: f"{case_id.lower()}.json" for case_id in _
 _EXPECTED_CASE_ID_BY_FILE = {name: case_id for case_id, name in _EXPECTED_CASE_FILE_BY_ID.items()}
 _EXPECTED_CONFIG_FILES = {
     "deterministic-execution-profile-v0.1.json",
+    "deterministic-execution-profile-v0.2.json",
     "objective-policy-v0.1.json",
     "objective-policy-v0.2.json",
     "objective-policy-v0.3.json",
@@ -307,6 +308,25 @@ _EXPECTED_DETERMINISTIC_PROFILE: dict[str, Any] = {
     "solver_build": "to_be_pinned_in_phase1",
     "tie_break_policy": "objective-v0.3-level-7",
     "cross_version_determinism_promised": False,
+}
+_EXPECTED_PHASE1_DETERMINISTIC_PROFILE: dict[str, Any] = {
+    "profile_id": "deterministic-v0.2",
+    "canonical_json": "dsc-canonical-json-v1",
+    "unicode_normalization": "NFC",
+    "hash_algorithm": "SHA-256",
+    "time_representation": "integer",
+    "worker_count": 1,
+    "random_seed": 0,
+    "wall_clock_termination_for_semantic_tests": False,
+    "solver_name": "standard-library-reference-cpm",
+    "solver_build": "reference-cpm-kernel-v0.1.0",
+    "tie_break_policy": "objective-v0.3-level-7",
+    "cross_version_determinism_promised": False,
+    "python_runtime": "CPython>=3.11",
+    "execution_record_hash_projection": "canonical-record-with-executed_at-omitted",
+    "evidence_path_policy": "repository-relative-posix",
+    "supersedes": "deterministic-v0.1",
+    "change_reason": "pin_canonical_serialisation_and_reference_kernel_before_first_phase1_execution",
 }
 _EXPECTED_SEMANTIC_PROFILE_V1: dict[str, Any] = {
     "profile_id": "reference-v0.1",
@@ -3185,6 +3205,10 @@ def validate_configuration(root: Path = ROOT) -> list[str]:
     checks = [
         ("objective-policy-v0.3.json", _EXPECTED_OBJECTIVE_POLICY),
         ("deterministic-execution-profile-v0.1.json", _EXPECTED_DETERMINISTIC_PROFILE),
+        (
+            "deterministic-execution-profile-v0.2.json",
+            _EXPECTED_PHASE1_DETERMINISTIC_PROFILE,
+        ),
         ("semantic-profile-reference-v0.1.json", _EXPECTED_SEMANTIC_PROFILE_V1),
         ("semantic-profile-reference-v0.2.json", _EXPECTED_SEMANTIC_PROFILE_V2),
         ("semantic-profile-reference-v0.3.json", _EXPECTED_SEMANTIC_PROFILE),

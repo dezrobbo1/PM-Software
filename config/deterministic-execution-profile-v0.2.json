@@ -1,0 +1,19 @@
+{
+  "profile_id": "deterministic-v0.2",
+  "canonical_json": "dsc-canonical-json-v1",
+  "unicode_normalization": "NFC",
+  "hash_algorithm": "SHA-256",
+  "time_representation": "integer",
+  "worker_count": 1,
+  "random_seed": 0,
+  "wall_clock_termination_for_semantic_tests": false,
+  "solver_name": "standard-library-reference-cpm",
+  "solver_build": "reference-cpm-kernel-v0.1.0",
+  "tie_break_policy": "objective-v0.3-level-7",
+  "cross_version_determinism_promised": false,
+  "python_runtime": "CPython>=3.11",
+  "execution_record_hash_projection": "canonical-record-with-executed_at-omitted",
+  "evidence_path_policy": "repository-relative-posix",
+  "supersedes": "deterministic-v0.1",
+  "change_reason": "pin_canonical_serialisation_and_reference_kernel_before_first_phase1_execution"
+}

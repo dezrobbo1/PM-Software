@@ -1,0 +1,37 @@
+name: Validate Phase 1 reference prototype
+
+on:
+  push:
+    branches:
+      - phase1-reference-cpm-kernel
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install pinned project dependencies
+        run: python -m pip install --disable-pip-version-check -e .
+      - name: Run Phase 0 and Phase 1 tests
+        run: python -m unittest discover -s tests -v
+      - name: Preserve the frozen Phase 0 gate
+        run: python tools/validate_phase0.py
+      - name: Execute the frozen semantic suite
+        run: python -m deterministic_scheduling_core run-semantic-suite
+      - name: Compile Python sources
+        run: python -m compileall -q src tools tests
+      - name: Check patch whitespace and tracked-tree cleanliness
+        run: |
+          git diff --check
+          test -z "$(git status --short --untracked-files=all)"
