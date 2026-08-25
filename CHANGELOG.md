@@ -8,7 +8,7 @@
 - Reconstruct and validate the complete P6/Microsoft Project requirements sidecar for passing, failing and native-only cases; duplicate selected activity IDs remain rejected before coverage checks.
 - Added an exact output-directory ownership marker so stale evidence is replaced only inside a harness-owned tree and unmarked or altered trees are preserved.
 - Added separate, unexecuted P6 and Microsoft Project preregistrations and a hashed per-case native-requirements sidecar; no native compatibility result was added.
-- Made both uniquely named CI checks run on `main` pushes and pull requests targeting `main`, and recorded the required live default-branch governance policy.
+- Made both uniquely named CI checks run on `main` pushes and pull requests targeting `main`; the recorded branch-protection profile is optional and live ruleset enforcement is not a completion requirement.
 - Preserved all 50 fixtures, expected results, `reference-v0.3`, `objective-v0.3`, execution-record schema `0.1.4` and kernel calculation semantics.
 
 ## phase1-reference-prototype-v0.1 — 2026-08-23

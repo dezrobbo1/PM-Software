@@ -93,12 +93,16 @@ evidence, and neither preregistration is a native result.
 
 ## Repository governance
 
-Both validation workflows now run for pushes to `main` and pull requests
-targeting `main`, install the same hash-locked environment and expose stable,
-unique check names: `phase0-validation` and `phase1-validation`. The required
-live default-branch rules are recorded in `.github/repository-governance.json`.
-That tracked policy is not proof that GitHub is enforcing it; live protection
-must be applied and independently verified in repository settings.
+Both validation workflows run for pushes to `main` and pull requests targeting
+`main`, install the same hash-locked environment and expose stable, unique check
+names: `phase0-validation` and `phase1-validation`.
+
+`.github/repository-governance.json` records an optional future branch-protection
+profile. Live GitHub ruleset enforcement is not required for this owner-operated
+research repository and is not a completion or merge gate. The normal working
+practice remains feature branches, pull requests, green CI and review. Any future
+claim that live protection is active must still be independently verified
+through GitHub.
 
 ## Research basis and claim discipline
 
