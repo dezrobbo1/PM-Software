@@ -7,8 +7,14 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 
+from deterministic_scheduling_core import KERNEL_VERSION, OBJECTIVE_POLICY, SEMANTIC_PROFILE
 from deterministic_scheduling_core.canonical.model import LoadedCase
 from deterministic_scheduling_core.provenance.canonical_json import canonical_bytes, sha256_digest
+from deterministic_scheduling_core.provenance.runtime import (
+    execution_identity_document,
+    load_execution_profile,
+    verified_source_manifest_hash,
+)
 
 
 def _units(intervals: list[list[int]]) -> frozenset[int]:
@@ -71,7 +77,7 @@ def execution_record_hash(record: dict[str, Any]) -> str:
     """Hash the deterministic record identity projection.
 
     `executed_at` remains honest wall-clock metadata in the schema-valid record but
-    is explicitly outside deterministic-v0.2 identity and evidence hashes.
+    is explicitly outside deterministic-v0.3 environment-evidence hashes.
     """
 
     projection = copy.deepcopy(record)
@@ -79,9 +85,248 @@ def execution_record_hash(record: dict[str, Any]) -> str:
     return sha256_digest(projection)
 
 
+def portable_explanation_document(explanation: dict[str, Any]) -> dict[str, Any]:
+    """Remove the environment identity while retaining every semantic trace fact."""
+
+    projection = copy.deepcopy(explanation)
+    recomputation = projection.get("recomputation")
+    if isinstance(recomputation, dict):
+        recomputation.pop("execution_identity", None)
+    return projection
+
+
+def portable_semantic_result_document(
+    *,
+    case: LoadedCase,
+    profile: dict[str, Any],
+    source_manifest_hash: str,
+    output_hash: str,
+    selected_state_hash: str,
+    validation_hash: str,
+    explanation: dict[str, Any],
+    native_requirements_hash: str,
+) -> dict[str, Any]:
+    return {
+        "schema_version": profile["portable_semantic_result_projection"],
+        "case_id": case.case_id,
+        "fixture_hash": case.fixture_hash,
+        "input_hash": case.input_hash,
+        "source_manifest_hash": source_manifest_hash,
+        "dependency_lock_sha256": profile["dependency_lock_sha256"],
+        "semantic_profile": SEMANTIC_PROFILE,
+        "objective_policy": OBJECTIVE_POLICY,
+        "kernel_version": KERNEL_VERSION,
+        "deterministic_profile": profile["profile_id"],
+        "output_hash": output_hash,
+        "selected_state_hash": selected_state_hash,
+        "validation_hash": validation_hash,
+        "portable_explanation_hash": sha256_digest(
+            portable_explanation_document(explanation)
+        ),
+        "native_requirements_hash": native_requirements_hash,
+    }
+
+
+def native_roundtrip_document(case: LoadedCase) -> dict[str, Any]:
+    native = case.document["native_validation"]
+    if (
+        native.get("p6") == "not_applicable"
+        and native.get("microsoft_project") == "not_applicable"
+    ):
+        return {
+            "status": "not_applicable",
+            "native_system": "not_applicable",
+            "evidence_hash": None,
+            "notes": "The preregistered case does not require a native round trip.",
+        }
+    return {
+        "status": "required_not_run",
+        "native_system": "p6",
+        "evidence_hash": None,
+        "notes": (
+            "This frozen execution-record field carries the P6 disposition. "
+            "The bound native-requirements sidecar separately records P6 and Microsoft Project."
+        ),
+    }
+
+
+def native_requirements_document(case: LoadedCase) -> dict[str, Any]:
+    plans = {
+        "p6": (
+            "p6-semantic-microcases-v0.1",
+            "native-files/p6/p6-semantic-microcases-v0.1",
+        ),
+        "microsoft_project": (
+            "microsoft-project-semantic-microcases-v0.1",
+            "native-files/microsoft-project/microsoft-project-semantic-microcases-v0.1",
+        ),
+    }
+    requirements = []
+    for native_system in ("p6", "microsoft_project"):
+        plan_id, evidence_root = plans[native_system]
+        required = case.document["native_validation"].get(native_system) == "required"
+        requirements.append(
+            {
+                "native_system": native_system,
+                "status": "required_not_run" if required else "not_applicable",
+                "preregistration_id": plan_id if required else None,
+                "evidence_root": evidence_root if required else None,
+                "evidence_hash": None,
+            }
+        )
+    return {
+        "schema_version": "phase1-native-requirements-v0.1",
+        "case_id": case.case_id,
+        "requirements": requirements,
+        "claim_boundary": (
+            "Portable reference execution is not native compatibility evidence. "
+            "Each product requires its own environment-bound run and evidence hash."
+        ),
+    }
+
+
+def failure_evidence_document(
+    *, case: LoadedCase, failure_code: str, message: str
+) -> dict[str, Any]:
+    return {
+        "schema_version": "phase1-failure-evidence-v0.1",
+        "case_id": case.case_id,
+        "input_hash": case.input_hash,
+        "failure_code": failure_code,
+        "message": message,
+    }
+
+
+def portable_failure_result_document(
+    *,
+    case: LoadedCase,
+    profile: dict[str, Any],
+    source_manifest_hash: str,
+    failure: dict[str, Any],
+    native_requirements_hash: str,
+) -> dict[str, Any]:
+    """Bind the stable failed-case outcome outside environment-only evidence."""
+
+    return {
+        "schema_version": profile["portable_failure_result_projection"],
+        "case_id": case.case_id,
+        "fixture_hash": case.fixture_hash,
+        "input_hash": case.input_hash,
+        "source_manifest_hash": source_manifest_hash,
+        "dependency_lock_sha256": profile["dependency_lock_sha256"],
+        "semantic_profile": SEMANTIC_PROFILE,
+        "objective_policy": OBJECTIVE_POLICY,
+        "kernel_version": KERNEL_VERSION,
+        "deterministic_profile": profile["profile_id"],
+        "failure_code": failure["failure_code"],
+        "failure_hash": sha256_digest(failure),
+        "native_requirements_hash": native_requirements_hash,
+    }
+
+
+def failure_evidence_bundle_document(
+    *,
+    case: LoadedCase,
+    execution_identity_hash: str,
+    failure_hash: str,
+    native_requirements_hash: str,
+    portable_failure_result_hash: str,
+) -> dict[str, Any]:
+    prefix = f"cases/{case.case_id}"
+    return {
+        "schema_version": "phase1-failure-bundle-v0.1",
+        "case_id": case.case_id,
+        "input_hash": case.input_hash,
+        "execution_identity": execution_identity_hash,
+        "failure_hash": failure_hash,
+        "native_requirements_hash": native_requirements_hash,
+        "portable_semantic_result_hash": None,
+        "portable_failure_result_hash": portable_failure_result_hash,
+        "evidence_paths": [
+            f"{prefix}/failure.json",
+            f"{prefix}/execution-identity.json",
+            f"{prefix}/native-requirements.json",
+            f"{prefix}/portable-failure-result.json",
+        ],
+    }
+
+
+def failure_execution_record_document(
+    *,
+    case: LoadedCase,
+    executed_at: str,
+    execution_identity_hash: str,
+    evidence_bundle_hash: str,
+    failure_code: str,
+) -> dict[str, Any]:
+    prefix = f"cases/{case.case_id}"
+    return {
+        "schema_version": "0.1.4",
+        "execution_id": f"PHASE1-{case.case_id}",
+        "case_id": case.case_id,
+        "executed_at": executed_at,
+        "execution_identity": execution_identity_hash,
+        "status": "executed_fail",
+        "input_hash": case.input_hash,
+        "output_hash": None,
+        "selected_scenario_hash": None,
+        "explanation_hash": None,
+        "evidence_bundle_hash": evidence_bundle_hash,
+        "validator_status": "fail",
+        "feasibility_status": "unknown",
+        "optimality_status": "unknown",
+        "objective_vector": [],
+        "best_bound": None,
+        "optimality_gap": None,
+        "native_roundtrip_result": native_roundtrip_document(case),
+        "evidence_paths": [
+            f"{prefix}/evidence-bundle.json",
+            f"{prefix}/failure.json",
+            f"{prefix}/execution-identity.json",
+            f"{prefix}/native-requirements.json",
+            f"{prefix}/portable-failure-result.json",
+        ],
+        "failure_code": failure_code,
+        "notes": "Unexplained calculation or evidence discrepancy retained by the suite harness.",
+    }
+
+
+def environment_evidence_document(
+    *,
+    profile: dict[str, Any],
+    case_id: str,
+    portable_semantic_result_hash: str | None,
+    portable_failure_result_hash: str | None,
+    execution_identity_hash: str,
+    explanation_hash: str | None,
+    evidence_bundle_hash: str,
+    execution_record_hash_value: str,
+) -> dict[str, Any]:
+    return {
+        "schema_version": profile["environment_evidence_projection"],
+        "case_id": case_id,
+        "portable_semantic_result_hash": portable_semantic_result_hash,
+        "portable_failure_result_hash": portable_failure_result_hash,
+        "execution_identity_hash": execution_identity_hash,
+        "explanation_hash": explanation_hash,
+        "evidence_bundle_hash": evidence_bundle_hash,
+        "execution_record_hash": execution_record_hash_value,
+    }
+
+
 class EvidenceValidator:
-    def __init__(self, repository_root: Path):
+    def __init__(
+        self,
+        repository_root: Path,
+        *,
+        profile: dict[str, Any] | None = None,
+        source_manifest_hash: str | None = None,
+    ):
         schema_dir = repository_root / "schemas"
+        self.profile = profile or load_execution_profile(repository_root)
+        self.source_manifest_hash = source_manifest_hash or verified_source_manifest_hash(
+            repository_root
+        )
         self.execution_validator = Draft202012Validator(
             json.loads((schema_dir / "execution-record.schema.json").read_text(encoding="utf-8")),
             format_checker=FormatChecker(),
@@ -116,6 +361,19 @@ class EvidenceValidator:
         return errors
 
     @staticmethod
+    def _evidence_path_values(value: Any, label: str) -> tuple[list[str], list[str]]:
+        if not isinstance(value, list):
+            return [], [f"{label} evidence_paths must be an array"]
+        paths: list[str] = []
+        errors: list[str] = []
+        for index, item in enumerate(value):
+            if not isinstance(item, str):
+                errors.append(f"{label} evidence_paths/{index} must be a string")
+            else:
+                paths.append(item)
+        return paths, errors
+
+    @staticmethod
     def _volatile_key_errors(value: Any, label: str) -> list[str]:
         errors: list[str] = []
         volatile = {"executed_at", "generated_at", "created_at", "wall_clock_time", "hostname", "username", "absolute_path"}
@@ -142,17 +400,55 @@ class EvidenceValidator:
         validation: dict[str, Any],
         explanation: dict[str, Any],
         identity: dict[str, Any],
+        native_requirements: dict[str, Any],
+        portable_result: dict[str, Any],
         bundle: dict[str, Any],
         record: dict[str, Any],
     ) -> list[str]:
-        errors = self._schema_errors(self.execution_validator, record, "execution record")
+        artifacts = {
+            "calculated output": output,
+            "selected state": selected_state,
+            "validation": validation,
+            "explanation": explanation,
+            "execution identity": identity,
+            "native requirements": native_requirements,
+            "portable semantic result": portable_result,
+            "evidence bundle": bundle,
+            "execution record": record,
+        }
+        errors = [
+            f"{label} must be a JSON object"
+            for label, artifact in artifacts.items()
+            if not isinstance(artifact, dict)
+        ]
+        if errors:
+            return errors
+        errors.extend(self._schema_errors(self.execution_validator, record, "execution record"))
         errors.extend(self._schema_errors(self.explanation_validator, explanation, "explanation"))
         output_hash = sha256_digest(output)
         selected_hash = sha256_digest(selected_state)
         validation_hash = sha256_digest(validation)
         explanation_hash = sha256_digest(explanation)
         identity_hash = sha256_digest(identity)
+        native_requirements_hash = sha256_digest(native_requirements)
+        portable_result_hash = sha256_digest(portable_result)
         bundle_hash = sha256_digest(bundle)
+        expected_portable_result = portable_semantic_result_document(
+            case=case,
+            profile=self.profile,
+            source_manifest_hash=self.source_manifest_hash,
+            output_hash=output_hash,
+            selected_state_hash=selected_hash,
+            validation_hash=validation_hash,
+            explanation=explanation,
+            native_requirements_hash=native_requirements_hash,
+        )
+        expected_identity = execution_identity_document(
+            schedule=case.schedule,
+            input_hash=case.input_hash,
+            profile=self.profile,
+            source_manifest_hash=self.source_manifest_hash,
+        )
         expected = {
             "record.input_hash": (record.get("input_hash"), case.input_hash),
             "record.output_hash": (record.get("output_hash"), output_hash),
@@ -175,24 +471,50 @@ class EvidenceValidator:
             "bundle.explanation_hash": (bundle.get("explanation_hash"), explanation_hash),
             "bundle.execution_identity": (bundle.get("execution_identity"), identity_hash),
             "bundle.fixture_hash": (bundle.get("fixture_hash"), case.fixture_hash),
+            "bundle.native_requirements_hash": (
+                bundle.get("native_requirements_hash"),
+                native_requirements_hash,
+            ),
+            "bundle.portable_semantic_result_hash": (
+                bundle.get("portable_semantic_result_hash"),
+                portable_result_hash,
+            ),
         }
         for label, (actual, wanted) in expected.items():
             if actual != wanted:
                 errors.append(f"{label} is inconsistent with canonical artifact hash")
-        if identity.get("canonical_input_hash") != case.input_hash:
-            errors.append("execution identity does not bind the canonical input")
+        if portable_result != expected_portable_result:
+            errors.append("portable semantic result does not match its complete projection")
+        if identity != expected_identity:
+            errors.append("execution identity does not match the pinned evidence environment")
+        if native_requirements != native_requirements_document(case):
+            errors.append("native requirements do not match the complete preregistered projection")
         for label, artifact in (
             ("output", output),
             ("selected state", selected_state),
             ("validation", validation),
             ("bundle", bundle),
             ("record", record),
+            ("native requirements", native_requirements),
+            ("portable result", portable_result),
         ):
             if artifact.get("case_id") != case.case_id:
                 errors.append(f"{label} case_id does not bind the canonical case")
+        selected_items = selected_state.get("activity_states", [])
+        selected_ids = [
+            state.get("activity_id") for state in selected_items if isinstance(state, dict)
+        ]
+        duplicate_selected_ids = sorted(
+            {activity_id for activity_id in selected_ids if selected_ids.count(activity_id) > 1}
+        )
+        if duplicate_selected_ids:
+            errors.append(
+                "selected state contains duplicate activity_id values: "
+                + ", ".join(duplicate_selected_ids)
+            )
         selected_by_id = {
             state.get("activity_id"): state
-            for state in selected_state.get("activity_states", [])
+            for state in selected_items
             if isinstance(state, dict)
         }
         output_times = output.get("activity_times", {})
@@ -261,12 +583,29 @@ class EvidenceValidator:
                 movement += abs(proposed_finish - previous_finish)
             if explanation.get("movement") != movement:
                 errors.append("explanation movement is not coordinate-derived")
-        evidence_paths = list(record.get("evidence_paths", []))
-        evidence_paths.extend(bundle.get("evidence_paths", []))
-        evidence_paths.extend(explanation.get("recomputation", {}).get("evidence_paths", []))
-        evidence_paths.extend(
-            explanation.get("calculation_trace", {}).get("evidence_paths", [])
+        recomputation = explanation.get("recomputation")
+        calculation_trace = explanation.get("calculation_trace")
+        path_sources = (
+            ("execution record", record.get("evidence_paths")),
+            ("evidence bundle", bundle.get("evidence_paths")),
+            (
+                "explanation recomputation",
+                recomputation.get("evidence_paths")
+                if isinstance(recomputation, dict)
+                else None,
+            ),
+            (
+                "explanation calculation trace",
+                calculation_trace.get("evidence_paths")
+                if isinstance(calculation_trace, dict)
+                else None,
+            ),
         )
+        evidence_paths: list[str] = []
+        for label, values in path_sources:
+            valid_paths, path_value_errors = self._evidence_path_values(values, label)
+            evidence_paths.extend(valid_paths)
+            errors.extend(path_value_errors)
         errors.extend(self._path_errors(evidence_paths, "execution evidence"))
         for label, artifact in (
             ("calculated output", output),
@@ -274,10 +613,133 @@ class EvidenceValidator:
             ("validation", validation),
             ("explanation", explanation),
             ("execution identity", identity),
+            ("native requirements", native_requirements),
+            ("portable semantic result", portable_result),
             ("evidence bundle", bundle),
         ):
             canonical_bytes(artifact)
             errors.extend(self._volatile_key_errors(artifact, label))
+        return errors
+
+    def validate_native_requirements(
+        self, case: LoadedCase, native_requirements: Any
+    ) -> list[str]:
+        if not isinstance(native_requirements, dict):
+            return ["native requirements must be a JSON object"]
+        errors: list[str] = []
+        if native_requirements != native_requirements_document(case):
+            errors.append("native requirements do not match the complete preregistered projection")
+        try:
+            canonical_bytes(native_requirements)
+        except (TypeError, ValueError) as exc:
+            errors.append(f"native requirements are not canonical JSON: {exc}")
+        errors.extend(self._volatile_key_errors(native_requirements, "native requirements"))
+        return errors
+
+    def validate_failure_artifacts(
+        self,
+        *,
+        case: LoadedCase,
+        failure: Any,
+        identity: Any,
+        native_requirements: Any,
+        portable_failure_result: Any,
+        bundle: Any,
+        record: Any,
+    ) -> list[str]:
+        artifacts = {
+            "failure evidence": failure,
+            "execution identity": identity,
+            "native requirements": native_requirements,
+            "portable failure result": portable_failure_result,
+            "failure evidence bundle": bundle,
+            "failure execution record": record,
+        }
+        errors = [
+            f"{label} must be a JSON object"
+            for label, artifact in artifacts.items()
+            if not isinstance(artifact, dict)
+        ]
+        if errors:
+            return errors
+        errors.extend(self._schema_errors(self.execution_validator, record, "execution record"))
+
+        failure_code = failure.get("failure_code")
+        message = failure.get("message")
+        if not isinstance(failure_code, str):
+            errors.append("failure evidence failure_code must be a string")
+        if not isinstance(message, str):
+            errors.append("failure evidence message must be a string")
+        if not isinstance(failure_code, str) or not isinstance(message, str):
+            return errors
+
+        expected_failure = failure_evidence_document(
+            case=case,
+            failure_code=failure_code,
+            message=message,
+        )
+        expected_identity = execution_identity_document(
+            schedule=case.schedule,
+            input_hash=case.input_hash,
+            profile=self.profile,
+            source_manifest_hash=self.source_manifest_hash,
+        )
+        expected_native_requirements = native_requirements_document(case)
+        native_requirements_hash = sha256_digest(native_requirements)
+        expected_portable_failure_result = portable_failure_result_document(
+            case=case,
+            profile=self.profile,
+            source_manifest_hash=self.source_manifest_hash,
+            failure=failure,
+            native_requirements_hash=native_requirements_hash,
+        )
+        expected_bundle = failure_evidence_bundle_document(
+            case=case,
+            execution_identity_hash=sha256_digest(identity),
+            failure_hash=sha256_digest(failure),
+            native_requirements_hash=native_requirements_hash,
+            portable_failure_result_hash=sha256_digest(portable_failure_result),
+        )
+        expected_record = failure_execution_record_document(
+            case=case,
+            executed_at=record.get("executed_at"),
+            execution_identity_hash=sha256_digest(identity),
+            evidence_bundle_hash=sha256_digest(bundle),
+            failure_code=failure_code,
+        )
+        for label, actual, expected in (
+            ("failure evidence", failure, expected_failure),
+            ("execution identity", identity, expected_identity),
+            ("native requirements", native_requirements, expected_native_requirements),
+            (
+                "portable failure result",
+                portable_failure_result,
+                expected_portable_failure_result,
+            ),
+            ("failure evidence bundle", bundle, expected_bundle),
+            ("failure execution record", record, expected_record),
+        ):
+            if actual != expected:
+                errors.append(f"{label} does not match its complete canonical projection")
+            try:
+                canonical_bytes(actual)
+            except (TypeError, ValueError) as exc:
+                errors.append(f"{label} is not canonical JSON: {exc}")
+            volatile_projection = actual
+            if label == "failure execution record":
+                volatile_projection = copy.deepcopy(actual)
+                volatile_projection.pop("executed_at", None)
+            errors.extend(self._volatile_key_errors(volatile_projection, label))
+
+        evidence_paths: list[str] = []
+        for label, values in (
+            ("failure evidence bundle", bundle.get("evidence_paths")),
+            ("failure execution record", record.get("evidence_paths")),
+        ):
+            valid_paths, path_value_errors = self._evidence_path_values(values, label)
+            evidence_paths.extend(valid_paths)
+            errors.extend(path_value_errors)
+        errors.extend(self._path_errors(evidence_paths, "failure evidence"))
         return errors
 
     @staticmethod

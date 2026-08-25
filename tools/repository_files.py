@@ -14,15 +14,41 @@ _EXCLUDED_DIR_NAMES = {
     ".tox",
     ".venv",
     "__pycache__",
+    "build",
+    "native-files",
     "node_modules",
+    "private-data",
+    "results",
     "venv",
 }
-_EXCLUDED_FILE_NAMES = {MANIFEST_NAME, ".DS_Store"}
+_EXCLUDED_DIR_SUFFIXES = (".egg-info",)
+_EXCLUDED_FILE_NAMES = {MANIFEST_NAME, ".DS_Store", ".env"}
+_EXCLUDED_FILE_SUFFIXES = (".pyc",)
+
+
+def _is_in_excluded_directory(rel: PurePosixPath) -> bool:
+    return any(
+        part in _EXCLUDED_DIR_NAMES
+        or part.endswith(_EXCLUDED_DIR_SUFFIXES)
+        for part in rel.parts[:-1]
+    )
+
+
+def _is_excluded_file(rel: PurePosixPath) -> bool:
+    return rel.name in _EXCLUDED_FILE_NAMES or rel.name.endswith(
+        _EXCLUDED_FILE_SUFFIXES
+    )
 
 
 def _safe_relative_path(raw: str) -> PurePosixPath:
     rel = PurePosixPath(raw)
-    if rel.is_absolute() or not rel.parts or any(part in {"", ".", ".."} for part in rel.parts):
+    if (
+        rel.is_absolute()
+        or not rel.parts
+        or any(part in {"", ".", ".."} for part in rel.parts)
+        or raw != rel.as_posix()
+        or "\\" in raw
+    ):
         raise ValueError(f"Unsafe repository-relative path: {raw!r}")
     return rel
 
@@ -54,9 +80,13 @@ def _git_tracked_paths(root: Path) -> list[PurePosixPath] | None:
         if not raw:
             continue
         rel = _safe_relative_path(raw)
-        if rel.name in _EXCLUDED_FILE_NAMES:
+        if _is_in_excluded_directory(rel):
             continue
-        if any(part in _EXCLUDED_DIR_NAMES for part in rel.parts):
+        if root.joinpath(*rel.parts).is_symlink():
+            raise ValueError(
+                f"Tracked repository path is a symbolic link: {rel.as_posix()}"
+            )
+        if _is_excluded_file(rel):
             continue
         paths.append(rel)
     return sorted(set(paths), key=lambda p: p.as_posix())
@@ -67,12 +97,16 @@ def _archive_paths(root: Path) -> list[PurePosixPath]:
 
     paths: list[PurePosixPath] = []
     for path in root.rglob("*"):
-        if not path.is_file() or path.is_symlink():
-            continue
         rel = _safe_relative_path(path.relative_to(root).as_posix())
-        if rel.name in _EXCLUDED_FILE_NAMES:
+        if _is_in_excluded_directory(rel):
             continue
-        if any(part in _EXCLUDED_DIR_NAMES for part in rel.parts):
+        if path.is_symlink():
+            raise ValueError(
+                f"Source archive path is a symbolic link: {rel.as_posix()}"
+            )
+        if not path.is_file():
+            continue
+        if _is_excluded_file(rel):
             continue
         paths.append(rel)
     return sorted(set(paths), key=lambda p: p.as_posix())

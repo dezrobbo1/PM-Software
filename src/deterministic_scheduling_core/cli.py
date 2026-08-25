@@ -42,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         root = (args.repository_root or find_repository_root()).resolve()
-        output_dir = (args.output_dir or root / "results" / "phase1-semantic-suite").resolve()
+        output_dir = args.output_dir or root / "results" / "phase1-semantic-suite"
         run = SemanticSuiteHarness(root).run(
             output_dir=output_dir,
             cases_dir=args.cases_dir,
@@ -62,6 +62,10 @@ def main(argv: list[str] | None = None) -> int:
         f"{counts['native_validation_required']}/1 native_validation_required"
     )
     print(f"- unexplained failures: {counts['executed_fail']}")
-    print(f"- suite hash: {run.summary['suite_hash']}")
+    print(f"- portable suite result hash: {run.summary['portable_suite_result_hash']}")
+    print(
+        "- environment suite evidence hash: "
+        f"{run.summary['environment_suite_evidence_hash']}"
+    )
     print(f"- evidence directory: {run.output_dir}")
     return 0 if run.passed else 1

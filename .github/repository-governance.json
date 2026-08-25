@@ -1,0 +1,19 @@
+{
+  "schema_version": "repository-governance-v0.1",
+  "target": "default_branch",
+  "default_branch": "main",
+  "live_ruleset_required": true,
+  "required_pull_request": true,
+  "required_approvals": 0,
+  "dismiss_stale_reviews": true,
+  "require_conversation_resolution": true,
+  "require_branch_up_to_date": true,
+  "required_status_checks": [
+    "phase0-validation",
+    "phase1-validation"
+  ],
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "administrator_bypass": false,
+  "notes": "This tracked policy does not replace the live GitHub ruleset. The live setting must be independently verified."
+}

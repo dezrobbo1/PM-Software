@@ -956,10 +956,47 @@ class Phase0GuardTests(unittest.TestCase):
             self.assertEqual({"a.txt", "b.txt"}, paths)
             self.assertFalse(any(path.startswith(".git/") for path in paths))
 
+            (root / "results").write_text(
+                "regular file, not excluded directory\n", encoding="utf-8"
+            )
+            (root / "tracked.egg-info").write_text(
+                "regular file, not excluded directory\n", encoding="utf-8"
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "add", "results", "tracked.egg-info"],
+                check=True,
+            )
+            paths = {path.as_posix() for path in repository_paths(root)}
+            self.assertEqual(
+                {"a.txt", "b.txt", "results", "tracked.egg-info"}, paths
+            )
+
             digest = hashlib.sha256((root / "a.txt").read_bytes()).hexdigest()
             (root / "manifest.sha256").write_text(f"{digest}  a.txt\n", encoding="utf-8")
             errors = validate_phase0.validate_manifest(root)
             self.assertTrue(any("b.txt" in error and "missing from manifest" in error for error in errors))
+
+            (root / "linked.txt").symlink_to("a.txt")
+            subprocess.run(["git", "-C", str(root), "add", "linked.txt"], check=True)
+            with self.assertRaisesRegex(ValueError, "symbolic link"):
+                repository_paths(root)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_root = Path(tmp)
+            (archive_root / "ordinary.txt").write_text("ordinary\n", encoding="utf-8")
+            (archive_root / "results").write_text(
+                "regular file, not excluded directory\n", encoding="utf-8"
+            )
+            (archive_root / "tracked.egg-info").write_text(
+                "regular file, not excluded directory\n", encoding="utf-8"
+            )
+            self.assertEqual(
+                {"ordinary.txt", "results", "tracked.egg-info"},
+                {path.as_posix() for path in repository_paths(archive_root)},
+            )
+            (archive_root / "linked.txt").symlink_to("ordinary.txt")
+            with self.assertRaisesRegex(ValueError, "symbolic link"):
+                repository_paths(archive_root)
 
     def test_proposed_scenario_preserves_frozen_coordinates(self) -> None:
         data = copy.deepcopy(self.relationship_case)

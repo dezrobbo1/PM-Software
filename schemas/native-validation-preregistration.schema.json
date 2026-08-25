@@ -1,0 +1,2151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "native-validation-preregistration.schema.json",
+  "title": "Native validation preregistration and comparison profile",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/preregistration"
+    },
+    {
+      "$ref": "#/$defs/comparisonProfile"
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "caseId": {
+      "type": "string",
+      "pattern": "^SEM-[A-Z]+-[0-9]{3}$"
+    },
+    "caseSelector": {
+      "type": "string",
+      "pattern": "^(\\*|SEM-[A-Z]+-[0-9]{3}(--SEM-[A-Z]+-[0-9]{3})?)$"
+    },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nonEmptyStringArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      }
+    },
+    "nativeSystem": {
+      "enum": [
+        "p6",
+        "microsoft_project"
+      ]
+    },
+    "researchState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference_execution_results_existed",
+        "reference_execution_profile",
+        "reference_semantic_profile",
+        "reference_suite_hash",
+        "native_results_existed",
+        "optimizer_benchmark_existed",
+        "native_round_trip_result_existed",
+        "practitioner_trial_existed",
+        "buyer_trial_existed",
+        "historical_result_note"
+      ],
+      "properties": {
+        "reference_execution_results_existed": {
+          "const": true
+        },
+        "reference_execution_profile": {
+          "const": "deterministic-v0.2"
+        },
+        "reference_semantic_profile": {
+          "const": "reference-v0.3"
+        },
+        "reference_suite_hash": {
+          "const": "66e667afc94f4f32dad3cd098e933113645e6047669951e6cc39fde4ec4bef6c"
+        },
+        "native_results_existed": {
+          "const": false
+        },
+        "optimizer_benchmark_existed": {
+          "const": false
+        },
+        "native_round_trip_result_existed": {
+          "const": false
+        },
+        "practitioner_trial_existed": {
+          "const": false
+        },
+        "buyer_trial_existed": {
+          "const": false
+        },
+        "historical_result_note": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "profileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id",
+        "path",
+        "raw_file_sha256"
+      ],
+      "properties": {
+        "profile_id": {
+          "type": "string",
+          "pattern": "^(p6|microsoft-project)-semantic-comparison-profile-v0\\.1$"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^native-validation/profiles/(p6|microsoft-project)-semantic-comparison-profile-v0\\.1\\.json$"
+        },
+        "raw_file_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "trackSeparation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "track_id",
+        "only_gate_it_may_satisfy",
+        "manual_transcription_allowed",
+        "cannot_satisfy"
+      ],
+      "properties": {
+        "track_id": {
+          "enum": [
+            "manual_native_semantic_parity",
+            "saved_file_reopen_recalculate_stability",
+            "adapter_interchange_round_trip"
+          ]
+        },
+        "only_gate_it_may_satisfy": {
+          "enum": [
+            "native_semantic_subset",
+            "reopen_stability_subset",
+            "adapter_interchange_subset"
+          ]
+        },
+        "manual_transcription_allowed": {
+          "type": "boolean"
+        },
+        "cannot_satisfy": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        }
+      }
+    },
+    "nativeRunRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_record_schema_ref",
+        "required_fields",
+        "allowed_statuses",
+        "executed_status_requirements",
+        "nonexecuted_status_requirements",
+        "difference_record_fields",
+        "difference_classifications"
+      ],
+      "properties": {
+        "run_record_schema_ref": {
+          "const": "schemas/native-validation-preregistration.schema.json#/$defs/nativeRunEvidenceRecord"
+        },
+        "required_fields": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "allowed_statuses": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "executed_pass",
+              "executed_fail",
+              "executed_inconclusive",
+              "not_executed",
+              "not_accessible"
+            ]
+          }
+        },
+        "executed_status_requirements": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "nonexecuted_status_requirements": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "difference_record_fields": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "difference_classifications": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "exact_match",
+              "approved_transformation_match",
+              "claim_field_mismatch",
+              "missing_claim_field",
+              "extra_unclaimed_field"
+            ]
+          }
+        }
+      }
+    },
+    "evidenceManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_schema_ref",
+        "raw_evidence_root",
+        "raw_evidence_may_remain_gitignored",
+        "committed_redacted_manifest_required_before_claim",
+        "committed_manifest_path_template",
+        "hash_algorithm",
+        "path_policy",
+        "required_manifest_fields",
+        "required_artifact_index_fields",
+        "required_artifact_roles",
+        "restricted_data_rule",
+        "durability_rule"
+      ],
+      "properties": {
+        "manifest_schema_ref": {
+          "const": "schemas/native-validation-preregistration.schema.json#/$defs/redactedEvidenceManifest"
+        },
+        "raw_evidence_root": {
+          "type": "string",
+          "pattern": "^native-files/(p6|microsoft-project)/[a-z0-9.-]+$"
+        },
+        "raw_evidence_may_remain_gitignored": {
+          "const": true
+        },
+        "committed_redacted_manifest_required_before_claim": {
+          "const": true
+        },
+        "committed_manifest_path_template": {
+          "type": "string",
+          "pattern": "^native-validation/evidence-index/.+\\{run_id\\}/manifest\\.json$"
+        },
+        "hash_algorithm": {
+          "const": "sha256"
+        },
+        "path_policy": {
+          "const": "relative_posix_paths_only"
+        },
+        "required_manifest_fields": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "required_artifact_index_fields": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "required_artifact_roles": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "restricted_data_rule": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "durability_rule": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "statusAndDecisionRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preregistration_file_status_is_immutable",
+        "result_records_are_separate",
+        "protocol_change_requires_new_preregistration_id",
+        "all_claim_eligible_cases_must_pass_the_relevant_track",
+        "characterization_only_cases_must_be_recorded_but_cannot_satisfy_a_gate",
+        "explained_but_unapproved_difference_is_fail",
+        "inconclusive_or_inaccessible_leaves_gate_open",
+        "post_result_oracle_change_is_forbidden",
+        "full_compatibility_status_does_not_exist"
+      ],
+      "properties": {
+        "preregistration_file_status_is_immutable": {
+          "const": true
+        },
+        "result_records_are_separate": {
+          "const": true
+        },
+        "protocol_change_requires_new_preregistration_id": {
+          "const": true
+        },
+        "all_claim_eligible_cases_must_pass_the_relevant_track": {
+          "const": true
+        },
+        "characterization_only_cases_must_be_recorded_but_cannot_satisfy_a_gate": {
+          "const": true
+        },
+        "explained_but_unapproved_difference_is_fail": {
+          "const": true
+        },
+        "inconclusive_or_inaccessible_leaves_gate_open": {
+          "const": true
+        },
+        "post_result_oracle_change_is_forbidden": {
+          "const": true
+        },
+        "full_compatibility_status_does_not_exist": {
+          "const": true
+        }
+      }
+    },
+    "preregistrationClaimBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "native_semantic_subset",
+        "reopen_stability_subset",
+        "adapter_interchange_subset",
+        "safe_production_round_trip",
+        "optimizer_superiority",
+        "practitioner_acceptance",
+        "buyer_validation"
+      ],
+      "properties": {
+        "native_semantic_subset": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "reopen_stability_subset": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "adapter_interchange_subset": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "full_p6_compatibility": {
+          "const": "not_claimed_even_after_a_profile_pass"
+        },
+        "full_microsoft_project_compatibility": {
+          "const": "not_claimed_even_after_a_profile_pass"
+        },
+        "mpp_binary_compatibility": {
+          "const": "not_claimed_even_after_a_profile_pass"
+        },
+        "safe_production_round_trip": {
+          "const": "not_claimed_even_after_an_adapter_profile_pass"
+        },
+        "microsoft_project_parity": {
+          "const": "not_claimed"
+        },
+        "p6_parity": {
+          "const": "not_claimed"
+        },
+        "optimizer_superiority": {
+          "const": "not_claimed"
+        },
+        "practitioner_acceptance": {
+          "const": "not_claimed"
+        },
+        "buyer_validation": {
+          "const": "not_claimed"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "full_p6_compatibility",
+            "microsoft_project_parity"
+          ]
+        },
+        {
+          "required": [
+            "full_microsoft_project_compatibility",
+            "mpp_binary_compatibility",
+            "p6_parity"
+          ]
+        }
+      ]
+    },
+    "preregistration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "$schema",
+        "document_type",
+        "schema_version",
+        "preregistration_id",
+        "native_system",
+        "status",
+        "preregistered_on",
+        "research_state_at_preregistration",
+        "hypothesis",
+        "profile_binding",
+        "execution_track_separation",
+        "required_environment_capture",
+        "native_run_record_contract",
+        "evidence_manifest_contract",
+        "status_and_decision_rules",
+        "claim_boundary"
+      ],
+      "properties": {
+        "$schema": {
+          "const": "../../schemas/native-validation-preregistration.schema.json"
+        },
+        "document_type": {
+          "const": "native_validation_preregistration"
+        },
+        "schema_version": {
+          "const": "native-validation-preregistration-v0.1"
+        },
+        "preregistration_id": {
+          "type": "string",
+          "pattern": "^(p6|microsoft-project)-semantic-microcases-v0\\.1$"
+        },
+        "native_system": {
+          "$ref": "#/$defs/nativeSystem"
+        },
+        "status": {
+          "const": "preregistered_not_executed"
+        },
+        "preregistered_on": {
+          "type": "string",
+          "format": "date"
+        },
+        "research_state_at_preregistration": {
+          "$ref": "#/$defs/researchState"
+        },
+        "hypothesis": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "profile_binding": {
+          "$ref": "#/$defs/profileBinding"
+        },
+        "execution_track_separation": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/trackSeparation"
+          }
+        },
+        "required_environment_capture": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "native_run_record_contract": {
+          "$ref": "#/$defs/nativeRunRecord"
+        },
+        "evidence_manifest_contract": {
+          "$ref": "#/$defs/evidenceManifest"
+        },
+        "status_and_decision_rules": {
+          "$ref": "#/$defs/statusAndDecisionRules"
+        },
+        "claim_boundary": {
+          "$ref": "#/$defs/preregistrationClaimBoundary"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "native_system": {
+                "const": "p6"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "preregistration_id": {
+                "const": "p6-semantic-microcases-v0.1"
+              },
+              "profile_binding": {
+                "properties": {
+                  "profile_id": {
+                    "const": "p6-semantic-comparison-profile-v0.1"
+                  },
+                  "path": {
+                    "const": "native-validation/profiles/p6-semantic-comparison-profile-v0.1.json"
+                  }
+                }
+              },
+              "evidence_manifest_contract": {
+                "properties": {
+                  "raw_evidence_root": {
+                    "const": "native-files/p6/p6-semantic-microcases-v0.1"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "preregistration_id": {
+                "const": "microsoft-project-semantic-microcases-v0.1"
+              },
+              "profile_binding": {
+                "properties": {
+                  "profile_id": {
+                    "const": "microsoft-project-semantic-comparison-profile-v0.1"
+                  },
+                  "path": {
+                    "const": "native-validation/profiles/microsoft-project-semantic-comparison-profile-v0.1.json"
+                  }
+                }
+              },
+              "evidence_manifest_contract": {
+                "properties": {
+                  "raw_evidence_root": {
+                    "const": "native-files/microsoft-project/microsoft-project-semantic-microcases-v0.1"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "characterizationCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "reason",
+        "required_assertions",
+        "prohibited_claim"
+      ],
+      "properties": {
+        "case_id": {
+          "$ref": "#/$defs/caseId"
+        },
+        "reason": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "required_assertions": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "prohibited_claim": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference_semantic_profile",
+        "execution_case_ids",
+        "claim_eligible_case_ids",
+        "characterization_only_cases",
+        "excluded_case_ids",
+        "excluded_capabilities"
+      ],
+      "properties": {
+        "reference_semantic_profile": {
+          "const": "reference-v0.3"
+        },
+        "execution_case_ids": {
+          "type": "array",
+          "minItems": 48,
+          "maxItems": 48,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/caseId"
+          }
+        },
+        "claim_eligible_case_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/caseId"
+          }
+        },
+        "characterization_only_cases": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/characterizationCase"
+          }
+        },
+        "excluded_case_ids": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "SEM-DET-049",
+              "SEM-DET-050"
+            ]
+          }
+        },
+        "excluded_capabilities": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        }
+      }
+    },
+    "corpusBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "catalogue_path",
+        "catalogue_sha256",
+        "case_directory",
+        "case_file_set_sha256",
+        "case_file_set_hash_construction",
+        "fixture_mutation_policy"
+      ],
+      "properties": {
+        "catalogue_path": {
+          "const": "benchmarks/semantic/catalogue.csv"
+        },
+        "catalogue_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "case_directory": {
+          "const": "benchmarks/semantic/cases"
+        },
+        "case_file_set_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "case_file_set_hash_construction": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "fixture_mutation_policy": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "coordinateContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_origin",
+        "canonical_unit",
+        "schedule_time_zone",
+        "utc_offset",
+        "daylight_saving",
+        "native_to_canonical_transform",
+        "canonical_to_native_transform",
+        "timestamp_tolerance_seconds",
+        "duration_tolerance_seconds",
+        "float_tolerance_seconds",
+        "rounding_policy",
+        "off_grid_policy"
+      ],
+      "properties": {
+        "canonical_origin": {
+          "const": "2026-01-05T08:00:00+08:00"
+        },
+        "canonical_unit": {
+          "const": "hour"
+        },
+        "schedule_time_zone": {
+          "const": "Australia/Perth"
+        },
+        "utc_offset": {
+          "const": "+08:00"
+        },
+        "daylight_saving": {
+          "const": "not_applicable"
+        },
+        "native_to_canonical_transform": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "canonical_to_native_transform": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "timestamp_tolerance_seconds": {
+          "const": 0
+        },
+        "duration_tolerance_seconds": {
+          "const": 0
+        },
+        "float_tolerance_seconds": {
+          "const": 0
+        },
+        "rounding_policy": {
+          "const": "forbidden"
+        },
+        "off_grid_policy": {
+          "const": "executed_fail"
+        }
+      }
+    },
+    "transformation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transformation_id",
+        "input",
+        "output",
+        "rule"
+      ],
+      "properties": {
+        "transformation_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+-v0\\.1$"
+        },
+        "input": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "output": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "rule": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "calculationOracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "oracle_source",
+        "eligible_reference_status",
+        "comparison_fields",
+        "excluded_expected_fields",
+        "null_rule",
+        "missing_field_rule",
+        "extra_field_rule",
+        "approved_transformations",
+        "post_hoc_explanation_rule"
+      ],
+      "properties": {
+        "oracle_source": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "eligible_reference_status": {
+          "const": "declared"
+        },
+        "comparison_fields": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "excluded_expected_fields": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "null_rule": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "missing_field_rule": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "extra_field_rule": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "approved_transformations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/transformation"
+          }
+        },
+        "post_hoc_explanation_rule": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "frozenRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_id",
+        "applies_to_case_ids",
+        "setting",
+        "required_value",
+        "failure_outcome"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "applies_to_case_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/caseSelector"
+          }
+        },
+        "setting": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "required_value": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "failure_outcome": {
+          "enum": [
+            "executed_fail",
+            "executed_inconclusive"
+          ]
+        }
+      }
+    },
+    "preExecutionManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "must_be_hashed_before_first_native_calculation",
+        "required_fields",
+        "late_or_changed_manifest_outcome"
+      ],
+      "properties": {
+        "required": {
+          "const": true
+        },
+        "must_be_hashed_before_first_native_calculation": {
+          "const": true
+        },
+        "required_fields": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "late_or_changed_manifest_outcome": {
+          "const": "executed_inconclusive"
+        }
+      }
+    },
+    "nativeConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_capture_fields",
+        "frozen_rules",
+        "pre_execution_case_realization_manifest"
+      ],
+      "properties": {
+        "required_capture_fields": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "frozen_rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/frozenRule"
+          }
+        },
+        "pre_execution_case_realization_manifest": {
+          "$ref": "#/$defs/preExecutionManifest"
+        }
+      }
+    },
+    "executionTrack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "track_id",
+        "purpose",
+        "manual_transcription_allowed",
+        "manual_transcription_controls",
+        "required_stage_hashes",
+        "can_satisfy_native_semantic_gate",
+        "can_satisfy_reopen_stability_gate",
+        "can_satisfy_adapter_interchange_gate"
+      ],
+      "properties": {
+        "track_id": {
+          "enum": [
+            "manual_native_semantic_parity",
+            "saved_file_reopen_recalculate_stability",
+            "adapter_interchange_round_trip"
+          ]
+        },
+        "purpose": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "native_format": {
+          "enum": [
+            "primavera_p6_xml",
+            "mspdi_xml"
+          ]
+        },
+        "explicitly_excluded_formats": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "manual_transcription_allowed": {
+          "type": "boolean"
+        },
+        "manual_transcription_controls": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "required_stage_hashes": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "can_satisfy_native_semantic_gate": {
+          "type": "boolean"
+        },
+        "can_satisfy_reopen_stability_gate": {
+          "type": "boolean"
+        },
+        "can_satisfy_adapter_interchange_gate": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "track_id": {
+                "const": "adapter_interchange_round_trip"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "native_format",
+              "explicitly_excluded_formats"
+            ],
+            "properties": {
+              "manual_transcription_allowed": {
+                "const": false
+              },
+              "can_satisfy_adapter_interchange_gate": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "outcomeRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed_case_track_statuses",
+        "native_semantic_subset_pass",
+        "reopen_stability_subset_pass",
+        "adapter_interchange_subset_pass",
+        "characterization_rule",
+        "difference_rule",
+        "missing_evidence_rule",
+        "inaccessible_rule",
+        "manual_intervention_rule",
+        "no_aggregate_compatibility_status"
+      ],
+      "properties": {
+        "allowed_case_track_statuses": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "executed_pass",
+              "executed_fail",
+              "executed_inconclusive",
+              "not_executed",
+              "not_accessible"
+            ]
+          }
+        },
+        "native_semantic_subset_pass": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "reopen_stability_subset_pass": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "adapter_interchange_subset_pass": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "characterization_rule": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "difference_rule": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "missing_evidence_rule": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "inaccessible_rule": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "manual_intervention_rule": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "no_aggregate_compatibility_status": {
+          "const": true
+        }
+      }
+    },
+    "profileClaimBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maximum_native_semantic_claim",
+        "maximum_reopen_stability_claim",
+        "maximum_interchange_claim",
+        "safe_production_round_trip",
+        "optimizer_superiority"
+      ],
+      "properties": {
+        "maximum_native_semantic_claim": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "maximum_reopen_stability_claim": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "maximum_interchange_claim": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "full_p6_compatibility": {
+          "const": "not_claimed_even_if_all_profile_gates_pass"
+        },
+        "full_microsoft_project_compatibility": {
+          "const": "not_claimed_even_if_all_profile_gates_pass"
+        },
+        "mpp_binary_compatibility": {
+          "const": "not_claimed_even_if_all_profile_gates_pass"
+        },
+        "safe_production_round_trip": {
+          "const": "not_claimed_even_if_all_profile_gates_pass"
+        },
+        "microsoft_project_parity": {
+          "const": "not_claimed"
+        },
+        "p6_parity": {
+          "const": "not_claimed"
+        },
+        "optimizer_superiority": {
+          "const": "not_claimed"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "full_p6_compatibility",
+            "microsoft_project_parity"
+          ]
+        },
+        {
+          "required": [
+            "full_microsoft_project_compatibility",
+            "mpp_binary_compatibility",
+            "p6_parity"
+          ]
+        }
+      ]
+    },
+    "artifactIndexEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_role",
+        "relative_or_controlled_external_location",
+        "sha256",
+        "byte_size",
+        "media_type",
+        "contains_restricted_data",
+        "retention_owner"
+      ],
+      "properties": {
+        "artifact_role": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "relative_or_controlled_external_location": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "byte_size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "media_type": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "contains_restricted_data": {
+          "type": "boolean"
+        },
+        "retention_owner": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "manualNativeSemanticStageHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_realization_manifest_sha256",
+        "native_source_file_sha256",
+        "native_calculated_file_sha256",
+        "normalized_native_output_sha256"
+      ],
+      "properties": {
+        "case_realization_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "native_source_file_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "native_calculated_file_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "normalized_native_output_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "reopenRecalculateStageHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "native_pre_close_file_sha256",
+        "native_pre_close_output_sha256",
+        "native_reopened_file_sha256",
+        "native_recalculated_file_sha256",
+        "native_post_recalculate_output_sha256"
+      ],
+      "properties": {
+        "native_pre_close_file_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "native_pre_close_output_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "native_reopened_file_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "native_recalculated_file_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "native_post_recalculate_output_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "p6AdapterStageHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "native_pre_export_file_sha256",
+        "p6_xml_export_sha256",
+        "canonical_reimport_sha256",
+        "controlled_reexport_sha256",
+        "native_reopened_recalculated_file_sha256",
+        "final_normalized_native_output_sha256"
+      ],
+      "properties": {
+        "native_pre_export_file_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "p6_xml_export_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "canonical_reimport_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "controlled_reexport_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "native_reopened_recalculated_file_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "final_normalized_native_output_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "microsoftProjectAdapterStageHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "native_pre_export_file_sha256",
+        "mspdi_xml_export_sha256",
+        "canonical_reimport_sha256",
+        "controlled_reexport_sha256",
+        "native_reopened_recalculated_file_sha256",
+        "final_normalized_native_output_sha256"
+      ],
+      "properties": {
+        "native_pre_export_file_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "mspdi_xml_export_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "canonical_reimport_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "controlled_reexport_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "native_reopened_recalculated_file_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "final_normalized_native_output_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "redactedArtifactIndex": {
+      "type": "array",
+      "minItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/artifactIndexEntry"
+          },
+          {
+            "properties": {
+              "artifact_role": {
+                "enum": [
+                  "preregistration",
+                  "comparison_profile",
+                  "case_realization_manifest",
+                  "environment_capture",
+                  "native_input",
+                  "native_stage_output",
+                  "normalized_output",
+                  "field_difference_manifest",
+                  "manual_action_log",
+                  "independent_review"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "allOf": [
+        {
+          "contains": {
+            "properties": {
+              "artifact_role": {
+                "const": "preregistration"
+              }
+            },
+            "required": ["artifact_role"]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "artifact_role": {
+                "const": "comparison_profile"
+              }
+            },
+            "required": ["artifact_role"]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "artifact_role": {
+                "const": "case_realization_manifest"
+              }
+            },
+            "required": ["artifact_role"]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "artifact_role": {
+                "const": "environment_capture"
+              }
+            },
+            "required": ["artifact_role"]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "artifact_role": {
+                "const": "native_input"
+              }
+            },
+            "required": ["artifact_role"]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "artifact_role": {
+                "const": "native_stage_output"
+              }
+            },
+            "required": ["artifact_role"]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "artifact_role": {
+                "const": "normalized_output"
+              }
+            },
+            "required": ["artifact_role"]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "artifact_role": {
+                "const": "field_difference_manifest"
+              }
+            },
+            "required": ["artifact_role"]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "artifact_role": {
+                "const": "manual_action_log"
+              }
+            },
+            "required": ["artifact_role"]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "artifact_role": {
+                "const": "independent_review"
+              }
+            },
+            "required": ["artifact_role"]
+          }
+        }
+      ]
+    },
+    "nativeRunEvidenceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "run_id",
+        "preregistration_id",
+        "preregistration_raw_sha256",
+        "comparison_profile_id",
+        "comparison_profile_raw_sha256",
+        "native_system",
+        "case_id",
+        "execution_track_id",
+        "status",
+        "executed_at",
+        "operator_id",
+        "independent_reviewer_id",
+        "environment_capture_sha256",
+        "fixture_raw_sha256",
+        "case_realization_manifest_sha256",
+        "native_artifact_hashes_by_stage",
+        "normalized_output_sha256",
+        "field_difference_manifest_sha256",
+        "manual_action_log_sha256",
+        "evidence_bundle_sha256",
+        "failure_or_inconclusive_reason",
+        "review_disposition"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "native-run-evidence-v0.1"
+        },
+        "run_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "preregistration_id": {
+          "type": "string",
+          "pattern": "^(p6|microsoft-project)-semantic-microcases-v0\\.1$"
+        },
+        "preregistration_raw_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "comparison_profile_id": {
+          "type": "string",
+          "pattern": "^(p6|microsoft-project)-semantic-comparison-profile-v0\\.1$"
+        },
+        "comparison_profile_raw_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "native_system": {
+          "$ref": "#/$defs/nativeSystem"
+        },
+        "case_id": {
+          "$ref": "#/$defs/caseId"
+        },
+        "execution_track_id": {
+          "enum": [
+            "manual_native_semantic_parity",
+            "saved_file_reopen_recalculate_stability",
+            "adapter_interchange_round_trip"
+          ]
+        },
+        "status": {
+          "enum": [
+            "executed_pass",
+            "executed_fail",
+            "executed_inconclusive",
+            "not_executed",
+            "not_accessible"
+          ]
+        },
+        "executed_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "operator_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "independent_reviewer_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "environment_capture_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fixture_raw_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "case_realization_manifest_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "native_artifact_hashes_by_stage": {
+          "type": "object"
+        },
+        "normalized_output_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "field_difference_manifest_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "manual_action_log_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_bundle_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_or_inconclusive_reason": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "review_disposition": {
+          "enum": [
+            "pending",
+            "accepted",
+            "rejected",
+            "not_applicable"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "not_executed",
+                  "not_accessible"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "executed_at": {
+                "type": "null"
+              },
+              "operator_id": {
+                "type": "null"
+              },
+              "independent_reviewer_id": {
+                "type": "null"
+              },
+              "environment_capture_sha256": {
+                "type": "null"
+              },
+              "case_realization_manifest_sha256": {
+                "type": "null"
+              },
+              "native_artifact_hashes_by_stage": {
+                "maxProperties": 0
+              },
+              "normalized_output_sha256": {
+                "type": "null"
+              },
+              "field_difference_manifest_sha256": {
+                "type": "null"
+              },
+              "manual_action_log_sha256": {
+                "type": "null"
+              },
+              "evidence_bundle_sha256": {
+                "type": "null"
+              },
+              "failure_or_inconclusive_reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "review_disposition": {
+                "const": "not_applicable"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "executed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "operator_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "independent_reviewer_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "environment_capture_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "case_realization_manifest_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "native_artifact_hashes_by_stage": {
+                "minProperties": 1
+              },
+              "field_difference_manifest_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "manual_action_log_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "evidence_bundle_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "review_disposition": {
+                "enum": [
+                  "pending",
+                  "accepted",
+                  "rejected"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "executed_pass"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "normalized_output_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "failure_or_inconclusive_reason": {
+                "type": "null"
+              },
+              "review_disposition": {
+                "const": "accepted"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "executed_fail",
+                  "executed_inconclusive"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "failure_or_inconclusive_reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "native_system": {
+                "const": "p6"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "preregistration_id": {
+                "const": "p6-semantic-microcases-v0.1"
+              },
+              "preregistration_raw_sha256": {
+                "const": "953b06227fcb636be14b1b7602497054653550424259c31f227e76245605fbc0"
+              },
+              "comparison_profile_id": {
+                "const": "p6-semantic-comparison-profile-v0.1"
+              },
+              "comparison_profile_raw_sha256": {
+                "const": "a2d665dd30f24e715411097cea81526e67f44b0b258d333b76c7e6bf934e4511"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "preregistration_id": {
+                "const": "microsoft-project-semantic-microcases-v0.1"
+              },
+              "preregistration_raw_sha256": {
+                "const": "69594ba766cea5f204bc41f99f49af28a65b6f543919dad2bee702a9f6e0b647"
+              },
+              "comparison_profile_id": {
+                "const": "microsoft-project-semantic-comparison-profile-v0.1"
+              },
+              "comparison_profile_raw_sha256": {
+                "const": "8ab9c47395897e13f5b6cf36773757f4bd5a273e997b81de78585d76e872a469"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "executed_pass",
+                  "executed_fail",
+                  "executed_inconclusive"
+                ]
+              },
+              "execution_track_id": {
+                "const": "manual_native_semantic_parity"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "native_artifact_hashes_by_stage": {
+                "$ref": "#/$defs/manualNativeSemanticStageHashes"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "executed_pass",
+                  "executed_fail",
+                  "executed_inconclusive"
+                ]
+              },
+              "execution_track_id": {
+                "const": "saved_file_reopen_recalculate_stability"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "native_artifact_hashes_by_stage": {
+                "$ref": "#/$defs/reopenRecalculateStageHashes"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "executed_pass",
+                  "executed_fail",
+                  "executed_inconclusive"
+                ]
+              },
+              "execution_track_id": {
+                "const": "adapter_interchange_round_trip"
+              },
+              "native_system": {
+                "const": "p6"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "native_artifact_hashes_by_stage": {
+                "$ref": "#/$defs/p6AdapterStageHashes"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "executed_pass",
+                  "executed_fail",
+                  "executed_inconclusive"
+                ]
+              },
+              "execution_track_id": {
+                "const": "adapter_interchange_round_trip"
+              },
+              "native_system": {
+                "const": "microsoft_project"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "native_artifact_hashes_by_stage": {
+                "$ref": "#/$defs/microsoftProjectAdapterStageHashes"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "caseOutcomeIndex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "execution_track_id",
+        "status",
+        "run_record_sha256"
+      ],
+      "properties": {
+        "case_id": {
+          "$ref": "#/$defs/caseId"
+        },
+        "execution_track_id": {
+          "enum": [
+            "manual_native_semantic_parity",
+            "saved_file_reopen_recalculate_stability",
+            "adapter_interchange_round_trip"
+          ]
+        },
+        "status": {
+          "enum": [
+            "executed_pass",
+            "executed_fail",
+            "executed_inconclusive",
+            "not_executed",
+            "not_accessible"
+          ]
+        },
+        "run_record_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "productBuild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product_name",
+        "edition",
+        "version",
+        "build"
+      ],
+      "properties": {
+        "product_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "edition": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "version": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "build": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "redactedEvidenceManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "run_id",
+        "preregistration_id",
+        "preregistration_raw_sha256",
+        "comparison_profile_id",
+        "comparison_profile_raw_sha256",
+        "native_system",
+        "product_edition_version_build",
+        "execution_track_id",
+        "case_outcomes",
+        "artifact_index",
+        "environment_capture_sha256",
+        "difference_manifest_sha256",
+        "review_disposition",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "native-redacted-evidence-manifest-v0.1"
+        },
+        "run_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "preregistration_id": {
+          "type": "string",
+          "pattern": "^(p6|microsoft-project)-semantic-microcases-v0\\.1$"
+        },
+        "preregistration_raw_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "comparison_profile_id": {
+          "type": "string",
+          "pattern": "^(p6|microsoft-project)-semantic-comparison-profile-v0\\.1$"
+        },
+        "comparison_profile_raw_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "native_system": {
+          "$ref": "#/$defs/nativeSystem"
+        },
+        "product_edition_version_build": {
+          "$ref": "#/$defs/productBuild"
+        },
+        "execution_track_id": {
+          "enum": [
+            "manual_native_semantic_parity",
+            "saved_file_reopen_recalculate_stability",
+            "adapter_interchange_round_trip"
+          ]
+        },
+        "case_outcomes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/caseOutcomeIndex"
+          }
+        },
+        "artifact_index": {
+          "$ref": "#/$defs/redactedArtifactIndex"
+        },
+        "environment_capture_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "difference_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "review_disposition": {
+          "enum": [
+            "accepted",
+            "rejected",
+            "inconclusive"
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "native_system": {
+                "const": "p6"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "preregistration_id": {
+                "const": "p6-semantic-microcases-v0.1"
+              },
+              "preregistration_raw_sha256": {
+                "const": "953b06227fcb636be14b1b7602497054653550424259c31f227e76245605fbc0"
+              },
+              "comparison_profile_id": {
+                "const": "p6-semantic-comparison-profile-v0.1"
+              },
+              "comparison_profile_raw_sha256": {
+                "const": "a2d665dd30f24e715411097cea81526e67f44b0b258d333b76c7e6bf934e4511"
+              },
+              "product_edition_version_build": {
+                "properties": {
+                  "product_name": {
+                    "const": "Primavera P6"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "preregistration_id": {
+                "const": "microsoft-project-semantic-microcases-v0.1"
+              },
+              "preregistration_raw_sha256": {
+                "const": "69594ba766cea5f204bc41f99f49af28a65b6f543919dad2bee702a9f6e0b647"
+              },
+              "comparison_profile_id": {
+                "const": "microsoft-project-semantic-comparison-profile-v0.1"
+              },
+              "comparison_profile_raw_sha256": {
+                "const": "8ab9c47395897e13f5b6cf36773757f4bd5a273e997b81de78585d76e872a469"
+              },
+              "product_edition_version_build": {
+                "properties": {
+                  "product_name": {
+                    "const": "Microsoft Project"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "execution_track_id": {
+                "const": "manual_native_semantic_parity"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "case_outcomes": {
+                "items": {
+                  "properties": {
+                    "execution_track_id": {
+                      "const": "manual_native_semantic_parity"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "execution_track_id": {
+                "const": "saved_file_reopen_recalculate_stability"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "case_outcomes": {
+                "items": {
+                  "properties": {
+                    "execution_track_id": {
+                      "const": "saved_file_reopen_recalculate_stability"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "execution_track_id": {
+                "const": "adapter_interchange_round_trip"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "case_outcomes": {
+                "items": {
+                  "properties": {
+                    "execution_track_id": {
+                      "const": "adapter_interchange_round_trip"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "comparisonProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "$schema",
+        "document_type",
+        "schema_version",
+        "profile_id",
+        "native_system",
+        "status",
+        "scope",
+        "corpus_binding",
+        "coordinate_contract",
+        "source_preservation_fields",
+        "calculation_oracle",
+        "native_configuration",
+        "execution_tracks",
+        "outcome_rules",
+        "claim_boundary"
+      ],
+      "properties": {
+        "$schema": {
+          "const": "../../schemas/native-validation-preregistration.schema.json"
+        },
+        "document_type": {
+          "const": "native_semantic_comparison_profile"
+        },
+        "schema_version": {
+          "const": "native-semantic-comparison-profile-v0.1"
+        },
+        "profile_id": {
+          "type": "string",
+          "pattern": "^(p6|microsoft-project)-semantic-comparison-profile-v0\\.1$"
+        },
+        "native_system": {
+          "$ref": "#/$defs/nativeSystem"
+        },
+        "status": {
+          "const": "frozen_preregistered_not_executed"
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "corpus_binding": {
+          "$ref": "#/$defs/corpusBinding"
+        },
+        "coordinate_contract": {
+          "$ref": "#/$defs/coordinateContract"
+        },
+        "source_preservation_fields": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "calculation_oracle": {
+          "$ref": "#/$defs/calculationOracle"
+        },
+        "native_configuration": {
+          "$ref": "#/$defs/nativeConfiguration"
+        },
+        "execution_tracks": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/executionTrack"
+          }
+        },
+        "outcome_rules": {
+          "$ref": "#/$defs/outcomeRules"
+        },
+        "claim_boundary": {
+          "$ref": "#/$defs/profileClaimBoundary"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "native_system": {
+                "const": "p6"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "profile_id": {
+                "const": "p6-semantic-comparison-profile-v0.1"
+              },
+              "scope": {
+                "properties": {
+                  "claim_eligible_case_ids": {
+                    "minItems": 47,
+                    "maxItems": 47
+                  },
+                  "characterization_only_cases": {
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "profile_id": {
+                "const": "microsoft-project-semantic-comparison-profile-v0.1"
+              },
+              "scope": {
+                "properties": {
+                  "claim_eligible_case_ids": {
+                    "minItems": 45,
+                    "maxItems": 45
+                  },
+                  "characterization_only_cases": {
+                    "minItems": 3,
+                    "maxItems": 3
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

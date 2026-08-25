@@ -1,0 +1,375 @@
+{
+  "$schema": "../../schemas/native-validation-preregistration.schema.json",
+  "document_type": "native_semantic_comparison_profile",
+  "schema_version": "native-semantic-comparison-profile-v0.1",
+  "profile_id": "p6-semantic-comparison-profile-v0.1",
+  "native_system": "p6",
+  "status": "frozen_preregistered_not_executed",
+  "scope": {
+    "reference_semantic_profile": "reference-v0.3",
+    "execution_case_ids": [
+      "SEM-REL-001",
+      "SEM-REL-002",
+      "SEM-REL-003",
+      "SEM-REL-004",
+      "SEM-REL-005",
+      "SEM-REL-006",
+      "SEM-REL-007",
+      "SEM-REL-008",
+      "SEM-REL-009",
+      "SEM-REL-010",
+      "SEM-REL-011",
+      "SEM-REL-012",
+      "SEM-NET-013",
+      "SEM-NET-014",
+      "SEM-NET-015",
+      "SEM-NET-016",
+      "SEM-NET-017",
+      "SEM-NET-018",
+      "SEM-NET-019",
+      "SEM-NET-020",
+      "SEM-CAL-021",
+      "SEM-CAL-022",
+      "SEM-CAL-023",
+      "SEM-CAL-024",
+      "SEM-CAL-025",
+      "SEM-CAL-026",
+      "SEM-CAL-027",
+      "SEM-CAL-028",
+      "SEM-CAL-029",
+      "SEM-CAL-030",
+      "SEM-MIL-031",
+      "SEM-MIL-032",
+      "SEM-MIL-033",
+      "SEM-MIL-034",
+      "SEM-CON-035",
+      "SEM-CON-036",
+      "SEM-CON-037",
+      "SEM-CON-038",
+      "SEM-STA-039",
+      "SEM-STA-040",
+      "SEM-STA-041",
+      "SEM-STA-042",
+      "SEM-STA-043",
+      "SEM-STA-044",
+      "SEM-STA-045",
+      "SEM-STA-046",
+      "SEM-FLT-047",
+      "SEM-FLT-048"
+    ],
+    "claim_eligible_case_ids": [
+      "SEM-REL-001",
+      "SEM-REL-002",
+      "SEM-REL-003",
+      "SEM-REL-004",
+      "SEM-REL-005",
+      "SEM-REL-006",
+      "SEM-REL-007",
+      "SEM-REL-008",
+      "SEM-REL-009",
+      "SEM-REL-010",
+      "SEM-REL-011",
+      "SEM-REL-012",
+      "SEM-NET-013",
+      "SEM-NET-014",
+      "SEM-NET-015",
+      "SEM-NET-016",
+      "SEM-NET-017",
+      "SEM-NET-018",
+      "SEM-NET-019",
+      "SEM-NET-020",
+      "SEM-CAL-021",
+      "SEM-CAL-022",
+      "SEM-CAL-023",
+      "SEM-CAL-024",
+      "SEM-CAL-025",
+      "SEM-CAL-026",
+      "SEM-CAL-027",
+      "SEM-CAL-028",
+      "SEM-CAL-029",
+      "SEM-CAL-030",
+      "SEM-MIL-031",
+      "SEM-MIL-032",
+      "SEM-MIL-033",
+      "SEM-MIL-034",
+      "SEM-CON-035",
+      "SEM-CON-036",
+      "SEM-CON-037",
+      "SEM-CON-038",
+      "SEM-STA-039",
+      "SEM-STA-040",
+      "SEM-STA-041",
+      "SEM-STA-042",
+      "SEM-STA-043",
+      "SEM-STA-044",
+      "SEM-STA-046",
+      "SEM-FLT-047",
+      "SEM-FLT-048"
+    ],
+    "characterization_only_cases": [
+      {
+        "case_id": "SEM-STA-045",
+        "reason": "reference-v0.3 deliberately has no forecast oracle for P6 Actual Dates behaviour",
+        "required_assertions": [
+          "A.actual_start_coordinate_equals_0_after_each_native_stage",
+          "B.actual_start_coordinate_equals_4_after_each_native_stage",
+          "native_forecast_fields_are_recorded_without_parity_classification"
+        ],
+        "prohibited_claim": "No P6 forecast-parity or compatibility conclusion may use this case."
+      }
+    ],
+    "excluded_case_ids": [
+      "SEM-DET-049",
+      "SEM-DET-050"
+    ],
+    "excluded_capabilities": [
+      "resource_levelling_parity",
+      "full_p6_semantic_parity",
+      "xer_interchange",
+      "baseline_round_trip",
+      "assignment_round_trip",
+      "safe_production_round_trip",
+      "production_readiness"
+    ]
+  },
+  "corpus_binding": {
+    "catalogue_path": "benchmarks/semantic/catalogue.csv",
+    "catalogue_sha256": "a43d440c86562262d327fde17f7b8ad0760e131efb23d16c4b57b731d6beadf0",
+    "case_directory": "benchmarks/semantic/cases",
+    "case_file_set_sha256": "ba8764f318acb7bb6dbd263d998d23a7b7ac5dce7407a434ffcec74b37a5bb98",
+    "case_file_set_hash_construction": "SHA-256 of UTF-8 lines '<case_id> <raw_file_sha256>\\n' for the 48 execution cases sorted lexicographically by case_id",
+    "fixture_mutation_policy": "Any fixture-byte change requires a new comparison profile and preregistration; native results never alter reference fixtures or expected values."
+  },
+  "coordinate_contract": {
+    "canonical_origin": "2026-01-05T08:00:00+08:00",
+    "canonical_unit": "hour",
+    "schedule_time_zone": "Australia/Perth",
+    "utc_offset": "+08:00",
+    "daylight_saving": "not_applicable",
+    "native_to_canonical_transform": "coordinate = exact elapsed seconds from canonical_origin divided by 3600",
+    "canonical_to_native_transform": "native timestamp = canonical_origin plus coordinate elapsed hours",
+    "timestamp_tolerance_seconds": 0,
+    "duration_tolerance_seconds": 0,
+    "float_tolerance_seconds": 0,
+    "rounding_policy": "forbidden",
+    "off_grid_policy": "executed_fail"
+  },
+  "source_preservation_fields": [
+    "case_id",
+    "activity_id",
+    "activity_kind",
+    "duration_hours",
+    "remaining_duration_hours",
+    "actual_start_coordinate",
+    "actual_finish_coordinate",
+    "relationship_id",
+    "predecessor_id",
+    "successor_id",
+    "relationship_type",
+    "signed_lag_hours",
+    "calendar_working_intervals",
+    "calendar_exceptions",
+    "activity_calendar_assignment",
+    "resource_calendar_assignment",
+    "constraint_id",
+    "constraint_type",
+    "constraint_coordinate",
+    "project_start_coordinate",
+    "data_date_coordinate"
+  ],
+  "calculation_oracle": {
+    "oracle_source": "the immutable expected object in each bound fixture",
+    "eligible_reference_status": "declared",
+    "comparison_fields": [
+      "activity_times.*.start",
+      "activity_times.*.remaining_start_when_declared",
+      "activity_times.*.finish",
+      "project_finish",
+      "total_float.*_only_for_SEM-FLT-047_and_SEM-FLT-048",
+      "free_float.*_only_for_SEM-FLT-047_and_SEM-FLT-048"
+    ],
+    "excluded_expected_fields": [
+      "driving_relationships",
+      "resource_order",
+      "assertion_prose"
+    ],
+    "null_rule": "Expected null must remain null; absence, blank text and zero are not equivalent to null.",
+    "missing_field_rule": "Any missing claim field is executed_fail.",
+    "extra_field_rule": "Extra native fields are retained in evidence but cannot expand the claim.",
+    "approved_transformations": [
+      {
+        "transformation_id": "p6-coordinate-normalisation-v0.1",
+        "input": "native P6 date/time value",
+        "output": "integer coordinate under coordinate_contract",
+        "rule": "exact affine conversion only; no rounding or snapping"
+      },
+      {
+        "transformation_id": "p6-enumeration-normalisation-v0.1",
+        "input": "native relationship, constraint, activity and calendar fields",
+        "output": "canonical enum/value fields listed in source_preservation_fields",
+        "rule": "the raw-to-normalized mapping must be frozen in the pre-execution case-realization manifest; unlisted mappings are forbidden"
+      }
+    ],
+    "post_hoc_explanation_rule": "A narrative explanation cannot convert an unlisted transformation or mismatched claim field into a pass."
+  },
+  "native_configuration": {
+    "required_capture_fields": [
+      "product_name",
+      "edition",
+      "version",
+      "build",
+      "deployment_type",
+      "operating_system",
+      "machine_time_zone",
+      "locale",
+      "native_source_file_format",
+      "native_source_file_sha256",
+      "p6_project_calendar_settings",
+      "p6_relationship_lag_calendar_setting",
+      "p6_activity_type_per_activity",
+      "p6_resource_calendar_and_capacity_per_assignment",
+      "p6_data_date",
+      "p6_schedule_options",
+      "p6_out_of_sequence_policy",
+      "p6_leveling_status",
+      "manual_construction_actions"
+    ],
+    "frozen_rules": [
+      {
+        "rule_id": "p6-no-leveling-in-semantic-corpus",
+        "applies_to_case_ids": ["*"],
+        "setting": "resource_leveling",
+        "required_value": "disabled_and_not_run",
+        "failure_outcome": "executed_inconclusive"
+      },
+      {
+        "rule_id": "p6-successor-lag-calendar",
+        "applies_to_case_ids": ["SEM-REL-001--SEM-REL-012", "SEM-CAL-024", "SEM-CAL-029", "SEM-CAL-030"],
+        "setting": "relationship_lag_calendar",
+        "required_value": "successor_activity_calendar",
+        "failure_outcome": "executed_fail"
+      },
+      {
+        "rule_id": "p6-retained-logic-case",
+        "applies_to_case_ids": ["SEM-STA-043"],
+        "setting": "out_of_sequence_policy",
+        "required_value": "retained_logic",
+        "failure_outcome": "executed_inconclusive"
+      },
+      {
+        "rule_id": "p6-progress-override-case",
+        "applies_to_case_ids": ["SEM-STA-044"],
+        "setting": "out_of_sequence_policy",
+        "required_value": "progress_override",
+        "failure_outcome": "executed_inconclusive"
+      },
+      {
+        "rule_id": "p6-actual-dates-characterization-case",
+        "applies_to_case_ids": ["SEM-STA-045"],
+        "setting": "out_of_sequence_policy",
+        "required_value": "actual_dates",
+        "failure_outcome": "executed_inconclusive"
+      }
+    ],
+    "pre_execution_case_realization_manifest": {
+      "required": true,
+      "must_be_hashed_before_first_native_calculation": true,
+      "required_fields": [
+        "case_id",
+        "fixture_raw_sha256",
+        "native_source_file_sha256",
+        "native_activity_and_field_mapping",
+        "native_calendar_realization",
+        "native_relationship_and_lag_realization",
+        "native_constraint_realization",
+        "native_progress_realization",
+        "all_product_settings",
+        "construction_action_log",
+        "prepared_at",
+        "prepared_by",
+        "independent_pre_execution_reviewed_by",
+        "attestation_no_native_result_observed_before_freeze"
+      ],
+      "late_or_changed_manifest_outcome": "executed_inconclusive"
+    }
+  },
+  "execution_tracks": [
+    {
+      "track_id": "manual_native_semantic_parity",
+      "purpose": "Test the bounded native P6 calculation after a preregistered manual native realization.",
+      "manual_transcription_allowed": true,
+      "manual_transcription_controls": "Two-person field verification plus screenshots or native reports and a hashed normalized extract are required.",
+      "required_stage_hashes": [
+        "case_realization_manifest_sha256",
+        "native_source_file_sha256",
+        "native_calculated_file_sha256",
+        "normalized_native_output_sha256"
+      ],
+      "can_satisfy_native_semantic_gate": true,
+      "can_satisfy_reopen_stability_gate": false,
+      "can_satisfy_adapter_interchange_gate": false
+    },
+    {
+      "track_id": "saved_file_reopen_recalculate_stability",
+      "purpose": "Test save, close, reopen and native P6 recalculation stability for the same native file.",
+      "manual_transcription_allowed": true,
+      "manual_transcription_controls": "The same controlled extraction method used before close must be repeated after reopen and recalculation.",
+      "required_stage_hashes": [
+        "native_pre_close_file_sha256",
+        "native_pre_close_output_sha256",
+        "native_reopened_file_sha256",
+        "native_recalculated_file_sha256",
+        "native_post_recalculate_output_sha256"
+      ],
+      "can_satisfy_native_semantic_gate": false,
+      "can_satisfy_reopen_stability_gate": true,
+      "can_satisfy_adapter_interchange_gate": false
+    },
+    {
+      "track_id": "adapter_interchange_round_trip",
+      "purpose": "Test only the bounded P6 XML adapter/interchange subset; this is not a production round-trip claim.",
+      "native_format": "primavera_p6_xml",
+      "explicitly_excluded_formats": ["p6_xer", "native_database_copy"],
+      "manual_transcription_allowed": false,
+      "manual_transcription_controls": "not_applicable",
+      "required_stage_hashes": [
+        "native_pre_export_file_sha256",
+        "p6_xml_export_sha256",
+        "canonical_reimport_sha256",
+        "controlled_reexport_sha256",
+        "native_reopened_recalculated_file_sha256",
+        "final_normalized_native_output_sha256"
+      ],
+      "can_satisfy_native_semantic_gate": false,
+      "can_satisfy_reopen_stability_gate": false,
+      "can_satisfy_adapter_interchange_gate": true
+    }
+  ],
+  "outcome_rules": {
+    "allowed_case_track_statuses": [
+      "executed_pass",
+      "executed_fail",
+      "executed_inconclusive",
+      "not_executed",
+      "not_accessible"
+    ],
+    "native_semantic_subset_pass": "Every claim-eligible case passes manual_native_semantic_parity with every comparison field exact after only approved transformations.",
+    "reopen_stability_subset_pass": "Every claim-eligible case passes saved_file_reopen_recalculate_stability with byte identities recorded and exact normalized field equality.",
+    "adapter_interchange_subset_pass": "Every claim-eligible case passes adapter_interchange_round_trip with zero changed claim fields and no manual transcription.",
+    "characterization_rule": "Characterization-only cases require complete evidence records but never count toward a compatibility, parity or interchange pass.",
+    "difference_rule": "Any claim-field difference is executed_fail unless an approved transformation in this profile produces exact equality.",
+    "missing_evidence_rule": "Missing required metadata or artifacts is executed_inconclusive, never pass.",
+    "inaccessible_rule": "Unavailable lawful product access is not_accessible and leaves every affected gate open.",
+    "manual_intervention_rule": "Any unpreregistered edit after initial native calculation is executed_fail; every permitted construction action remains evidence.",
+    "no_aggregate_compatibility_status": true
+  },
+  "claim_boundary": {
+    "maximum_native_semantic_claim": "Exact agreement for the named P6 build/configuration and the 47 claim-eligible reference-v0.3 microcases under p6-semantic-comparison-profile-v0.1.",
+    "maximum_reopen_stability_claim": "Exact save/reopen/recalculate stability for the named P6 build/configuration and the same bounded subset.",
+    "maximum_interchange_claim": "Exact bounded P6 XML interchange agreement for the named build/configuration and claim fields that actually passed the adapter track.",
+    "full_p6_compatibility": "not_claimed_even_if_all_profile_gates_pass",
+    "safe_production_round_trip": "not_claimed_even_if_all_profile_gates_pass",
+    "microsoft_project_parity": "not_claimed",
+    "optimizer_superiority": "not_claimed"
+  }
+}

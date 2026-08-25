@@ -14,8 +14,8 @@ __all__ = [
     "ValidationFailure",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 KERNEL_VERSION = "reference-cpm-kernel-v0.1.0"
-DETERMINISTIC_PROFILE = "deterministic-v0.2"
+DETERMINISTIC_PROFILE = "deterministic-v0.3"
 SEMANTIC_PROFILE = "reference-v0.3"
 OBJECTIVE_POLICY = "objective-v0.3"
