@@ -1,0 +1,168 @@
+name: Apply optional governance correction
+
+on:
+  push:
+    branches:
+      - phase1-evidence-governance-hardening
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor == 'dezrobbo1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase1-evidence-governance-hardening
+          fetch-depth: 2
+      - name: Verify expected parent
+        run: |
+          test "$(git rev-parse HEAD^)" = "dba7ae41697c4093674a388c32b4eac4ab3bf6c4"
+      - name: Remove live-ruleset requirement
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file_path = Path(path)
+              text = file_path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one replacement target, found {count}")
+              file_path.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+
+          governance_path = Path(".github/repository-governance.json")
+          governance = json.loads(governance_path.read_text(encoding="utf-8"))
+          if governance.get("live_ruleset_required") is not True:
+              raise SystemExit("live_ruleset_required was not true at the expected starting head")
+          governance["live_ruleset_required"] = False
+          governance["notes"] = (
+              "Optional recommendation only. Live GitHub ruleset enforcement is not required "
+              "for this repository or for completion of Phase 1 hardening."
+          )
+          governance_path.write_text(
+              json.dumps(governance, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          Path("docs/phase1-repository-governance.md").write_text(
+              """# Phase 1 repository governance
+
+The tracked policy in `.github/repository-governance.json` is an optional
+recommendation for possible future use. Live GitHub ruleset or branch-protection
+enforcement is not required for this owner-operated research repository and is
+not a completion or merge gate for Phase 1.
+
+The Phase 0 and Phase 1 workflows still run for pull requests targeting `main`
+and for pushes to `main`. Feature branches and pull requests remain the normal
+working practice, but GitHub is not required to block every alternative path at
+the server level.
+
+If the owner later chooses to enable a ruleset, the recorded optional profile
+would:
+
+- require a pull request before merge;
+- require `phase0-validation` and `phase1-validation` with the branch up to date;
+- dismiss stale review state and require conversation resolution;
+- block force pushes and branch deletion; and
+- provide no administrator bypass.
+
+The optional profile uses zero required approvals because this repository does
+not currently have a separate mandatory reviewer. Review evidence may still be
+recorded on each pull request.
+
+A completion report may claim live branch protection only when the GitHub API
+confirms it. Absence of live protection must not be reported as a blocker or as
+incomplete Phase 1 work.
+
+Historical workflow registrations and remote-branch cleanup remain separate
+operations and are not implied by the current workflow files on `main`.
+""",
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          replace_once(
+              "CHANGELOG.md",
+              "- Made both uniquely named CI checks run on `main` pushes and pull requests targeting `main`, and recorded the required live default-branch governance policy.",
+              "- Made both uniquely named CI checks run on `main` pushes and pull requests targeting `main`, and recorded optional future branch-protection settings without making live ruleset enforcement a completion requirement.",
+          )
+
+          replace_once(
+              "docs/amendments/phase1-evidence-governance-hardening.md",
+              """Both validation workflows now run for pushes to `main` and pull requests
+targeting `main`, install the same hash-locked environment and expose stable,
+unique check names: `phase0-validation` and `phase1-validation`. The required
+live default-branch rules are recorded in `.github/repository-governance.json`.
+That tracked policy is not proof that GitHub is enforcing it; live protection
+must be applied and independently verified in repository settings.
+""",
+              """Both validation workflows now run for pushes to `main` and pull requests
+targeting `main`, install the same hash-locked environment and expose stable,
+unique check names: `phase0-validation` and `phase1-validation`. Optional future
+default-branch protection settings are recorded in
+`.github/repository-governance.json`. Live GitHub ruleset enforcement is not
+required for this owner-operated research repository and is not a completion or
+merge gate. Any future claim that live protection is active must still be
+independently verified through GitHub.
+""",
+          )
+
+          replace_once(
+              "tools/validate_phase1_governance.py",
+              '    "live_ruleset_required": True,',
+              '    "live_ruleset_required": False,',
+          )
+          replace_once(
+              "tools/validate_phase1_governance.py",
+              """    "notes": (
+        "This tracked policy does not replace the live GitHub ruleset. "
+        "The live setting must be independently verified."
+    ),
+""",
+              """    "notes": (
+        "Optional recommendation only. Live GitHub ruleset enforcement is not required "
+        "for this repository or for completion of Phase 1 hardening."
+    ),
+""",
+          )
+          replace_once(
+              "tools/validate_phase1_governance.py",
+              '        errors.append("tracked repository governance policy does not match the required main ruleset")',
+              '        errors.append("tracked optional repository-governance recommendation is inconsistent")',
+          )
+          replace_once(
+              "tools/validate_phase1_governance.py",
+              '    print("- main/PR workflow policy and unique required-check names verified")',
+              '    print("- main/PR workflow coverage and optional repository-governance recommendation verified")',
+          )
+          PY
+      - name: Remove one-use workflow and regenerate manifest
+        run: |
+          git rm .github/workflows/apply-optional-governance.yml
+          git add .github/repository-governance.json CHANGELOG.md docs/phase1-repository-governance.md docs/amendments/phase1-evidence-governance-hardening.md tools/validate_phase1_governance.py
+          python tools/build_manifest.py
+          git add manifest.sha256
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/phase1-ci.lock
+          python -m pip install --no-deps --no-build-isolation -e .
+      - name: Validate corrected branch
+        run: |
+          python -m unittest discover -s tests -v
+          python tools/validate_phase0.py
+          python tools/validate_phase1_governance.py
+          python -m deterministic_scheduling_core run-semantic-suite
+          python -m compileall -q src tools tests
+          git diff --check
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Make live repository rules optional"
+          git push origin HEAD:phase1-evidence-governance-hardening
