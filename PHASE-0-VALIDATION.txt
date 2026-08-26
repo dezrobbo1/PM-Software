@@ -4,7 +4,7 @@ PHASE 0 VALIDATION: PASS
 - IDs, references, hierarchies, calendars, status, states, productive spans, supported bounds, and relationship formulas validated
 - All 49 declared coordinate oracles, exclusive-resource feasibility, restricted float, and curated governing relationships recomputed
 - Frozen scenarios, explanation causes, counterfactual patches, and complete objective-vector values validated from complete states
-- Register filenames, header sequences, and authoritative protocol chapters validated
+- Register filenames, header sequences, typed experiment preparation rows, and authoritative protocol chapters validated
 - Objective, semantic, and deterministic profiles match frozen definitions
 - Consolidated protocol matches authoritative documents
 - SHA-256 manifest completeness and hashes verified

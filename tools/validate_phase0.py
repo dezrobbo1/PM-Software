@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMAS = ROOT / "schemas"
 CASES = ROOT / "benchmarks" / "semantic" / "cases"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _CANONICAL_SCHEMA_VERSION = "0.1.3"
 _EXECUTION_SCHEMA_VERSION = "0.1.4"
 _EXPLANATION_SCHEMA_VERSION = "0.1.3"
@@ -140,6 +141,7 @@ _EXPECTED_REGISTERS: dict[str, list[str]] = {
         "status",
     ],
 }
+_EXPERIMENT_EXECUTION_STATUSES = {"prepared_not_executed"}
 _EXPECTED_CATALOGUE_FIELDS = [
     "case_id",
     "category",
@@ -3217,8 +3219,8 @@ def validate_registers(root: Path = ROOT) -> list[str]:
         path = register_dir / name
         with path.open("r", encoding="utf-8", newline="") as f:
             rows = list(csv.reader(f))
-        if len(rows) != 1 or not rows[0] or any(not header for header in rows[0]):
-            errors.append(f"{path.name}: expected exactly one non-empty header row")
+        if not rows or not rows[0] or any(not header for header in rows[0]):
+            errors.append(f"{path.name}: expected a non-empty header row")
             continue
         for duplicate in _duplicate_values(rows[0] if rows else []):
             errors.append(f"{path.name}: duplicate header {duplicate}")
@@ -3227,6 +3229,53 @@ def validate_registers(root: Path = ROOT) -> list[str]:
             errors.append(
                 f"{path.name}: header sequence does not match the frozen register definition"
             )
+            continue
+        if name != "experiment-register.csv":
+            if len(rows) != 1:
+                errors.append(f"{path.name}: expected exactly one non-empty header row")
+            continue
+
+        experiment_ids: list[str] = []
+        for row_number, row in enumerate(rows[1:], start=2):
+            if len(row) != len(expected_header):
+                errors.append(
+                    f"{path.name}:{row_number}: row width does not match the frozen header"
+                )
+                continue
+            record = dict(zip(expected_header, row, strict=True))
+            experiment_id = record["experiment_id"]
+            experiment_ids.append(experiment_id)
+            for field in (
+                "experiment_id",
+                "hypothesis",
+                "corpus",
+                "configuration_id",
+                "baseline",
+                "execution_status",
+                "result_summary",
+                "evidence_path",
+                "limitations",
+                "date",
+            ):
+                if not record[field]:
+                    errors.append(f"{path.name}:{row_number}: {field} must not be empty")
+            if record["execution_status"] not in _EXPERIMENT_EXECUTION_STATUSES:
+                errors.append(
+                    f"{path.name}:{row_number}: unsupported execution_status "
+                    f"{record['execution_status']!r}"
+                )
+            if _SHA256_RE.fullmatch(record["input_hash"]) is None:
+                errors.append(
+                    f"{path.name}:{row_number}: input_hash must be a lowercase SHA-256"
+                )
+            if record["output_hash"]:
+                errors.append(
+                    f"{path.name}:{row_number}: prepared_not_executed must not record an output hash"
+                )
+            if _DATE_RE.fullmatch(record["date"]) is None:
+                errors.append(f"{path.name}:{row_number}: date must use YYYY-MM-DD")
+        for duplicate in _duplicate_values(experiment_ids):
+            errors.append(f"{path.name}: duplicate experiment_id {duplicate}")
     return errors
 
 
@@ -3367,7 +3416,7 @@ def main() -> int:
     print("- IDs, references, hierarchies, calendars, status, states, productive spans, supported bounds, and relationship formulas validated")
     print("- All 49 declared coordinate oracles, exclusive-resource feasibility, restricted float, and curated governing relationships recomputed")
     print("- Frozen scenarios, explanation causes, counterfactual patches, and complete objective-vector values validated from complete states")
-    print("- Register filenames, header sequences, and authoritative protocol chapters validated")
+    print("- Register filenames, header sequences, typed experiment preparation rows, and authoritative protocol chapters validated")
     print("- Objective, semantic, and deterministic profiles match frozen definitions")
     print("- Consolidated protocol matches authoritative documents")
     print("- SHA-256 manifest completeness and hashes verified")

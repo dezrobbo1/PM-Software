@@ -35,7 +35,7 @@ This bundle does **not** claim:
 - Decision gates and stop conditions
 - Change-control rules
 - Fifty semantic micro-test fixtures
-- Schemas and blank experiment registers
+- Schemas and evidence registers, including preparation-only experiment records
 - Structural and negative-regression validation, continuous integration, and complete SHA-256 manifest
 
 ## Validate the protocol and prototype
@@ -51,7 +51,7 @@ python tools/validate_phase1_governance.py
 python -m deterministic_scheduling_core run-semantic-suite
 ```
 
-The checks validate all JSON Schemas and 50 fixtures, enforce date-time formats, stable-ID and reference integrity across current and scenario states, preserve frozen coordinates, require deterministic status time for in-progress work, reject invalid calendars, WBS cycles, actual-state contradictions, malformed scenario spans and incomplete expected results; resolve structured explanation causes and counterfactual milestones against the canonical input; enforce RFC 6901 patch paths; verify the exact frozen semantic, objective and deterministic profiles; enforce the exact header sequence for every evidence register; enforce the exact preregistered fixture identities and catalogue order; independently recompute every declared relationship formula and all 49 declared canonical coordinate sets; check productive duration, supported date bounds, exclusive-resource feasibility, restricted float and curated driving relationships; recompute complete objective-vector values from complete feasible selected states; require complete approved-forecast and proposed-scenario activity coverage; ensure the authoritative chapter set and consolidated protocol are exact; and require the SHA-256 manifest to cover exactly the intended tracked files.
+The checks validate all JSON Schemas and 50 fixtures, enforce date-time formats, stable-ID and reference integrity across current and scenario states, preserve frozen coordinates, require deterministic status time for in-progress work, reject invalid calendars, WBS cycles, actual-state contradictions, malformed scenario spans and incomplete expected results; resolve structured explanation causes and counterfactual milestones against the canonical input; enforce RFC 6901 patch paths; verify the exact frozen semantic, objective and deterministic profiles; enforce the exact header sequence for every evidence register and typed preparation records in the experiment register; enforce the exact preregistered fixture identities and catalogue order; independently recompute every declared relationship formula and all 49 declared canonical coordinate sets; check productive duration, supported date bounds, exclusive-resource feasibility, restricted float and curated driving relationships; recompute complete objective-vector values from complete feasible selected states; require complete approved-forecast and proposed-scenario activity coverage; ensure the authoritative chapter set and consolidated protocol are exact; and require the SHA-256 manifest to cover exactly the intended tracked files.
 
 The Phase 1 command discovers the exact 50 frozen identities, calculates all 49
 declared reference results, retains `SEM-STA-045` as
@@ -74,8 +74,25 @@ The executable package under `src/deterministic_scheduling_core/` is limited to:
 4. exact execution of the 50 frozen semantic fixtures;
 5. canonical JSON, SHA-256 provenance and schema-valid evidence records.
 
-No optimiser, production scheduler, native P6/MS Project adapter or compatibility
-claim is included. Alternate lag calendars, cumulative capacity, fixed dates,
+No optimiser, production scheduler, native P6/MS Project input generator or
+compatibility claim is included. The Microsoft Project pilot adds only
+preparation, freeze, and strict output-evidence normalization tooling. Alternate
+lag calendars, cumulative capacity, fixed dates,
 execution modes, operational constraints and product-specific Actual Dates
 forecasting fail closed at the execution boundary. See
 `PHASE-1-REFERENCE-PROTOTYPE.md` for the architecture and evidence contract.
+
+## Microsoft Project relationship-pilot preparation
+
+`microsoft-project-relationship-v0.1` prepares twelve independent relationship
+cases, manual build/review sheets, sealed comparison oracles and pre-execution
+evidence tooling. Microsoft Project has not been executed and the three native
+evidence tracks remain separate. Exact `CAL-24X7` MSPDI serialization is not
+normatively established by the official XML reference, so adapter generation
+is explicitly `preparation_blocked`; no XML is invented and no compatibility
+claim exists. See `docs/phase1-msproject-relationship-pilot.md`.
+
+```bash
+python -m deterministic_scheduling_core prepare-msproject-relationship-pilot
+python -m deterministic_scheduling_core verify-msproject-relationship-pilot
+```

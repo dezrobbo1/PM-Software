@@ -60,3 +60,46 @@ Any protocol or oracle change requires a new preregistration and profile ID.
 Even a complete profile pass cannot establish full P6 compatibility, full
 Microsoft Project compatibility, MPP binary compatibility, safe production
 round-trip, optimiser superiority, practitioner acceptance or buyer validation.
+
+## Prepared pilot kits
+
+`pilot-kits/microsoft-project-relationship-v0.1/` is a deterministic,
+preparation-only subset for `SEM-REL-001` through `SEM-REL-012`. It keeps manual
+build instructions, per-case environment-capture templates, independent review
+sheets and sealed expected outputs in separate paths and binds the frozen
+Microsoft Project preregistration, profile and fixture bytes. The completed
+capture must record the exact observed Project ID/Unique ID/name mapping,
+Schedule From Start, native Manual calculation mode, the separate pre-calculation
+protocol state, structured action log, progress settings and evidence roles.
+Generated required values are plans rather than observations: every
+`observed_product_settings` record requires the native value, operator and
+independent-review identities, and RFC 3339 observation times. Calendar
+continuity and leveling attestations remain null in the tracked templates, and
+pre-execution actions must be strictly chronological and no later than freeze.
+Its status is `prepared_not_executed`; it contains no native result.
+
+Track A and Track B have separate exact post-execution action-log templates.
+The analysis command receives one with `--post-execution-action-log`, receives
+each actual screenshot/report as repeatable `--evidence-artifact ROLE=PATH`,
+and recomputes the action-log, stage and evidence SHA-256 values bound by the
+post-execution attestation. Track C has no executable template while its MSPDI
+input mapping remains blocked.
+
+Mandatory stop conditions use the separate
+`record-msproject-native-attempt-stop` command. It binds the live pilot, case,
+track, fixture, preregistration and profile; hashes only evidence that actually
+exists; refuses overwrite; and emits a non-claimable stopped-attempt record,
+never a native-run record or pass. The tracked
+`native-attempt-stop-record-template.json` is instructions only. Missing stage
+hashes must not be invented, and retry requires a new frozen realization.
+
+The pilot index's domain-separated input identity binds the ordered twelve
+cases, frozen preregistration/profile/fixture bytes and mapping-source-register
+bytes. Governance recomputes it from the live tree before accepting the
+experiment-register input hash.
+
+The manual track is prepared around Microsoft Project's documented built-in
+**24 Hours** calendar. MSPDI adapter creation is `preparation_blocked` because
+the official XML reference does not establish the exact serialization of a
+continuous midnight-to-midnight interval. The blocker records are not XML
+inputs and cannot support an adapter or compatibility claim.

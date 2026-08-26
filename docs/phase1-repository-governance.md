@@ -6,9 +6,9 @@ enforcement is not required for this owner-operated research repository and is
 not a completion or merge gate for Phase 1.
 
 The Phase 0 and Phase 1 workflows still run for pull requests targeting `main`
-and for pushes to `main`. Feature branches and pull requests remain the normal
-working practice, but GitHub is not required to block every alternative path at
-the server level.
+and for pushes to every branch. Feature branches and pull requests remain the
+normal working practice, but GitHub is not required to block every alternative
+path at the server level.
 
 The JSON file retains a recommended ruleset profile. Its
 `live_ruleset_required: true` field means that, if that optional profile is

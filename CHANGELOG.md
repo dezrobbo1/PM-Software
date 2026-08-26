@@ -1,5 +1,13 @@
 # Changelog
 
+## phase1-msproject-relationship-pilot-v0.1 — 2026-08-26
+
+- Prepared the twelve-case Microsoft Project relationship pilot without executing Microsoft Project or creating a native result.
+- Added deterministic manual build, independent review, sealed-oracle and pre-execution evidence tooling while preserving the three frozen evidence tracks.
+- Failed closed on the unresolved exact `CAL-24X7` MSPDI serialization; all adapter realizations remain `preparation_blocked` and no apparently valid XML was fabricated.
+- Pinned the two official GitHub Actions used by both acceptance workflows to reviewed immutable release commits and added a mutable-reference guard.
+- Preserved every frozen fixture, preregistration, comparison profile, semantic profile, objective policy and deterministic profile byte-for-byte; no optimiser or compatibility claim was added.
+
 ## phase1-evidence-governance-v0.1 — 2026-08-24
 
 - Added append-only `deterministic-v0.3`, preserving `deterministic-v0.2` and its recorded result while splitting portable semantic-result hashes from environment-bound evidence hashes.

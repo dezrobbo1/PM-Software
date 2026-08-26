@@ -11,6 +11,8 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 
+from deterministic_scheduling_core.provenance.canonical_json import canonical_bytes
+
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK_PATH = Path("requirements/phase1-ci.lock")
@@ -27,6 +29,38 @@ EXPECTED_DISTRIBUTIONS = {
     "six": "1.17.0",
     "typing-extensions": "4.16.0",
 }
+MSPROJECT_PILOT_ID = "microsoft-project-relationship-v0.1"
+MSPROJECT_PILOT_CASE_IDS = tuple(f"SEM-REL-{number:03d}" for number in range(1, 13))
+MSPROJECT_PILOT_INPUT_IDENTITY_DOMAIN = (
+    "microsoft-project-relationship-pilot-input-identity-v0.1"
+)
+ACCEPTANCE_WORKFLOWS = {
+    "validate-phase0.yml": "phase0-validation",
+    "validate-phase1.yml": "phase1-validation",
+}
+REVIEWED_ACTION_PINS = {
+    "actions/checkout": {
+        "sha": "11d5960a326750d5838078e36cf38b85af677262",
+        "release_tag": "v4.4.0",
+    },
+    "actions/setup-python": {
+        "sha": "a26af69be951a213d495a4c3e4e4022e16d87065",
+        "release_tag": "v5.6.0",
+    },
+}
+_FULL_COMMIT_SHA = re.compile(r"[0-9a-f]{40}")
+_ACTION_REFERENCE = re.compile(
+    r"^\s*-\s+uses:\s+([^@\s#]+)@([^\s#]+)(?:\s+#\s*(\S+)\s*)?$"
+)
+_EXPECTED_WORKFLOW_TRIGGER_LINES = [
+    "on:",
+    "  push:",
+    "    branches:",
+    '      - "**"',
+    "  pull_request:",
+    "    branches:",
+    "      - main",
+]
 EXPECTED_GOVERNANCE = {
     "schema_version": "repository-governance-v0.1",
     "target": "default_branch",
@@ -479,18 +513,69 @@ def validate_native_preregistrations(root: Path = ROOT) -> list[str]:
     return errors
 
 
+def _workflow_trigger_errors(filename: str, text: str) -> list[str]:
+    lines = text.splitlines()
+    try:
+        start = lines.index("on:")
+    except ValueError:
+        return [f"{filename}: workflow trigger declaration is missing"]
+    end = start + 1
+    while end < len(lines):
+        line = lines[end]
+        if line and not line.startswith((" ", "\t", "#")):
+            break
+        end += 1
+    trigger_lines = [line for line in lines[start:end] if line and not line.lstrip().startswith("#")]
+    if trigger_lines != _EXPECTED_WORKFLOW_TRIGGER_LINES:
+        return [
+            f"{filename}: push must cover every feature branch and pull_request must target only main"
+        ]
+    return []
+
+
+def _workflow_action_pin_errors(filename: str, text: str) -> list[str]:
+    errors: list[str] = []
+    seen = {action: 0 for action in REVIEWED_ACTION_PINS}
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if "uses:" not in line or line.lstrip().startswith("#"):
+            continue
+        match = _ACTION_REFERENCE.fullmatch(line)
+        if match is None:
+            errors.append(f"{filename}:{line_number}: action reference is not a pinned uses declaration")
+            continue
+        action, reference, comment = match.groups()
+        reviewed = REVIEWED_ACTION_PINS.get(action)
+        if reviewed is None:
+            errors.append(f"{filename}:{line_number}: unreviewed or non-official action {action} is forbidden")
+            continue
+        seen[action] += 1
+        if _FULL_COMMIT_SHA.fullmatch(reference) is None:
+            errors.append(
+                f"{filename}:{line_number}: {action} must use an immutable full commit SHA"
+            )
+        elif reference != reviewed["sha"]:
+            errors.append(
+                f"{filename}:{line_number}: {action} does not use the reviewed commit SHA"
+            )
+        if comment != reviewed["release_tag"]:
+            errors.append(
+                f"{filename}:{line_number}: {action} must retain reviewed release tag comment "
+                f"{reviewed['release_tag']}"
+            )
+    for action, count in seen.items():
+        if count != 1:
+            errors.append(f"{filename}: {action} must appear exactly once at its reviewed pin")
+    return errors
+
+
 def validate_workflow_governance(root: Path = ROOT) -> list[str]:
     errors: list[str] = []
-    workflows = {
-        "validate-phase0.yml": "phase0-validation",
-        "validate-phase1.yml": "phase1-validation",
-    }
     install_lock = (
         "python -m pip install --require-hashes --only-binary=:all: "
         "-r requirements/phase1-ci.lock"
     )
     install_project = "python -m pip install --no-deps --no-build-isolation -e ."
-    for filename, check_name in workflows.items():
+    for filename, check_name in ACCEPTANCE_WORKFLOWS.items():
         path = root / ".github" / "workflows" / filename
         if not path.is_file():
             errors.append(f"workflow is missing: {filename}")
@@ -498,8 +583,8 @@ def validate_workflow_governance(root: Path = ROOT) -> list[str]:
         text = path.read_text(encoding="utf-8")
         if f"  {check_name}:" not in text or f"name: {check_name}" not in text:
             errors.append(f"{filename}: stable unique check name {check_name} is missing")
-        if text.count("      - main") != 2:
-            errors.append(f"{filename}: push and pull_request must both target main")
+        errors.extend(_workflow_trigger_errors(filename, text))
+        errors.extend(_workflow_action_pin_errors(filename, text))
         if "phase0-protocol-freeze" in text or "phase1-reference-cpm-kernel" in text:
             errors.append(f"{filename}: obsolete branch trigger remains")
         if install_lock not in text or install_project not in text:
@@ -509,6 +594,165 @@ def validate_workflow_governance(root: Path = ROOT) -> list[str]:
     governance_path = root / ".github" / "repository-governance.json"
     if not governance_path.is_file() or _load_json(governance_path) != EXPECTED_GOVERNANCE:
         errors.append("tracked repository governance policy does not match the required main ruleset")
+    return errors
+
+
+def recompute_msproject_pilot_input_identity(
+    root: Path, kit: Path
+) -> tuple[dict[str, Any], str]:
+    """Recompute the pilot input projection from live raw repository bytes."""
+
+    preregistration_path = Path(
+        "native-validation/preregistrations/"
+        "microsoft-project-semantic-microcases-v0.1.json"
+    )
+    comparison_profile_path = Path(
+        "native-validation/profiles/"
+        "microsoft-project-semantic-comparison-profile-v0.1.json"
+    )
+
+    def raw_sha256(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    projection = {
+        "hash_domain": MSPROJECT_PILOT_INPUT_IDENTITY_DOMAIN,
+        "pilot_id": MSPROJECT_PILOT_ID,
+        "ordered_case_ids": list(MSPROJECT_PILOT_CASE_IDS),
+        "preregistration": {
+            "relative_path": preregistration_path.as_posix(),
+            "raw_sha256": raw_sha256(root / preregistration_path),
+        },
+        "comparison_profile": {
+            "relative_path": comparison_profile_path.as_posix(),
+            "raw_sha256": raw_sha256(root / comparison_profile_path),
+        },
+        "fixtures": [
+            {
+                "case_id": case_id,
+                "relative_path": (
+                    f"benchmarks/semantic/cases/{case_id.lower()}.json"
+                ),
+                "raw_sha256": raw_sha256(
+                    root
+                    / "benchmarks"
+                    / "semantic"
+                    / "cases"
+                    / f"{case_id.lower()}.json"
+                ),
+            }
+            for case_id in MSPROJECT_PILOT_CASE_IDS
+        ],
+        "mapping_source_register": {
+            "relative_path": "mapping-source-register.json",
+            "raw_sha256": raw_sha256(kit / "mapping-source-register.json"),
+        },
+    }
+    return projection, hashlib.sha256(canonical_bytes(projection)).hexdigest()
+
+
+def validate_msproject_relationship_pilot(root: Path = ROOT) -> list[str]:
+    """Validate the tracked preparation kit without treating it as native evidence."""
+
+    errors: list[str] = []
+    kit = root / "native-validation" / "pilot-kits" / MSPROJECT_PILOT_ID
+    if not kit.is_dir():
+        return ["Microsoft Project relationship pilot kit is missing"]
+
+    try:
+        from deterministic_scheduling_core.native.msproject.pilot import verify_pilot
+
+        summary = verify_pilot(kit, repository_root=root)
+    except Exception as exc:
+        return [f"Microsoft Project relationship pilot regeneration failed: {exc}"]
+    if summary.get("status") != "prepared_not_executed":
+        errors.append("Microsoft Project relationship pilot status is not prepared_not_executed")
+    if summary.get("case_ids") != list(MSPROJECT_PILOT_CASE_IDS):
+        errors.append("Microsoft Project relationship pilot case identity/order changed")
+    if summary.get("adapter_preparation_status") != "preparation_blocked":
+        errors.append("Microsoft Project adapter preparation is not fail-closed")
+    if summary.get("full_45_case_gate_satisfied") is not False:
+        errors.append("partial Microsoft Project pilot incorrectly satisfies the 45-case gate")
+
+    index_path = kit / "pilot-index.json"
+    try:
+        index = _load_json(index_path)
+    except Exception as exc:
+        errors.append(f"Microsoft Project pilot index is invalid JSON: {exc}")
+        index = {}
+    try:
+        input_projection, input_digest = recompute_msproject_pilot_input_identity(
+            root, kit
+        )
+    except Exception as exc:
+        errors.append(f"Microsoft Project pilot input identity cannot be recomputed: {exc}")
+        input_projection, input_digest = {}, ""
+    input_identity = index.get("pilot_input_identity", {}) if isinstance(index, dict) else {}
+    if input_identity != {
+        "hash_algorithm": "sha256",
+        "canonical_serialization": "dsc-canonical-json-v1",
+        "projection": input_projection,
+        "sha256": input_digest,
+    }:
+        errors.append(
+            "Microsoft Project pilot input identity does not match live canonical inputs"
+        )
+    boundary = index.get("claim_boundary", {}) if isinstance(index, dict) else {}
+    for field in (
+        "native_execution_performed",
+        "native_semantic_claim",
+        "adapter_execution_performed",
+        "adapter_interchange_claim",
+        "full_microsoft_project_compatibility_claim",
+        "optimizer_benchmark_performed",
+        "optimizer_superiority_claim",
+        "full_45_case_gate_satisfied",
+    ):
+        if boundary.get(field) is not False:
+            errors.append(f"Microsoft Project pilot claim boundary does not keep {field} false")
+
+    tracked_payloads = sorted(path for path in kit.rglob("*") if path.is_file())
+    if len(tracked_payloads) != 83:
+        errors.append(
+            f"Microsoft Project pilot must contain exactly 83 prepared files, found {len(tracked_payloads)}"
+        )
+    forbidden_suffixes = {".mpp", ".mpx", ".xml"}
+    forbidden = [
+        path.relative_to(root).as_posix()
+        for path in tracked_payloads
+        if path.suffix.lower() in forbidden_suffixes
+    ]
+    if forbidden:
+        errors.append("prepared pilot contains forbidden native/adapter payloads: " + ", ".join(forbidden))
+    for path in tracked_payloads:
+        if b'"executed_pass"' in path.read_bytes():
+            errors.append(
+                f"{path.relative_to(root).as_posix()}: preparation must not contain executed_pass"
+            )
+
+    register_path = root / "registers" / "experiment-register.csv"
+    try:
+        with register_path.open(encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+    except Exception as exc:
+        errors.append(f"experiment register cannot be read: {exc}")
+        rows = []
+    pilot_rows = [row for row in rows if row.get("experiment_id") == MSPROJECT_PILOT_ID]
+    if len(pilot_rows) != 1:
+        errors.append("experiment register must contain exactly one Microsoft Project pilot row")
+    else:
+        row = pilot_rows[0]
+        if row.get("execution_status") != "prepared_not_executed":
+            errors.append("experiment register incorrectly records a native execution status")
+        if row.get("input_hash") != input_digest:
+            errors.append(
+                "experiment register pilot input identity digest does not match live inputs"
+            )
+        if row.get("output_hash"):
+            errors.append("prepared Microsoft Project pilot must not record a native output hash")
+        if row.get("evidence_path") != (
+            "native-validation/pilot-kits/microsoft-project-relationship-v0.1"
+        ):
+            errors.append("experiment register pilot evidence path is incorrect")
     return errors
 
 
@@ -530,6 +774,7 @@ def collect_errors(root: Path = ROOT) -> list[str]:
         validate_dependency_lock(root)
         + validate_native_preregistrations(root)
         + validate_workflow_governance(root)
+        + validate_msproject_relationship_pilot(root)
         + validate_metadata(root)
     )
 
@@ -544,7 +789,8 @@ def main() -> int:
     print("PHASE 1 GOVERNANCE VALIDATION: PASS")
     print("- complete hash-locked dependency closure verified")
     print("- P6 and Microsoft Project preregistrations remain separate and unexecuted")
-    print("- main/PR workflow policy and unique required-check names verified")
+    print("- feature-branch push/main PR workflow policy and immutable action pins verified")
+    print("- deterministic 12-case Microsoft Project pilot remains prepared-only and adapter-blocked")
     print("- exact Phase 1 test metadata and named hash domains verified")
     return 0
 
