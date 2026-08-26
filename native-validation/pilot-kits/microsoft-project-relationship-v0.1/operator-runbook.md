@@ -17,8 +17,10 @@ can establish observed native behavior.
 
 ## Before any track
 
-Verify the raw preregistration, comparison-profile, and case-fixture hashes in
-`pilot-index.json`. Copy the selected file under
+Verify the raw preregistration, comparison-profile, and source-only case
+projection hashes in `pilot-index.json`. Operator-visible bindings deliberately
+do not identify the oracle-bearing frozen fixture; that full-fixture binding
+exists only inside the sealed comparison artifact. Copy the selected file under
 `tracks/manual_native_semantic_parity/environment-capture-templates/`,
 `post-execution-attestation-template.json`, and the selected case sheets into
 the ignored controlled execution workspace. Copy the matching Track A or Track
@@ -221,7 +223,9 @@ union is exactly the six roles shown above.
 6. Submit the separate reopen evidence for independent review.
 
 This track can test stability only. It cannot satisfy the native-semantic or
-adapter-interchange track.
+adapter-interchange track. Do not supply `--sealed-expected`: Track B compares
+only its independently normalized pre-close and post-recalculation observations,
+and the analyser rejects access to the Track A oracle.
 
 Example Track B freeze, using the same native source and exact environment file:
 
@@ -309,8 +313,9 @@ adapter-interchange or compatibility claim.
 
 For every stopped attempt, use the dedicated recorder rather than inventing
 missing stage hashes or forcing the normal analyser to accept an incomplete
-bundle. The recorder rebinds the pilot, case, track, fixture, preregistration
-and comparison profile to the live repository; hashes only artifacts that
+bundle. The recorder rebinds the pilot, case, track, source-only projection,
+registry-backed full-fixture digest, preregistration, and comparison profile;
+hashes only artifacts that
 actually exist; refuses to overwrite its output; and can never emit a native
 run record, `executed_pass`, or claim-eligible evidence. Supply a valid frozen
 manifest and its environment capture when they exist. Omit the manifest when a

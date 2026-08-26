@@ -86,7 +86,9 @@ forecasting fail closed at the execution boundary. See
 
 `microsoft-project-relationship-v0.1` prepares twelve independent relationship
 cases, manual build/review sheets, sealed comparison oracles and pre-execution
-evidence tooling. Microsoft Project has not been executed and the three native
+evidence tooling. Operator-visible materials bind deterministic source-only
+case projections, while full oracle-bearing fixture bindings remain inside the
+sealed comparison path. Microsoft Project has not been executed and the three native
 evidence tracks remain separate. Exact `CAL-24X7` MSPDI serialization is not
 normatively established by the official XML reference, so adapter generation
 is explicitly `preparation_blocked`; no XML is invented and no compatibility

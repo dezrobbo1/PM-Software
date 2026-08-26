@@ -8,6 +8,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from deterministic_scheduling_core.canonical.frozen_suite import (
+    EXPECTED_FIXTURE_SHA256_BY_FILENAME,
+)
 from deterministic_scheduling_core.native.msproject.freeze import (
     INDEPENDENT_VERIFICATION_EVIDENCE_ROLES,
     NativeEvidenceError,
@@ -23,6 +26,7 @@ from deterministic_scheduling_core.native.msproject.normalizer import (
     MSPDI_NAMESPACE,
     NativeOutputError,
     POST_EXECUTION_ACTION_IDS_BY_TRACK,
+    _release_tracked_sealed_expected,
     _validate_post_execution_action_log,
     _hash_independent_evidence_artifacts,
     _hash_stage_artifacts,
@@ -66,6 +70,16 @@ class MicrosoftProjectFreezeTests(unittest.TestCase):
         self.preregistration.write_bytes(b'{"frozen":"preregistration"}\n')
         self.profile.write_bytes(b'{"frozen":"profile"}\n')
         self.fixture.write_bytes(b'{"case_id":"SEM-REL-001"}\n')
+        self.source_projection = (
+            self.root
+            / "native-validation/pilot-kits/microsoft-project-relationship-v0.1/"
+            "source-only-case-projections/SEM-REL-001.json"
+        )
+        self.source_projection.parent.mkdir(parents=True)
+        write_canonical_json(
+            self.source_projection,
+            {"case_id": "SEM-REL-001", "source_only": True},
+        )
         self.native_input = self.root / "native-input.mpp"
         self.native_input.write_bytes(
             b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1synthetic opaque pre-calculation test bytes"
@@ -80,7 +94,9 @@ class MicrosoftProjectFreezeTests(unittest.TestCase):
             self.sealed_expected,
             {
                 "case_id": "SEM-REL-001",
-                "fixture_raw_sha256": _raw_sha(self.fixture),
+                "fixture_raw_sha256": EXPECTED_FIXTURE_SHA256_BY_FILENAME[
+                    "sem-rel-001.json"
+                ],
                 "expected_normalized": {
                     "activity_times": {
                         "A": {"start": 0, "finish": 4},
@@ -332,9 +348,11 @@ class MicrosoftProjectFreezeTests(unittest.TestCase):
                 {
                     "case_id": "SEM-REL-001",
                     "adapter_preparation_status": "prepared_not_executed",
-                    "fixture": {
-                        "relative_path": str(self.fixture.relative_to(self.root)),
-                        "raw_sha256": _raw_sha(self.fixture),
+                    "source_only_case_projection": {
+                        "relative_path": str(
+                            self.source_projection.relative_to(self.root)
+                        ),
+                        "raw_sha256": _raw_sha(self.source_projection),
                     },
                     "sealed_expected_normalized": {
                         "relative_path": "sealed-expected-normalized/SEM-REL-001.json",
@@ -403,10 +421,48 @@ class MicrosoftProjectFreezeTests(unittest.TestCase):
             attestation_no_native_result_observed_before_freeze=True,
         )
 
+    def _retained_adapter_manifest(self, output_name: str) -> dict[str, object]:
+        """Model retained Track-C bytes without going through adapter freeze."""
+
+        manifest = json.loads(json.dumps(self._freeze(output_name).manifest))
+        environment = json.loads(json.dumps(self.environment))
+        environment["native_file_format"] = "mspdi_xml"
+        environment["native_source_file_format"] = "mspdi_xml"
+        write_canonical_json(self.environment_path, environment)
+        manifest["execution_track_id"] = "adapter_interchange_round_trip"
+        manifest["native_source_file_format"] = "mspdi_xml"
+        manifest["captured_product_environment"] = environment
+        manifest["environment_capture_sha256"] = _raw_sha(self.environment_path)
+        validate_case_realisation_manifest_against_repository(
+            repository_root=self.root,
+            document=manifest,
+            environment_capture_path=self.environment_path,
+        )
+        return manifest
+
+    def _bind_manifest_to_current_pilot_index(
+        self, manifest: dict[str, object]
+    ) -> None:
+        write_canonical_json(self.pilot_index_path, self.pilot_index)
+        manifest["pilot_index_raw_sha256"] = _raw_sha(self.pilot_index_path)
+        manifest["pilot_index_canonical_sha256"] = hashlib.sha256(
+            canonical_text(self.pilot_index).encode("utf-8")
+        ).hexdigest()
+
     def test_freeze_hashes_input_and_writes_only_metadata(self) -> None:
         result = self._freeze()
         self.assertEqual(result.manifest["native_source_file_sha256"], _raw_sha(self.native_input))
-        self.assertEqual(result.manifest["fixture_raw_sha256"], _raw_sha(self.fixture))
+        self.assertEqual(
+            result.manifest["fixture_raw_sha256"],
+            EXPECTED_FIXTURE_SHA256_BY_FILENAME["sem-rel-001.json"],
+        )
+        self.assertEqual(
+            result.manifest["source_only_projection_raw_sha256"],
+            _raw_sha(self.source_projection),
+        )
+        manifest_text = result.manifest_path.read_text(encoding="utf-8")
+        self.assertNotIn("sealed-expected-normalized", manifest_text)
+        self.assertNotIn("benchmarks/semantic/cases", manifest_text)
         self.assertEqual(result.manifest_sha256, _raw_sha(result.manifest_path))
         self.assertFalse(result.manifest["raw_native_file_embedded"])
         self.assertEqual(
@@ -470,8 +526,8 @@ class MicrosoftProjectFreezeTests(unittest.TestCase):
             )
 
     def test_freeze_rejects_binding_mutation(self) -> None:
-        self.fixture.write_bytes(b'{"case_id":"SEM-REL-MUTATED"}\n')
-        with self.assertRaisesRegex(NativeEvidenceError, "fixture raw hash mismatch"):
+        self.source_projection.write_bytes(b'{"case_id":"SEM-REL-MUTATED"}\n')
+        with self.assertRaisesRegex(NativeEvidenceError, "source-only projection raw hash"):
             self._freeze("mutated-fixture")
 
     def test_freeze_rejects_an_index_other_than_the_tracked_kit_index(self) -> None:
@@ -747,7 +803,7 @@ class MicrosoftProjectFreezeTests(unittest.TestCase):
         write_canonical_json(
             forged_path,
             {
-                "schema_version": "msproject-case-realisation-manifest-v0.1",
+                "schema_version": "msproject-case-realisation-manifest-v0.2",
                 "pilot_id": PILOT_ID,
                 "native_system": "microsoft_project",
                 "state": "frozen_before_native_calculation",
@@ -802,12 +858,60 @@ class MicrosoftProjectFreezeTests(unittest.TestCase):
 
     def test_repository_validator_rechecks_live_tracked_bindings(self) -> None:
         manifest = self._freeze("repository-bound-manifest").manifest
-        self.sealed_expected.write_bytes(self.sealed_expected.read_bytes() + b" ")
-        with self.assertRaisesRegex(NativeEvidenceError, "sealed expected bytes"):
+        self.source_projection.write_bytes(self.source_projection.read_bytes() + b" ")
+        with self.assertRaisesRegex(NativeEvidenceError, "source-only projection bytes"):
             validate_case_realisation_manifest_against_repository(
                 repository_root=self.root,
                 document=manifest,
                 environment_capture_path=self.environment_path,
+            )
+
+    def test_preexecution_rebinding_never_reads_fixture_or_sealed_oracle(self) -> None:
+        self.sealed_expected.unlink()
+        self.fixture.unlink()
+        manifest = self._freeze("oracle-blind-preexecution").manifest
+        validate_case_realisation_manifest_against_repository(
+            repository_root=self.root,
+            document=manifest,
+            environment_capture_path=self.environment_path,
+        )
+        tampered = dict(manifest)
+        tampered["fixture_raw_sha256"] = "0" * 64
+        with self.assertRaisesRegex(NativeEvidenceError, "frozen suite registry"):
+            validate_case_realisation_manifest_against_repository(
+                repository_root=self.root,
+                document=tampered,
+                environment_capture_path=self.environment_path,
+            )
+
+    def test_post_observation_seal_release_rejects_non_case_specific_path(self) -> None:
+        manifest = dict(self._freeze("unsafe-seal-release").manifest)
+        self.pilot_index["cases"][0]["sealed_expected_normalized"][
+            "relative_path"
+        ] = "../../../../../outside-sealed.json"
+        self._bind_manifest_to_current_pilot_index(manifest)
+        with self.assertRaisesRegex(
+            NativeOutputError, "exact case-specific pilot-kit path"
+        ):
+            _release_tracked_sealed_expected(
+                repository_root=self.root,
+                manifest=manifest,
+                supplied_path=None,
+            )
+
+    def test_post_observation_seal_release_rejects_postfreeze_index_substitution(
+        self,
+    ) -> None:
+        manifest = self._freeze("index-bound-seal-release").manifest
+        self.pilot_index["cases"][0]["sealed_expected_normalized"]["sha256"] = (
+            "0" * 64
+        )
+        write_canonical_json(self.pilot_index_path, self.pilot_index)
+        with self.assertRaisesRegex(NativeOutputError, "changed after the pre-execution"):
+            _release_tracked_sealed_expected(
+                repository_root=self.root,
+                manifest=manifest,
+                supplied_path=None,
             )
 
     def test_repository_rebinder_rejects_tampered_manifest_binding(self) -> None:
@@ -824,6 +928,60 @@ class MicrosoftProjectFreezeTests(unittest.TestCase):
                 repository_root=self.root,
                 document=tampered,
                 environment_capture_path=self.environment_path,
+            )
+
+    def test_repository_rebinder_rejects_case_blocked_retained_adapter_manifest(
+        self,
+    ) -> None:
+        manifest = self._retained_adapter_manifest("retained-adapter-case-blocker")
+        self.pilot_index["cases"][0][
+            "adapter_preparation_status"
+        ] = "preparation_blocked"
+        self.pilot_index["cases"][0]["adapter_preparation_blocked_reason"] = (
+            "case-specific CAL-24X7 MSPDI mapping remains unresolved"
+        )
+        self._bind_manifest_to_current_pilot_index(manifest)
+
+        with self.assertRaisesRegex(
+            NativeEvidenceError, "case adapter_preparation_status.*CAL-24X7"
+        ):
+            validate_case_realisation_manifest_against_repository(
+                repository_root=self.root,
+                document=manifest,
+                environment_capture_path=self.environment_path,
+            )
+
+    def test_analyser_rejects_top_level_blocked_retained_adapter_manifest(
+        self,
+    ) -> None:
+        manifest = self._retained_adapter_manifest("retained-adapter-top-blocker")
+        self.pilot_index["execution_tracks"] = [
+            {
+                "track_id": "adapter_interchange_round_trip",
+                "adapter_preparation_status": "preparation_blocked",
+            }
+        ]
+        self._bind_manifest_to_current_pilot_index(manifest)
+        manifest_path = self.root / "retained-adapter-manifest.json"
+        write_canonical_json(manifest_path, manifest)
+
+        with self.assertRaisesRegex(
+            NativeEvidenceError,
+            "blocked by pilot execution-track adapter_preparation_status",
+        ):
+            analyse_msproject_native_output(
+                repository_root=self.root,
+                native_output_path=self.root / "unread-native-output.xml",
+                case_realisation_manifest_path=manifest_path,
+                sealed_expected_path=self.sealed_expected,
+                environment_capture_path=self.environment_path,
+                post_execution_attestation_path=self.root / "unread-attestation.json",
+                post_execution_action_log_path=self.root / "unread-actions.json",
+                stage_artifact_paths={},
+                independent_evidence_artifact_paths={},
+                output_dir=self.root / "unwritten-analysis",
+                run_id="must-not-be-created",
+                executed_at="2026-08-26T11:00:00+08:00",
             )
 
     def test_freeze_rejects_future_product_observation(self) -> None:
@@ -877,6 +1035,17 @@ class MicrosoftProjectFreezeTests(unittest.TestCase):
         self.assertEqual(
             stopped.record["record_type"], "native_attempt_stop_non_claimable"
         )
+        self.assertEqual(
+            stopped.record["fixture_raw_sha256"],
+            EXPECTED_FIXTURE_SHA256_BY_FILENAME["sem-rel-001.json"],
+        )
+        self.assertEqual(
+            stopped.record["source_only_projection_raw_sha256"],
+            _raw_sha(self.source_projection),
+        )
+        stopped_text = stopped.record_path.read_text(encoding="utf-8")
+        self.assertNotIn("benchmarks/semantic/cases", stopped_text)
+        self.assertNotIn("sealed-expected-normalized", stopped_text)
         self.assertFalse(stopped.record["case_realisation_manifest_available"])
         self.assertFalse(stopped.record["environment_capture_available"])
         self.assertIsNone(stopped.record["case_realisation_manifest_sha256"])
@@ -884,9 +1053,8 @@ class MicrosoftProjectFreezeTests(unittest.TestCase):
         self.assertFalse(
             stopped.record["claim_boundary"]["native_run_evidence_record_exists"]
         )
-        serialized = stopped.record_path.read_text(encoding="utf-8")
-        self.assertNotIn('"status"', serialized)
-        self.assertNotIn('"status":"executed_pass"', serialized)
+        self.assertNotIn('"status"', stopped_text)
+        self.assertNotIn('"status":"executed_pass"', stopped_text)
         with self.assertRaisesRegex(NativeEvidenceError, "never overwritten"):
             record_msproject_native_attempt_stop(
                 repository_root=self.root,
@@ -988,15 +1156,37 @@ class MicrosoftProjectNormalizerTests(unittest.TestCase):
             "validate_case_realisation_manifest_against_repository"
         )
         self.mock_rebinder = self.rebinder_patcher.start()
+        self.seal_release_patcher = patch(
+            "deterministic_scheduling_core.native.msproject.normalizer."
+            "_release_tracked_sealed_expected",
+            side_effect=self._release_synthetic_sealed_expected,
+        )
+        self.mock_seal_release = self.seal_release_patcher.start()
 
     def tearDown(self) -> None:
+        self.seal_release_patcher.stop()
         self.rebinder_patcher.stop()
         self.temporary.cleanup()
 
     @staticmethod
+    def _release_synthetic_sealed_expected(
+        *,
+        repository_root: Path,
+        manifest: dict[str, object],
+        supplied_path: Path | None,
+    ):
+        del repository_root, manifest
+        if supplied_path is None:
+            raise NativeOutputError("synthetic Track-A seal path is required")
+        snapshot = read_regular_file_snapshot(
+            supplied_path, label="sealed expected artifact"
+        )
+        return json.loads(snapshot.data.decode("utf-8")), snapshot
+
+    @staticmethod
     def _manifest() -> dict[str, object]:
         return {
-            "schema_version": "msproject-case-realisation-manifest-v0.1",
+            "schema_version": "msproject-case-realisation-manifest-v0.2",
             "pilot_id": PILOT_ID,
             "native_system": "microsoft_project",
             "state": "frozen_before_native_calculation",
@@ -1004,7 +1194,14 @@ class MicrosoftProjectNormalizerTests(unittest.TestCase):
             "case_id": "SEM-REL-001",
             "execution_track_id": "manual_native_semantic_parity",
             "prerequisite_manual_case_realization_manifest_sha256": None,
-            "fixture_raw_sha256": "1" * 64,
+            "fixture_raw_sha256": EXPECTED_FIXTURE_SHA256_BY_FILENAME[
+                "sem-rel-001.json"
+            ],
+            "source_only_projection_path": (
+                "native-validation/pilot-kits/microsoft-project-relationship-v0.1/"
+                "source-only-case-projections/SEM-REL-001.json"
+            ),
+            "source_only_projection_raw_sha256": "2" * 64,
             "preregistration_id": "microsoft-project-semantic-microcases-v0.1",
             "preregistration_raw_sha256": "69594ba766cea5f204bc41f99f49af28a65b6f543919dad2bee702a9f6e0b647",
             "comparison_profile_id": "microsoft-project-semantic-comparison-profile-v0.1",
@@ -1674,7 +1871,15 @@ class MicrosoftProjectNormalizerTests(unittest.TestCase):
             sealed_path,
             {
                 "case_id": "SEM-REL-001",
-                "fixture_raw_sha256": "1" * 64,
+                "source_bindings": {
+                    "fixture": {
+                        "path": "benchmarks/semantic/cases/sem-rel-001.json",
+                        "raw_sha256": _raw_sha(
+                            self.repository_root
+                            / "benchmarks/semantic/cases/sem-rel-001.json"
+                        ),
+                    }
+                },
                 "expected_normalized_output": {
                     "activity_times": {
                         "A": {"start": 0, "finish": 4},
@@ -1685,7 +1890,6 @@ class MicrosoftProjectNormalizerTests(unittest.TestCase):
             },
         )
         self.manifest["environment_capture_sha256"] = _raw_sha(environment_path)
-        self.manifest["sealed_expected_raw_sha256"] = _raw_sha(sealed_path)
         write_canonical_json(manifest_path, self.manifest)
         stage_path = self.root / "synthetic-test-only-native-calculated.mpp"
         stage_path.write_bytes(
@@ -2073,6 +2277,252 @@ class MicrosoftProjectNormalizerTests(unittest.TestCase):
         self.assertNotIn('"status":"executed_pass"', emitted)
         self.assertNotIn('"full_45_case_gate_satisfied":true', emitted)
 
+    def test_normalized_observation_is_durable_before_missing_oracle_is_opened(self) -> None:
+        """A missing comparison control must not erase the native observation."""
+
+        xml_path, manifest_path, environment_path, sealed_path, stage_paths = (
+            self._analysis_inputs()
+        )
+        attestation_path = self._write_simulated_attestation(
+            xml_path=xml_path,
+            manifest_path=manifest_path,
+            environment_path=environment_path,
+            stage_paths=stage_paths,
+        )
+        sealed_path.unlink()
+        self.mock_seal_release.reset_mock()
+        output_dir = self.root / "analysis-missing-sealed-oracle"
+        original_snapshot_reader = read_regular_file_snapshot
+
+        def observed_snapshot_read(path: Path, *, label: str, max_bytes=None):
+            if label == "sealed expected artifact":
+                retained = output_dir / "normalized-native-output.json"
+                self.assertTrue(retained.is_file())
+                retained_document = json.loads(retained.read_text(encoding="utf-8"))
+                self.assertEqual(
+                    _raw_sha(retained),
+                    hashlib.sha256(
+                        (canonical_text(retained_document) + "\n").encode("utf-8")
+                    ).hexdigest(),
+                )
+            return original_snapshot_reader(path, label=label, max_bytes=max_bytes)
+
+        with patch(
+            "deterministic_scheduling_core.native.msproject.normalizer."
+            "read_regular_file_snapshot",
+            side_effect=observed_snapshot_read,
+        ):
+            analysis = analyse_msproject_native_output(
+                repository_root=self.repository_root,
+                native_output_path=xml_path,
+                case_realisation_manifest_path=manifest_path,
+                sealed_expected_path=sealed_path,
+                environment_capture_path=environment_path,
+                post_execution_attestation_path=attestation_path,
+                post_execution_action_log_path=self.latest_action_log_path,
+                stage_artifact_paths=stage_paths,
+                independent_evidence_artifact_paths=self.latest_evidence_paths,
+                output_dir=output_dir,
+                run_id="synthetic-parser-run-missing-oracle",
+                executed_at="2026-08-26T11:00:00+08:00",
+            )
+
+        retained = output_dir / "normalized-native-output.json"
+        self.assertEqual(analysis.native_run_record["status"], "executed_inconclusive")
+        self.assertEqual(
+            analysis.native_run_record["normalized_output_sha256"], _raw_sha(retained)
+        )
+        self.assertEqual(
+            analysis.difference_manifest["comparison_status"], "not_completed"
+        )
+        self.assertFalse(analysis.difference_manifest["claim_field_failure"])
+        self.assertIn(
+            "sealed expected comparison did not complete",
+            analysis.native_run_record["failure_or_inconclusive_reason"],
+        )
+
+    def test_track_b_ignores_oracle_and_uses_only_exact_pre_post_stability(self) -> None:
+        """Synthetic stable observations may differ from the Track-A oracle."""
+
+        observed = self._synthetic_xml(start_b="2026-01-05T15:00:00")
+        observed = observed.replace(
+            "<FinishDate>2026-01-05T17:00:00</FinishDate>",
+            "<FinishDate>2026-01-05T18:00:00</FinishDate>",
+            1,
+        ).replace(
+            "<Finish>2026-01-05T17:00:00</Finish>",
+            "<Finish>2026-01-05T18:00:00</Finish>",
+            1,
+        )
+        (
+            xml_path,
+            manifest_path,
+            environment_path,
+            sealed_path,
+            stage_paths,
+            attestation_path,
+        ) = self._track_b_inputs(
+            pre_close_xml=observed,
+            post_recalculate_xml=observed,
+        )
+        sealed_path.unlink()
+        self.mock_seal_release.reset_mock()
+        with patch(
+            "deterministic_scheduling_core.native.msproject.normalizer."
+            "compare_normalized_output",
+            side_effect=AssertionError("Track B must not consult the Track-A oracle"),
+        ):
+            analysis = analyse_msproject_native_output(
+                repository_root=self.repository_root,
+                native_output_path=xml_path,
+                case_realisation_manifest_path=manifest_path,
+                sealed_expected_path=None,
+                environment_capture_path=environment_path,
+                post_execution_attestation_path=attestation_path,
+                post_execution_action_log_path=self.latest_action_log_path,
+                prerequisite_manual_case_realization_manifest_path=(
+                    self.latest_prerequisite_path
+                ),
+                stage_artifact_paths=stage_paths,
+                independent_evidence_artifact_paths=self.latest_evidence_paths,
+                output_dir=self.root / "synthetic-track-b-oracle-independent",
+                run_id="synthetic-track-b-oracle-independent",
+                executed_at="2026-08-26T11:00:00+08:00",
+            )
+
+        stability = analysis.evidence_bundle["reopen_stability_evidence"]
+        self.assertTrue(stability["exact_normalized_stability"])
+        self.assertFalse(stability["expected_oracle_used_for_stability_comparison"])
+        self.assertEqual(analysis.native_run_record["status"], "executed_inconclusive")
+        self.assertEqual(
+            analysis.difference_manifest["comparison_status"],
+            "not_applicable_for_reopen_stability_track",
+        )
+        self.assertFalse(analysis.difference_manifest["expected_oracle_used"])
+        self.assertFalse(analysis.difference_manifest["claim_field_failure"])
+        self.assertNotIn("sealed_expected", analysis.evidence_bundle["artifact_hashes"])
+        self.mock_seal_release.assert_not_called()
+        self.assertEqual(
+            analysis.native_run_record["fixture_raw_sha256"],
+            EXPECTED_FIXTURE_SHA256_BY_FILENAME["sem-rel-001.json"],
+        )
+
+    def test_track_b_rejects_a_supplied_sealed_expected_path(self) -> None:
+        (
+            xml_path,
+            manifest_path,
+            environment_path,
+            sealed_path,
+            stage_paths,
+            attestation_path,
+        ) = self._track_b_inputs(
+            pre_close_xml=self._synthetic_xml(),
+            post_recalculate_xml=self._synthetic_xml(),
+        )
+        with self.assertRaisesRegex(NativeOutputError, "forbids a sealed expected path"):
+            analyse_msproject_native_output(
+                repository_root=self.repository_root,
+                native_output_path=xml_path,
+                case_realisation_manifest_path=manifest_path,
+                sealed_expected_path=sealed_path,
+                environment_capture_path=environment_path,
+                post_execution_attestation_path=attestation_path,
+                post_execution_action_log_path=self.latest_action_log_path,
+                prerequisite_manual_case_realization_manifest_path=(
+                    self.latest_prerequisite_path
+                ),
+                stage_artifact_paths=stage_paths,
+                independent_evidence_artifact_paths=self.latest_evidence_paths,
+                output_dir=self.root / "synthetic-track-b-forbidden-seal",
+                run_id="synthetic-track-b-forbidden-seal",
+                executed_at="2026-08-26T11:00:00+08:00",
+            )
+
+    def test_track_a_still_fails_a_sealed_claim_field_mismatch(self) -> None:
+        """The Track B separation must not weaken Track A comparison."""
+
+        observed = self._synthetic_xml(start_b="2026-01-05T15:00:00")
+        observed = observed.replace(
+            "<FinishDate>2026-01-05T17:00:00</FinishDate>",
+            "<FinishDate>2026-01-05T18:00:00</FinishDate>",
+            1,
+        ).replace(
+            "<Finish>2026-01-05T17:00:00</Finish>",
+            "<Finish>2026-01-05T18:00:00</Finish>",
+            1,
+        )
+        xml_path, manifest_path, environment_path, sealed_path, stage_paths = (
+            self._analysis_inputs(xml_text=observed)
+        )
+        attestation_path = self._write_simulated_attestation(
+            xml_path=xml_path,
+            manifest_path=manifest_path,
+            environment_path=environment_path,
+            stage_paths=stage_paths,
+        )
+        analysis = analyse_msproject_native_output(
+            repository_root=self.repository_root,
+            native_output_path=xml_path,
+            case_realisation_manifest_path=manifest_path,
+            sealed_expected_path=sealed_path,
+            environment_capture_path=environment_path,
+            post_execution_attestation_path=attestation_path,
+            post_execution_action_log_path=self.latest_action_log_path,
+            stage_artifact_paths=stage_paths,
+            independent_evidence_artifact_paths=self.latest_evidence_paths,
+            output_dir=self.root / "synthetic-track-a-claim-mismatch",
+            run_id="synthetic-track-a-claim-mismatch",
+            executed_at="2026-08-26T11:00:00+08:00",
+        )
+        self.assertEqual(analysis.native_run_record["status"], "executed_fail")
+        self.assertTrue(analysis.difference_manifest["claim_field_failure"])
+        self.assertIn(
+            "one or more claim fields differ",
+            analysis.native_run_record["failure_or_inconclusive_reason"],
+        )
+
+    def test_analysis_revalidates_the_sealed_full_fixture_binding(self) -> None:
+        """Synthetic control tampering must block oracle release, not create a result."""
+
+        xml_path, manifest_path, environment_path, sealed_path, stage_paths = (
+            self._analysis_inputs()
+        )
+        sealed = json.loads(sealed_path.read_text(encoding="utf-8"))
+        sealed["source_bindings"]["fixture"]["raw_sha256"] = "0" * 64
+        write_canonical_json(sealed_path, sealed)
+        write_canonical_json(manifest_path, self.manifest)
+        action_log = json.loads(
+            self.latest_action_log_path.read_text(encoding="utf-8")
+        )
+        action_log["case_realization_manifest_sha256"] = _raw_sha(manifest_path)
+        write_canonical_json(self.latest_action_log_path, action_log)
+        attestation_path = self._write_simulated_attestation(
+            xml_path=xml_path,
+            manifest_path=manifest_path,
+            environment_path=environment_path,
+            stage_paths=stage_paths,
+        )
+        analysis = analyse_msproject_native_output(
+            repository_root=self.repository_root,
+            native_output_path=xml_path,
+            case_realisation_manifest_path=manifest_path,
+            sealed_expected_path=sealed_path,
+            environment_capture_path=environment_path,
+            post_execution_attestation_path=attestation_path,
+            post_execution_action_log_path=self.latest_action_log_path,
+            stage_artifact_paths=stage_paths,
+            independent_evidence_artifact_paths=self.latest_evidence_paths,
+            output_dir=self.root / "synthetic-sealed-binding-mismatch",
+            run_id="synthetic-sealed-binding-mismatch",
+            executed_at="2026-08-26T11:00:00+08:00",
+        )
+        self.assertEqual("executed_inconclusive", analysis.native_run_record["status"])
+        self.assertFalse(analysis.difference_manifest["expected_oracle_used"])
+        self.assertIn(
+            "full-fixture digest does not match the frozen manifest",
+            analysis.native_run_record["failure_or_inconclusive_reason"],
+        )
+
     def test_track_b_compares_pre_and_post_with_missing_null_distinct(self) -> None:
         """Synthetic Track B files are parser data, never Microsoft Project evidence."""
 
@@ -2097,7 +2547,7 @@ class MicrosoftProjectNormalizerTests(unittest.TestCase):
             repository_root=self.repository_root,
             native_output_path=xml_path,
             case_realisation_manifest_path=manifest_path,
-            sealed_expected_path=sealed_path,
+            sealed_expected_path=None,
             environment_capture_path=environment_path,
             post_execution_attestation_path=attestation_path,
             post_execution_action_log_path=self.latest_action_log_path,
@@ -2149,7 +2599,7 @@ class MicrosoftProjectNormalizerTests(unittest.TestCase):
             "repository_root": self.repository_root,
             "native_output_path": xml_path,
             "case_realisation_manifest_path": manifest_path,
-            "sealed_expected_path": sealed_path,
+            "sealed_expected_path": None,
             "environment_capture_path": environment_path,
             "post_execution_attestation_path": attestation_path,
             "post_execution_action_log_path": self.latest_action_log_path,
@@ -2194,7 +2644,7 @@ class MicrosoftProjectNormalizerTests(unittest.TestCase):
             repository_root=self.repository_root,
             native_output_path=xml_path,
             case_realisation_manifest_path=manifest_path,
-            sealed_expected_path=sealed_path,
+            sealed_expected_path=None,
             environment_capture_path=environment_path,
             post_execution_attestation_path=attestation_path,
             post_execution_action_log_path=self.latest_action_log_path,

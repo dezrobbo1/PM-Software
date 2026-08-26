@@ -13,17 +13,25 @@ import xml.etree.ElementTree as ET
 from jsonschema import Draft202012Validator, FormatChecker
 from rfc3339_validator import validate_rfc3339
 
+from deterministic_scheduling_core.canonical.frozen_suite import EXPECTED_FILENAME_BY_ID
 from deterministic_scheduling_core.provenance.canonical_json import (
     canonical_text,
+    sha256_digest,
     write_canonical_json,
 )
 
 from .freeze import (
     NATIVE_SYSTEM,
+    PILOT_ID,
+    PILOT_INDEX_RELATIVE_PATH,
     NativeEvidenceError,
     RegularFileSnapshot,
+    _binding_path,
+    _case_entry,
     _prepare_new_output_directory,
     _require_regular_file,
+    _safe_repository_file,
+    _sealed_expected_binding,
     load_canonical_json,
     load_canonical_json_snapshot,
     parse_canonical_json_snapshot,
@@ -530,7 +538,7 @@ def _manifest_relationship_mapping(
 
 
 def _validate_manifest_for_normalization(manifest: Mapping[str, Any]) -> None:
-    if manifest.get("schema_version") != "msproject-case-realisation-manifest-v0.1":
+    if manifest.get("schema_version") != "msproject-case-realisation-manifest-v0.2":
         raise NativeOutputError("unsupported case-realisation manifest version")
     if manifest.get("native_system") != NATIVE_SYSTEM:
         raise NativeOutputError("case-realisation manifest is not for Microsoft Project")
@@ -1779,6 +1787,92 @@ def _failed_normalization_documents(
     return normalized, difference
 
 
+def _unavailable_expected_comparison_document(
+    *,
+    case_id: str,
+    normalized_output_sha256: str,
+    error: NativeOutputError,
+) -> dict[str, Any]:
+    """Retain an oracle-release failure without relabelling the observation.
+
+    The native observation has already been normalized, written, and hashed when
+    this document is created.  A missing or corrupt sealed expectation is an
+    evidence-control failure, not a native claim-field mismatch.
+    """
+
+    return {
+        "schema_version": "microsoft-project-field-difference-manifest-v0.1",
+        "case_id": case_id,
+        "comparison_status": "not_completed",
+        "comparison_domain": "sealed_expected_vs_normalized_observation",
+        "expected_oracle_used": False,
+        "difference_classifications": [
+            "exact_match",
+            "approved_transformation_match",
+            "claim_field_mismatch",
+            "missing_claim_field",
+            "extra_unclaimed_field",
+        ],
+        "records": [
+            {
+                "case_id": case_id,
+                "activity_or_entity_id": "sealed_expected",
+                "field_path": "expected_comparison",
+                "expected_normalized_value": {"availability": "unavailable"},
+                "observed_normalized_value": {
+                    "normalization_status": "completed",
+                    "normalized_output_sha256": normalized_output_sha256,
+                },
+                "approved_transformation_id_or_null": None,
+                "classification": "extra_unclaimed_field",
+                "evidence_artifact_sha256": normalized_output_sha256,
+                "comparison_error_type": type(error).__name__,
+                "comparison_error_message": str(error),
+            }
+        ],
+        "counts": {
+            "exact_match": 0,
+            "approved_transformation_match": 0,
+            "claim_field_mismatch": 0,
+            "missing_claim_field": 0,
+            "extra_unclaimed_field": 1,
+        },
+        "claim_field_failure": False,
+        "partial_pilot_only": True,
+        "full_45_case_gate_satisfied": False,
+    }
+
+
+def _track_b_non_oracle_difference_document(*, case_id: str) -> dict[str, Any]:
+    """State explicitly that Track B has no expected-oracle comparison."""
+
+    return {
+        "schema_version": "microsoft-project-field-difference-manifest-v0.1",
+        "case_id": case_id,
+        "comparison_status": "not_applicable_for_reopen_stability_track",
+        "comparison_domain": "pre_close_vs_post_recalculate_only",
+        "expected_oracle_used": False,
+        "difference_classifications": [
+            "exact_match",
+            "approved_transformation_match",
+            "claim_field_mismatch",
+            "missing_claim_field",
+            "extra_unclaimed_field",
+        ],
+        "records": [],
+        "counts": {
+            "exact_match": 0,
+            "approved_transformation_match": 0,
+            "claim_field_mismatch": 0,
+            "missing_claim_field": 0,
+            "extra_unclaimed_field": 0,
+        },
+        "claim_field_failure": False,
+        "partial_pilot_only": True,
+        "full_45_case_gate_satisfied": False,
+    }
+
+
 def _stability_claim_projection(normalized: Mapping[str, Any]) -> dict[str, Any]:
     """Project only the claim fields allowed by the frozen comparison profile."""
 
@@ -1945,11 +2039,33 @@ def _validate_track_b_prerequisite(
     )
     exact_values = {
         "pilot_id": track_b_manifest.get("pilot_id"),
+        "pilot_index_path": track_b_manifest.get("pilot_index_path"),
+        "pilot_index_raw_sha256": track_b_manifest.get("pilot_index_raw_sha256"),
+        "pilot_index_canonical_sha256": track_b_manifest.get(
+            "pilot_index_canonical_sha256"
+        ),
         "native_system": NATIVE_SYSTEM,
         "state": "frozen_before_native_calculation",
         "case_id": track_b_manifest.get("case_id"),
         "execution_track_id": "manual_native_semantic_parity",
         "prerequisite_manual_case_realization_manifest_sha256": None,
+        "fixture_raw_sha256": track_b_manifest.get("fixture_raw_sha256"),
+        "source_only_projection_path": track_b_manifest.get(
+            "source_only_projection_path"
+        ),
+        "source_only_projection_raw_sha256": track_b_manifest.get(
+            "source_only_projection_raw_sha256"
+        ),
+        "preregistration_id": track_b_manifest.get("preregistration_id"),
+        "preregistration_path": track_b_manifest.get("preregistration_path"),
+        "preregistration_raw_sha256": track_b_manifest.get(
+            "preregistration_raw_sha256"
+        ),
+        "comparison_profile_id": track_b_manifest.get("comparison_profile_id"),
+        "comparison_profile_path": track_b_manifest.get("comparison_profile_path"),
+        "comparison_profile_raw_sha256": track_b_manifest.get(
+            "comparison_profile_raw_sha256"
+        ),
         "native_source_file_sha256": track_b_manifest.get("native_source_file_sha256"),
         "environment_capture_sha256": track_b_manifest.get("environment_capture_sha256"),
         "captured_product_environment": track_b_manifest.get(
@@ -1985,12 +2101,96 @@ def _validate_track_b_prerequisite(
     return prerequisite, snapshot
 
 
+def _release_tracked_sealed_expected(
+    *,
+    repository_root: Path,
+    manifest: Mapping[str, Any],
+    supplied_path: Path | None,
+) -> tuple[dict[str, Any], RegularFileSnapshot]:
+    """Release the case-specific tracked comparison control after observation freeze."""
+
+    index_path = _safe_repository_file(
+        repository_root,
+        PILOT_INDEX_RELATIVE_PATH,
+        label="tracked pilot index",
+    )
+    pilot_index, index_snapshot = load_canonical_json_snapshot(
+        index_path, label="tracked pilot index"
+    )
+    if (
+        pilot_index.get("pilot_id") != PILOT_ID
+        or pilot_index.get("status") != "prepared_not_executed"
+    ):
+        raise NativeOutputError(
+            "tracked pilot index is not the prepared pilot",
+            outcome="executed_inconclusive",
+        )
+    if (
+        index_snapshot.sha256 != manifest.get("pilot_index_raw_sha256")
+        or sha256_digest(pilot_index)
+        != manifest.get("pilot_index_canonical_sha256")
+    ):
+        raise NativeOutputError(
+            "tracked pilot index changed after the pre-execution freeze",
+            outcome="executed_inconclusive",
+        )
+    case_id = manifest.get("case_id")
+    if not isinstance(case_id, str):
+        raise NativeOutputError(
+            "case-realisation manifest lacks a case ID",
+            outcome="executed_inconclusive",
+        )
+    case = _case_entry(pilot_index, case_id)
+    binding = _sealed_expected_binding(case)
+    relative_within_kit = _binding_path(
+        binding, label="sealed_expected_normalized"
+    )
+    expected_relative_within_kit = f"sealed-expected-normalized/{case_id}.json"
+    if relative_within_kit != expected_relative_within_kit:
+        raise NativeOutputError(
+            "sealed expected path must be the exact case-specific pilot-kit path",
+            outcome="executed_inconclusive",
+        )
+    repository_relative = (
+        Path("native-validation")
+        / "pilot-kits"
+        / PILOT_ID
+        / Path(*relative_within_kit.split("/"))
+    ).as_posix()
+    tracked_path = _safe_repository_file(
+        repository_root,
+        repository_relative,
+        label="sealed expected artifact",
+    )
+    if supplied_path is not None and supplied_path.resolve() != tracked_path.resolve():
+        raise NativeOutputError(
+            "--sealed-expected must identify the exact tracked case-specific artifact",
+            outcome="executed_inconclusive",
+        )
+    declared_sha256 = _require_sha256(
+        binding.get("sha256", binding.get("raw_sha256")),
+        field=f"{case_id}.sealed_expected.sha256",
+    )
+    snapshot = read_regular_file_snapshot(
+        tracked_path, label="sealed expected artifact"
+    )
+    if snapshot.sha256 != declared_sha256:
+        raise NativeOutputError(
+            "sealed expected artifact bytes do not match the tracked pilot binding",
+            outcome="executed_inconclusive",
+        )
+    return (
+        parse_canonical_json_snapshot(snapshot, label="sealed expected artifact"),
+        snapshot,
+    )
+
+
 def analyse_msproject_native_output(
     *,
     repository_root: Path,
     native_output_path: Path,
     case_realisation_manifest_path: Path,
-    sealed_expected_path: Path,
+    sealed_expected_path: Path | None,
     environment_capture_path: Path,
     post_execution_attestation_path: Path,
     post_execution_action_log_path: Path,
@@ -2032,14 +2232,16 @@ def analyse_msproject_native_output(
     environment_sha256 = environment_snapshot.sha256
     if environment_sha256 != manifest.get("environment_capture_sha256"):
         raise NativeOutputError("environment capture hash does not match the frozen manifest")
-    sealed_expected_snapshot = read_regular_file_snapshot(
-        sealed_expected_path, label="sealed expected artifact"
-    )
-    if sealed_expected_snapshot.sha256 != manifest.get("sealed_expected_raw_sha256"):
-        raise NativeOutputError("sealed expected artifact hash does not match the frozen manifest")
-
     _validate_manifest_for_normalization(manifest)
     track_id = manifest.get("execution_track_id")
+    if (
+        track_id == "saved_file_reopen_recalculate_stability"
+        and sealed_expected_path is not None
+    ):
+        raise NativeOutputError(
+            "Track B forbids a sealed expected path",
+            outcome="executed_inconclusive",
+        )
     prerequisite_result = _validate_track_b_prerequisite(
         repository_root=repository_root,
         track_b_manifest=manifest,
@@ -2059,7 +2261,6 @@ def analyse_msproject_native_output(
     control_snapshots: dict[str, RegularFileSnapshot] = {
         "case-realisation manifest": manifest_snapshot,
         "environment capture": environment_snapshot,
-        "sealed expected": sealed_expected_snapshot,
         "post-execution attestation": attestation_snapshot,
         "post-execution action log": action_log_snapshot,
         "native output": native_output_snapshot,
@@ -2189,7 +2390,8 @@ def analyse_msproject_native_output(
             )
 
     normalized: dict[str, Any]
-    precomparison_normalized_sha256: str | None = None
+    difference: dict[str, Any]
+    normalization_completed = False
     try:
         normalized = normalize_mspdi_output(
             native_output_path=native_output_path,
@@ -2215,17 +2417,76 @@ def analyse_msproject_native_output(
             error=wrapped,
         )
     else:
-        # Freeze the independently normalized observation before releasing the
-        # sealed oracle to the comparison path.
-        precomparison_normalized_sha256 = _canonical_json_file_sha256(normalized)
-        try:
-            sealed_expected = parse_canonical_json_snapshot(
-                sealed_expected_snapshot, label="sealed expected artifact"
+        normalization_completed = True
+        if track_id == "saved_file_reopen_recalculate_stability":
+            difference = _track_b_non_oracle_difference_document(
+                case_id=manifest["case_id"]
             )
+
+    # Persist each independently normalized observation before resolving or
+    # opening the tracked sealed oracle.  This ordering preserves the observed native facts
+    # when the comparison control is missing, corrupt, or unavailable.
+    output_dir = _prepare_new_output_directory(
+        output_dir, purpose="microsoft-project-native-output-analysis"
+    )
+    normalized_path = output_dir / "normalized-native-output.json"
+    difference_path = output_dir / "field-difference-manifest.json"
+    environment_path = output_dir / "environment-capture.json"
+    attestation_path = output_dir / "post-execution-attestation.json"
+    manual_log_path = output_dir / "post-execution-manual-action-log.json"
+    construction_log_path = output_dir / "pre-execution-construction-action-log.json"
+    pre_close_normalized_path = output_dir / "normalized-native-output-pre-close.json"
+    stability_difference_path = output_dir / "reopen-stability-difference.json"
+    write_canonical_json(normalized_path, normalized)
+    normalized_sha = raw_file_sha256(normalized_path)
+    if normalized_sha != _canonical_json_file_sha256(normalized):
+        raise NativeOutputError(
+            "written normalized output hash differs from its precomparison freeze",
+            outcome="executed_inconclusive",
+        )
+    pre_close_normalized_sha: str | None = None
+    if track_id == "saved_file_reopen_recalculate_stability":
+        if pre_close_normalized is None:
+            raise AssertionError("Track B retained pre-close observation was not produced")
+        write_canonical_json(pre_close_normalized_path, pre_close_normalized)
+        pre_close_normalized_sha = raw_file_sha256(pre_close_normalized_path)
+        if pre_close_normalized_sha != _canonical_json_file_sha256(
+            pre_close_normalized
+        ):
+            raise NativeOutputError(
+                "written pre-close normalized hash differs from its independent freeze",
+                outcome="executed_inconclusive",
+            )
+
+    sealed_expected_snapshot: RegularFileSnapshot | None = None
+    comparison_error: NativeOutputError | None = None
+    if track_id != "saved_file_reopen_recalculate_stability" and normalization_completed:
+        try:
+            sealed_expected, sealed_expected_snapshot = _release_tracked_sealed_expected(
+                repository_root=repository_root,
+                manifest=manifest,
+                supplied_path=sealed_expected_path,
+            )
+            oracle_forbidden_files = dict(occupied_evidence_files)
+            oracle_forbidden_files.update(
+                {
+                    snapshot.file_identity: f"independent evidence {role}"
+                    for role, snapshot in evidence_snapshots.items()
+                }
+            )
+            if sealed_expected_snapshot.file_identity in oracle_forbidden_files:
+                raise NativeOutputError(
+                    "sealed expected artifact must not alias "
+                    f"{oracle_forbidden_files[sealed_expected_snapshot.file_identity]}",
+                    outcome="executed_inconclusive",
+                )
             expected_fixture_hash = sealed_expected.get(
                 "fixture_raw_sha256", sealed_expected.get("source_fixture_raw_sha256")
             )
-            if expected_fixture_hash is None:
+            expected_fixture_path = sealed_expected.get(
+                "fixture_path", sealed_expected.get("source_fixture_path")
+            )
+            if expected_fixture_hash is None or expected_fixture_path is None:
                 source_bindings = sealed_expected.get("source_bindings", {})
                 fixture_binding = (
                     source_bindings.get("fixture", {})
@@ -2233,23 +2494,55 @@ def analyse_msproject_native_output(
                     else {}
                 )
                 if isinstance(fixture_binding, Mapping):
-                    expected_fixture_hash = fixture_binding.get("raw_sha256")
-            if (
-                expected_fixture_hash is not None
-                and expected_fixture_hash != manifest.get("fixture_raw_sha256")
-            ):
+                    if expected_fixture_hash is None:
+                        expected_fixture_hash = fixture_binding.get("raw_sha256")
+                    if expected_fixture_path is None:
+                        expected_fixture_path = _binding_path(
+                            fixture_binding, label="sealed full fixture"
+                        )
+            if expected_fixture_hash is None or expected_fixture_path is None:
                 raise NativeOutputError(
-                    "sealed expected artifact is not bound to the frozen fixture"
+                    "sealed expected artifact lacks its full-fixture binding",
+                    outcome="executed_inconclusive",
+                )
+            expected_fixture_hash = _require_sha256(
+                expected_fixture_hash,
+                field="sealed_expected.full_fixture.raw_sha256",
+            )
+            if expected_fixture_hash != manifest.get("fixture_raw_sha256"):
+                raise NativeOutputError(
+                    "sealed expected artifact full-fixture digest does not match the frozen manifest",
+                    outcome="executed_inconclusive",
+                )
+            expected_fixture_relative_path = (
+                "benchmarks/semantic/cases/" + EXPECTED_FILENAME_BY_ID[manifest["case_id"]]
+            )
+            if expected_fixture_path != expected_fixture_relative_path:
+                raise NativeOutputError(
+                    "sealed expected artifact full-fixture path is not the frozen case path",
+                    outcome="executed_inconclusive",
+                )
+            full_fixture_path = _safe_repository_file(
+                repository_root,
+                expected_fixture_path,
+                label="sealed full fixture",
+            )
+            if read_regular_file_snapshot(
+                full_fixture_path, label="sealed full fixture"
+            ).sha256 != expected_fixture_hash:
+                raise NativeOutputError(
+                    "sealed expected artifact full-fixture binding does not match live bytes",
+                    outcome="executed_inconclusive",
                 )
             difference = compare_normalized_output(
                 normalized_output=normalized,
                 sealed_expected=sealed_expected,
             )
         except NativeOutputError as exc:
-            errors_by_observation["post_recalculate_expected_comparison"] = exc
-            _, difference = _failed_normalization_documents(
+            comparison_error = exc
+            difference = _unavailable_expected_comparison_document(
                 case_id=manifest["case_id"],
-                native_output_sha256=native_output_sha256,
+                normalized_output_sha256=normalized_sha,
                 error=exc,
             )
         except NativeEvidenceError as exc:
@@ -2257,10 +2550,10 @@ def analyse_msproject_native_output(
                 f"sealed expected artifact could not be released: {exc}",
                 outcome="executed_inconclusive",
             )
-            errors_by_observation["post_recalculate_expected_comparison"] = wrapped
-            _, difference = _failed_normalization_documents(
+            comparison_error = wrapped
+            difference = _unavailable_expected_comparison_document(
                 case_id=manifest["case_id"],
-                native_output_sha256=native_output_sha256,
+                normalized_output_sha256=normalized_sha,
                 error=wrapped,
             )
         except Exception as exc:
@@ -2268,15 +2561,12 @@ def analyse_msproject_native_output(
                 f"unexpected expected-comparison error: {type(exc).__name__}: {exc}",
                 outcome="executed_inconclusive",
             )
-            errors_by_observation["post_recalculate_expected_comparison"] = wrapped
-            _, difference = _failed_normalization_documents(
+            comparison_error = wrapped
+            difference = _unavailable_expected_comparison_document(
                 case_id=manifest["case_id"],
-                native_output_sha256=native_output_sha256,
+                normalized_output_sha256=normalized_sha,
                 error=wrapped,
             )
-
-    if precomparison_normalized_sha256 is None:
-        precomparison_normalized_sha256 = _canonical_json_file_sha256(normalized)
 
     stability_difference: dict[str, Any] | None = None
     if track_id == "saved_file_reopen_recalculate_stability":
@@ -2320,14 +2610,22 @@ def analyse_msproject_native_output(
         reason = "native observation processing did not complete: " + "; ".join(
             f"{key}: {error}" for key, error in sorted(errors_by_observation.items())
         )
-    elif difference["claim_field_failure"]:
-        status = "executed_fail"
-        reason = "one or more claim fields differ or are missing"
-    elif stability_difference is not None and not stability_difference[
-        "exact_normalized_stability"
-    ]:
+    elif (
+        track_id == "saved_file_reopen_recalculate_stability"
+        and stability_difference is not None
+        and not stability_difference["exact_normalized_stability"]
+    ):
         status = "executed_fail"
         reason = "pre-close and post-recalculate normalized claim fields differ"
+    elif comparison_error is not None:
+        status = "executed_inconclusive"
+        reason = f"sealed expected comparison did not complete: {comparison_error}"
+    elif (
+        track_id != "saved_file_reopen_recalculate_stability"
+        and difference["claim_field_failure"]
+    ):
+        status = "executed_fail"
+        reason = "one or more claim fields differ or are missing"
     else:
         status = "executed_inconclusive"
         reason = (
@@ -2335,38 +2633,10 @@ def analyse_msproject_native_output(
             "cannot satisfy the 45-case gate"
         )
 
-    output_dir = _prepare_new_output_directory(
-        output_dir, purpose="microsoft-project-native-output-analysis"
-    )
-    normalized_path = output_dir / "normalized-native-output.json"
-    difference_path = output_dir / "field-difference-manifest.json"
-    environment_path = output_dir / "environment-capture.json"
-    attestation_path = output_dir / "post-execution-attestation.json"
-    manual_log_path = output_dir / "post-execution-manual-action-log.json"
-    construction_log_path = output_dir / "pre-execution-construction-action-log.json"
-    pre_close_normalized_path = output_dir / "normalized-native-output-pre-close.json"
-    stability_difference_path = output_dir / "reopen-stability-difference.json"
-    write_canonical_json(normalized_path, normalized)
-    normalized_sha = raw_file_sha256(normalized_path)
-    if normalized_sha != precomparison_normalized_sha256:
-        raise NativeOutputError(
-            "written normalized output hash differs from its precomparison freeze",
-            outcome="executed_inconclusive",
-        )
-    pre_close_normalized_sha: str | None = None
     stability_difference_sha: str | None = None
     if track_id == "saved_file_reopen_recalculate_stability":
         if pre_close_normalized is None or stability_difference is None:
             raise AssertionError("Track B retained observations were not produced")
-        write_canonical_json(pre_close_normalized_path, pre_close_normalized)
-        pre_close_normalized_sha = raw_file_sha256(pre_close_normalized_path)
-        if pre_close_normalized_sha != _canonical_json_file_sha256(
-            pre_close_normalized
-        ):
-            raise NativeOutputError(
-                "written pre-close normalized hash differs from its independent freeze",
-                outcome="executed_inconclusive",
-            )
         stability_difference["pre_close_normalized_output_sha256"] = (
             pre_close_normalized_sha
         )
@@ -2399,8 +2669,9 @@ def analyse_msproject_native_output(
         "native_output": native_output_sha256,
         "normalized_output": normalized_sha,
         "post_execution_attestation": raw_file_sha256(attestation_path),
-        "sealed_expected": sealed_expected_snapshot.sha256,
     }
+    if sealed_expected_snapshot is not None:
+        artifact_hashes["sealed_expected"] = sealed_expected_snapshot.sha256
     for role, digest in independent_evidence_hashes.items():
         artifact_hashes[f"independent_evidence.{role}"] = digest
     for role, digest in supplied_stage_hashes.items():

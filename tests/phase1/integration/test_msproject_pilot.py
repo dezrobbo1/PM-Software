@@ -119,6 +119,12 @@ class MicrosoftProjectPilotTests(unittest.TestCase):
             summary = prepare_pilot(output, repository_root=ROOT)
             index = _json(output / PILOT_INDEX)
             mapping_register_sha256 = _sha256(output / MAPPING_SOURCE_REGISTER)
+            source_only_hashes = {
+                case_id: _sha256(
+                    output / "source-only-case-projections" / f"{case_id}.json"
+                )
+                for case_id in CASE_IDS
+            }
         self.assertEqual(PILOT_ID, summary["pilot_id"])
         self.assertEqual(PILOT_STATUS, summary["status"])
         self.assertEqual(list(CASE_IDS), index["case_ids"])
@@ -130,7 +136,8 @@ class MicrosoftProjectPilotTests(unittest.TestCase):
             index["source_bindings"]["comparison_profile"]["id"],
         )
         projection = pilot_input_identity_projection(
-            mapping_source_register_raw_sha256=mapping_register_sha256
+            mapping_source_register_raw_sha256=mapping_register_sha256,
+            source_only_projection_raw_sha256_by_case_id=source_only_hashes,
         )
         self.assertEqual(projection, index["pilot_input_identity"]["projection"])
         self.assertEqual(
@@ -243,6 +250,96 @@ class MicrosoftProjectPilotTests(unittest.TestCase):
                 )
                 for fragment in forbidden_fragments:
                     self.assertNotIn(fragment, visible_text, case_id)
+
+    def test_operator_bindings_target_source_only_projections_and_full_fixture_is_sealed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "pilot"
+            prepare_pilot(output, repository_root=ROOT)
+            snapshot = _snapshot(output)
+            visible_bytes = b"\n".join(
+                data
+                for relative_path, data in snapshot.items()
+                if not relative_path.startswith("sealed-expected-normalized/")
+            )
+            index = _json(output / PILOT_INDEX)
+            indexed_cases = {item["case_id"]: item for item in index["cases"]}
+            for case_id in CASE_IDS:
+                with self.subTest(case_id=case_id):
+                    fixture_path = (
+                        ROOT
+                        / "benchmarks"
+                        / "semantic"
+                        / "cases"
+                        / f"{case_id.lower()}.json"
+                    )
+                    fixture_relative = fixture_path.relative_to(ROOT).as_posix()
+                    fixture_sha256 = _sha256(fixture_path)
+                    self.assertNotIn(fixture_relative.encode("utf-8"), visible_bytes)
+                    self.assertNotIn(fixture_sha256.encode("ascii"), visible_bytes)
+
+                    projection_path = (
+                        output / "source-only-case-projections" / f"{case_id}.json"
+                    )
+                    projection = _json(projection_path)
+                    self.assertFalse(
+                        projection["projection_contract"]["oracle_content_included"]
+                    )
+                    self.assertFalse(
+                        projection["projection_contract"][
+                            "full_fixture_binding_included"
+                        ]
+                    )
+                    self.assertNotIn("expected", projection)
+                    binding = indexed_cases[case_id]["source_only_case_projection"]
+                    self.assertEqual(
+                        "source_only_case_projection", binding["binding_role"]
+                    )
+                    self.assertEqual(_sha256(projection_path), binding["raw_sha256"])
+                    self.assertEqual(
+                        "native-validation/pilot-kits/"
+                        f"{PILOT_ID}/source-only-case-projections/{case_id}.json",
+                        binding["relative_path"],
+                    )
+
+                    for artifact_path in (
+                        output
+                        / "tracks"
+                        / "manual_native_semantic_parity"
+                        / "operator-build-sheets"
+                        / f"{case_id}.json",
+                        output
+                        / "tracks"
+                        / "manual_native_semantic_parity"
+                        / "independent-review-sheets"
+                        / f"{case_id}.json",
+                        output
+                        / "tracks"
+                        / "saved_file_reopen_recalculate_stability"
+                        / "case-protocols"
+                        / f"{case_id}.json",
+                        output
+                        / "tracks"
+                        / "adapter_interchange_round_trip"
+                        / "adapter-blockers"
+                        / f"{case_id}.json",
+                    ):
+                        bound = _json(artifact_path)["source_bindings"]
+                        self.assertNotIn("fixture", bound)
+                        self.assertEqual(
+                            binding, bound["source_only_case_projection"]
+                        )
+
+                    sealed = _json(
+                        output / "sealed-expected-normalized" / f"{case_id}.json"
+                    )
+                    full_binding = sealed["source_bindings"]["fixture"]
+                    self.assertEqual(fixture_relative, full_binding["relative_path"])
+                    self.assertEqual(fixture_sha256, full_binding["raw_sha256"])
+                    self.assertTrue(
+                        sealed["seal_control"][
+                            "full_oracle_fixture_binding_is_sealed"
+                        ]
+                    )
 
     def test_tracks_are_separate_and_adapter_is_honestly_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -481,7 +578,7 @@ class MicrosoftProjectPilotTests(unittest.TestCase):
             self.assertFalse(stop_template["is_attempt_stop_record"])
             self.assertFalse(stop_template["claim_evidence_eligible"])
             self.assertNotEqual(
-                "microsoft-project-native-attempt-stop-record-v0.1",
+                "microsoft-project-native-attempt-stop-record-v0.2",
                 stop_template["schema_version"],
             )
             self.assertEqual(
@@ -497,6 +594,10 @@ class MicrosoftProjectPilotTests(unittest.TestCase):
                 stop_template["actual_record_contract"][
                     "required_top_level_fields"
                 ],
+            )
+            self.assertEqual(
+                "microsoft-project-native-attempt-stop-record-v0.2",
+                stop_template["actual_record_contract"]["schema_version"],
             )
             expected_outcome_rows = [
                 {

@@ -31,6 +31,20 @@ Project gate.
 
 No artifact or result from one track substitutes for another.
 
+## Oracle blinding
+
+Each case has a deterministic `source-only-case-projections/` artifact containing
+only the construction inputs needed by the operator and pre-execution reviewer.
+The operator build sheet, review sheet, reopen protocol, adapter blocker and
+pilot index bind that projection's bytes. None of those operator-visible
+materials identifies or hash-binds the oracle-bearing semantic fixture.
+
+The full frozen fixture path and raw hash remain bound only inside the matching
+`sealed-expected-normalized/` artifact. That artifact stays unavailable to the
+operator and pre-execution reviewer until the native observation and its hashes
+are frozen. The controlled comparison path revalidates the sealed full-fixture
+binding against live repository bytes before releasing the oracle.
+
 ## Fail-closed MSPDI calendar finding
 
 All twelve fixtures require the exact continuous `CAL-24X7` calendar.
@@ -168,10 +182,12 @@ the complete repository-bound Track A prerequisite; that flag is forbidden on
 other tracks.
 
 `pilot-index.json` also records a domain-separated input-identity projection
-and SHA-256 over the pilot ID, ordered case IDs, frozen preregistration/profile
-and fixture raw hashes, and generated mapping-source-register raw hash. Phase 1
-governance recomputes that identity from live bytes and requires the experiment
-register `input_hash` to match.
+and SHA-256 over the pilot ID, ordered case IDs, frozen preregistration/profile,
+operator-safe source-only projection hashes, and generated mapping-source-register
+raw hash. It does not expose full-fixture paths or hashes. Phase 1 governance
+recomputes that identity from live bytes and requires the experiment-register
+`input_hash` to match. Full fixture bytes remain independently frozen and are
+bound only by the sealed comparison artifacts.
 
 ## Native work still required
 

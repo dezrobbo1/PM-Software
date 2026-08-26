@@ -32,7 +32,7 @@ EXPECTED_DISTRIBUTIONS = {
 MSPROJECT_PILOT_ID = "microsoft-project-relationship-v0.1"
 MSPROJECT_PILOT_CASE_IDS = tuple(f"SEM-REL-{number:03d}" for number in range(1, 13))
 MSPROJECT_PILOT_INPUT_IDENTITY_DOMAIN = (
-    "microsoft-project-relationship-pilot-input-identity-v0.1"
+    "microsoft-project-relationship-pilot-input-identity-v0.2"
 )
 ACCEPTANCE_WORKFLOWS = {
     "validate-phase0.yml": "phase0-validation",
@@ -51,6 +51,12 @@ REVIEWED_ACTION_PINS = {
 _FULL_COMMIT_SHA = re.compile(r"[0-9a-f]{40}")
 _ACTION_REFERENCE = re.compile(
     r"^\s*-\s+uses:\s+([^@\s#]+)@([^\s#]+)(?:\s+#\s*(\S+)\s*)?$"
+)
+_ACTION_USES_KEY = re.compile(
+    r'''(?:^\s*(?:-\s*)?|[,{]\s*)(?:uses|'uses'|"uses")\s*:'''
+)
+_ACTION_SHAPED_REFERENCE = re.compile(
+    r'''(?<![A-Za-z0-9_.-])[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[^\s#,'"}\]]+'''
 )
 _EXPECTED_WORKFLOW_TRIGGER_LINES = [
     "on:",
@@ -537,7 +543,12 @@ def _workflow_action_pin_errors(filename: str, text: str) -> list[str]:
     errors: list[str] = []
     seen = {action: 0 for action in REVIEWED_ACTION_PINS}
     for line_number, line in enumerate(text.splitlines(), start=1):
-        if "uses:" not in line or line.lstrip().startswith("#"):
+        if line.lstrip().startswith("#"):
+            continue
+        if (
+            _ACTION_USES_KEY.search(line) is None
+            and _ACTION_SHAPED_REFERENCE.search(line) is None
+        ):
             continue
         match = _ACTION_REFERENCE.fullmatch(line)
         if match is None:
@@ -626,18 +637,16 @@ def recompute_msproject_pilot_input_identity(
             "relative_path": comparison_profile_path.as_posix(),
             "raw_sha256": raw_sha256(root / comparison_profile_path),
         },
-        "fixtures": [
+        "source_only_case_projections": [
             {
                 "case_id": case_id,
                 "relative_path": (
-                    f"benchmarks/semantic/cases/{case_id.lower()}.json"
+                    "native-validation/pilot-kits/"
+                    f"{MSPROJECT_PILOT_ID}/source-only-case-projections/"
+                    f"{case_id}.json"
                 ),
                 "raw_sha256": raw_sha256(
-                    root
-                    / "benchmarks"
-                    / "semantic"
-                    / "cases"
-                    / f"{case_id.lower()}.json"
+                    kit / "source-only-case-projections" / f"{case_id}.json"
                 ),
             }
             for case_id in MSPROJECT_PILOT_CASE_IDS
@@ -648,6 +657,118 @@ def recompute_msproject_pilot_input_identity(
         },
     }
     return projection, hashlib.sha256(canonical_bytes(projection)).hexdigest()
+
+
+def validate_msproject_pilot_oracle_blinding(
+    root: Path, kit: Path
+) -> list[str]:
+    """Require operator packets to bind only source projections, never oracles."""
+
+    errors: list[str] = []
+    try:
+        index = _load_json(kit / "pilot-index.json")
+    except Exception as exc:
+        return [f"Microsoft Project pilot oracle blinding cannot load index: {exc}"]
+    case_entries = {
+        item.get("case_id"): item
+        for item in index.get("cases", [])
+        if isinstance(item, dict)
+    }
+    visible_payloads = [
+        path
+        for path in sorted(kit.rglob("*"))
+        if path.is_file() and "sealed-expected-normalized" not in path.parts
+    ]
+    visible_bytes = b"\n".join(path.read_bytes() for path in visible_payloads)
+    oracle_keys = {
+        "expected",
+        "expected_normalized",
+        "activity_times",
+        "project_finish",
+        "total_float",
+        "free_float",
+        "driving_relationships",
+        "resource_order",
+        "assertions",
+    }
+
+    def all_keys(value: Any) -> set[str]:
+        if isinstance(value, dict):
+            return set(value) | {
+                key for child in value.values() for key in all_keys(child)
+            }
+        if isinstance(value, list):
+            return {key for child in value for key in all_keys(child)}
+        return set()
+
+    for case_id in MSPROJECT_PILOT_CASE_IDS:
+        fixture_relative = f"benchmarks/semantic/cases/{case_id.lower()}.json"
+        fixture_hash = _sha256(root / fixture_relative)
+        if fixture_relative.encode("utf-8") in visible_bytes:
+            errors.append(
+                f"{case_id}: operator-visible pilot bytes expose the full fixture path"
+            )
+        if fixture_hash.encode("ascii") in visible_bytes:
+            errors.append(
+                f"{case_id}: operator-visible pilot bytes expose the full fixture hash"
+            )
+
+        projection_relative = f"source-only-case-projections/{case_id}.json"
+        projection_path = kit / projection_relative
+        try:
+            projection = _load_json(projection_path)
+            projection_hash = _sha256(projection_path)
+        except Exception as exc:
+            errors.append(f"{case_id}: source-only projection is invalid: {exc}")
+            continue
+        if not oracle_keys.isdisjoint(all_keys(projection)):
+            errors.append(f"{case_id}: source-only projection contains oracle fields")
+        contract = projection.get("projection_contract", {})
+        if (
+            contract.get("construction_inputs_only") is not True
+            or contract.get("oracle_content_included") is not False
+            or contract.get("full_fixture_binding_included") is not False
+        ):
+            errors.append(f"{case_id}: source-only projection contract is not blinded")
+
+        case_entry = case_entries.get(case_id, {})
+        if any(
+            key in case_entry for key in ("fixture", "fixture_binding", "source_fixture")
+        ):
+            errors.append(f"{case_id}: pilot index retains a full-fixture binding alias")
+        binding = case_entry.get("source_only_case_projection", {})
+        expected_repository_path = (
+            "native-validation/pilot-kits/"
+            f"{MSPROJECT_PILOT_ID}/{projection_relative}"
+        )
+        if (
+            binding.get("binding_role") != "source_only_case_projection"
+            or binding.get("relative_path") != expected_repository_path
+            or binding.get("path") != expected_repository_path
+            or binding.get("raw_sha256") != projection_hash
+            or binding.get("oracle_content_included") is not False
+        ):
+            errors.append(f"{case_id}: pilot index source-only binding is inconsistent")
+
+        sealed_path = kit / "sealed-expected-normalized" / f"{case_id}.json"
+        try:
+            sealed = _load_json(sealed_path)
+            full_binding = sealed["source_bindings"]["fixture"]
+        except Exception as exc:
+            errors.append(f"{case_id}: sealed full-fixture binding is missing: {exc}")
+            continue
+        if (
+            full_binding.get("case_id") != case_id
+            or full_binding.get("path") != fixture_relative
+            or full_binding.get("relative_path") != fixture_relative
+            or full_binding.get("raw_sha256") != fixture_hash
+            or sealed.get("seal_control", {}).get(
+                "full_oracle_fixture_binding_is_sealed"
+            )
+            is not True
+        ):
+            errors.append(f"{case_id}: sealed full-fixture binding is inconsistent")
+    return errors
 
 
 def validate_msproject_relationship_pilot(root: Path = ROOT) -> list[str]:
@@ -711,9 +832,9 @@ def validate_msproject_relationship_pilot(root: Path = ROOT) -> list[str]:
             errors.append(f"Microsoft Project pilot claim boundary does not keep {field} false")
 
     tracked_payloads = sorted(path for path in kit.rglob("*") if path.is_file())
-    if len(tracked_payloads) != 83:
+    if len(tracked_payloads) != 95:
         errors.append(
-            f"Microsoft Project pilot must contain exactly 83 prepared files, found {len(tracked_payloads)}"
+            f"Microsoft Project pilot must contain exactly 95 prepared files, found {len(tracked_payloads)}"
         )
     forbidden_suffixes = {".mpp", ".mpx", ".xml"}
     forbidden = [
@@ -728,6 +849,7 @@ def validate_msproject_relationship_pilot(root: Path = ROOT) -> list[str]:
             errors.append(
                 f"{path.relative_to(root).as_posix()}: preparation must not contain executed_pass"
             )
+    errors.extend(validate_msproject_pilot_oracle_blinding(root, kit))
 
     register_path = root / "registers" / "experiment-register.csv"
     try:

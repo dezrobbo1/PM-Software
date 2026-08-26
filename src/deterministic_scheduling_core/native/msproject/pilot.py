@@ -47,7 +47,7 @@ TRACK_IDS = (
 )
 FULL_PROFILE_CLAIM_ELIGIBLE_CASE_COUNT = 45
 PILOT_INPUT_IDENTITY_DOMAIN = (
-    "microsoft-project-relationship-pilot-input-identity-v0.1"
+    "microsoft-project-relationship-pilot-input-identity-v0.2"
 )
 
 OWNER_MARKER = ".pilot-kit-owner.json"
@@ -66,6 +66,7 @@ TRACK_B_POST_EXECUTION_ACTION_LOG_TEMPLATE = (
 OPERATOR_RUNBOOK = "operator-runbook.md"
 MANIFEST = "pilot-kit-manifest.json"
 MANIFEST_CHECKSUM = "pilot-kit-manifest.sha256"
+SOURCE_ONLY_PROJECTION_DIRECTORY = "source-only-case-projections"
 
 PREREGISTRATION_PATH = (
     "native-validation/preregistrations/"
@@ -229,6 +230,17 @@ def _fixture_path(case_id: str) -> str:
     return f"benchmarks/semantic/cases/{case_id.lower()}.json"
 
 
+def _source_only_projection_path(case_id: str) -> str:
+    return f"{SOURCE_ONLY_PROJECTION_DIRECTORY}/{case_id}.json"
+
+
+def _source_only_projection_repository_path(case_id: str) -> str:
+    return (
+        f"native-validation/pilot-kits/{PILOT_ID}/"
+        f"{_source_only_projection_path(case_id)}"
+    )
+
+
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -335,7 +347,7 @@ def _load_and_verify_bound_sources(repository_root: Path) -> _BoundSources:
     )
 
 
-def _source_bindings_for(case_id: str) -> dict[str, Any]:
+def _protocol_source_bindings() -> dict[str, Any]:
     return {
         "preregistration": {
             "id": PREREGISTRATION_ID,
@@ -351,6 +363,38 @@ def _source_bindings_for(case_id: str) -> dict[str, Any]:
             "relative_path": PROFILE_PATH,
             "raw_sha256": PROFILE_RAW_SHA256,
         },
+    }
+
+
+def _source_only_binding_for(
+    case_id: str, *, raw_sha256: str, byte_size: int
+) -> dict[str, Any]:
+    return {
+        "binding_role": "source_only_case_projection",
+        "case_id": case_id,
+        "path": _source_only_projection_repository_path(case_id),
+        "relative_path": _source_only_projection_repository_path(case_id),
+        "raw_sha256": raw_sha256,
+        "byte_size": byte_size,
+        "media_type": "application/json",
+        "oracle_content_included": False,
+    }
+
+
+def _operator_source_bindings(
+    source_only_binding: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        **_protocol_source_bindings(),
+        "source_only_case_projection": dict(source_only_binding),
+    }
+
+
+def _sealed_source_bindings_for(case_id: str) -> dict[str, Any]:
+    """Bind the oracle-bearing full fixture only inside the sealed artifact."""
+
+    return {
+        **_protocol_source_bindings(),
         "fixture": {
             "case_id": case_id,
             "path": _fixture_path(case_id),
@@ -361,13 +405,16 @@ def _source_bindings_for(case_id: str) -> dict[str, Any]:
 
 
 def pilot_input_identity_projection(
-    *, mapping_source_register_raw_sha256: str
+    *,
+    mapping_source_register_raw_sha256: str,
+    source_only_projection_raw_sha256_by_case_id: Mapping[str, str],
 ) -> dict[str, Any]:
     """Return the domain-separated canonical identity of pilot preparation inputs.
 
-    The mapping register is generated solely from reviewed mapping authorities and
-    decisions.  Its raw digest therefore binds those non-frozen preparation inputs
-    without creating a hash cycle with the pilot index or kit manifest.
+    The mapping register and source-only case projections are generated solely
+    from reviewed mapping authorities and construction inputs. Their raw digests
+    bind the operator-visible preparation inputs without exposing a path or digest
+    for an oracle-bearing fixture and without creating a hash cycle.
     """
 
     if (
@@ -376,6 +423,20 @@ def pilot_input_identity_projection(
         or any(character not in "0123456789abcdef" for character in mapping_source_register_raw_sha256)
     ):
         raise PilotBindingError("mapping-source-register raw SHA-256 is invalid")
+    if set(source_only_projection_raw_sha256_by_case_id) != set(CASE_IDS):
+        raise PilotBindingError(
+            "source-only projection hash map must cover the exact pilot cases"
+        )
+    for case_id in CASE_IDS:
+        digest = source_only_projection_raw_sha256_by_case_id[case_id]
+        if (
+            not isinstance(digest, str)
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+        ):
+            raise PilotBindingError(
+                f"source-only projection raw SHA-256 is invalid for {case_id}"
+            )
     return {
         "hash_domain": PILOT_INPUT_IDENTITY_DOMAIN,
         "pilot_id": PILOT_ID,
@@ -388,11 +449,13 @@ def pilot_input_identity_projection(
             "relative_path": PROFILE_PATH,
             "raw_sha256": PROFILE_RAW_SHA256,
         },
-        "fixtures": [
+        "source_only_case_projections": [
             {
                 "case_id": case_id,
-                "relative_path": _fixture_path(case_id),
-                "raw_sha256": FIXTURE_RAW_SHA256_BY_CASE_ID[case_id],
+                "relative_path": _source_only_projection_repository_path(case_id),
+                "raw_sha256": source_only_projection_raw_sha256_by_case_id[
+                    case_id
+                ],
             }
             for case_id in CASE_IDS
         ],
@@ -999,7 +1062,7 @@ def _native_attempt_stop_template() -> dict[str, Any]:
             )
         ],
         "actual_record_contract": {
-            "schema_version": "microsoft-project-native-attempt-stop-record-v0.1",
+            "schema_version": "microsoft-project-native-attempt-stop-record-v0.2",
             "record_type": "native_attempt_stop_non_claimable",
             "required_top_level_fields": list(STOP_RECORD_REQUIRED_FIELDS),
             "output_filename": "native-attempt-stop-record.json",
@@ -1166,8 +1229,10 @@ can establish observed native behavior.
 
 ## Before any track
 
-Verify the raw preregistration, comparison-profile, and case-fixture hashes in
-`pilot-index.json`. Copy the selected file under
+Verify the raw preregistration, comparison-profile, and source-only case
+projection hashes in `pilot-index.json`. Operator-visible bindings deliberately
+do not identify the oracle-bearing frozen fixture; that full-fixture binding
+exists only inside the sealed comparison artifact. Copy the selected file under
 `tracks/manual_native_semantic_parity/environment-capture-templates/`,
 `post-execution-attestation-template.json`, and the selected case sheets into
 the ignored controlled execution workspace. Copy the matching Track A or Track
@@ -1327,7 +1392,9 @@ union is exactly the six roles shown above.
 6. Submit the separate reopen evidence for independent review.
 
 This track can test stability only. It cannot satisfy the native-semantic or
-adapter-interchange track.
+adapter-interchange track. Do not supply `--sealed-expected`: Track B compares
+only its independently normalized pre-close and post-recalculation observations,
+and the analyser rejects access to the Track A oracle.
 
 Example Track B freeze, using the same native source and exact environment file:
 
@@ -1415,8 +1482,9 @@ adapter-interchange or compatibility claim.
 
 For every stopped attempt, use the dedicated recorder rather than inventing
 missing stage hashes or forcing the normal analyser to accept an incomplete
-bundle. The recorder rebinds the pilot, case, track, fixture, preregistration
-and comparison profile to the live repository; hashes only artifacts that
+bundle. The recorder rebinds the pilot, case, track, source-only projection,
+registry-backed full-fixture digest, preregistration, and comparison profile;
+hashes only artifacts that
 actually exist; refuses to overwrite its output; and can never emit a native
 run record, `executed_pass`, or claim-eligible evidence. Supply a valid frozen
 manifest and its environment capture when they exist. Omit the manifest when a
@@ -1471,6 +1539,28 @@ def _source_facts(fixture: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _source_only_case_projection(
+    case_id: str, fixture: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Project only construction inputs into an operator-safe bound artifact."""
+
+    return {
+        "document_type": "microsoft_project_source_only_case_projection",
+        "schema_version": "microsoft-project-source-only-case-projection-v0.1",
+        "pilot_id": PILOT_ID,
+        "case_id": case_id,
+        "status": PILOT_STATUS,
+        "projection_contract": {
+            "construction_inputs_only": True,
+            "oracle_content_included": False,
+            "full_fixture_binding_included": False,
+            "sealed_comparison_artifact_required_for_oracle_release": True,
+        },
+        "source_facts": _source_facts(fixture),
+        "claim_boundary": _claim_boundary(),
+    }
+
+
 def _frozen_native_settings(sources: _BoundSources) -> dict[str, Any]:
     rules = sources.profile.get("native_configuration", {}).get("frozen_rules", [])
     settings: dict[str, Any] = {}
@@ -1499,6 +1589,7 @@ def _operator_build_sheet(
     fixture: Mapping[str, Any],
     sources: _BoundSources,
     environment_capture_template_ref: Mapping[str, Any],
+    source_only_binding: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
         "document_type": "microsoft_project_manual_operator_build_sheet",
@@ -1507,7 +1598,7 @@ def _operator_build_sheet(
         "case_id": case_id,
         "status": PILOT_STATUS,
         "execution_track_id": "manual_native_semantic_parity",
-        "source_bindings": _source_bindings_for(case_id),
+        "source_bindings": _operator_source_bindings(source_only_binding),
         "source_facts": _source_facts(fixture),
         "frozen_settings": _frozen_native_settings(sources),
         "native_mapping": _native_mapping(fixture),
@@ -1571,7 +1662,8 @@ def _operator_build_sheet(
                 "sequence": 6,
                 "action": (
                     "Record the construction action log and source-field screenshots. A "
-                    "second person verifies every source fact against the raw-bound fixture."
+                    "second person verifies every source fact against the hash-bound "
+                    "source-only case projection."
                 ),
             },
             {
@@ -1622,6 +1714,7 @@ def _independent_review_sheet(
     fixture: Mapping[str, Any],
     sources: _BoundSources,
     operator_ref: Mapping[str, Any],
+    source_only_binding: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
         "document_type": "microsoft_project_independent_pre_execution_review_sheet",
@@ -1630,7 +1723,7 @@ def _independent_review_sheet(
         "case_id": case_id,
         "status": PILOT_STATUS,
         "review_scope": "source_realization_and_execution_track_separation_only",
-        "source_bindings": _source_bindings_for(case_id),
+        "source_bindings": _operator_source_bindings(source_only_binding),
         "source_facts": _source_facts(fixture),
         "frozen_settings": _frozen_native_settings(sources),
         "native_mapping": _native_mapping(fixture),
@@ -1639,7 +1732,7 @@ def _independent_review_sheet(
             "manual_native_semantic_parity": {
                 "native_execution_status": "not_executed",
                 "review_actions": [
-                    "Recompute all three raw source hashes independently.",
+                    "Recompute the preregistration, comparison-profile, and source-only projection hashes independently.",
                     "Verify the exact task count and compare each displayed ID, Unique ID, name, duration, calendar, and constraint with the source facts and reviewed mapping.",
                     "Verify the predecessor/successor identities, relationship type, and signed lag exactly.",
                     "Confirm automatic task scheduling, fixed duration, effort-driven false, native calculation mode Manual, ScheduleFromStart=true, and leveling disabled and not run.",
@@ -1675,7 +1768,9 @@ def _independent_review_sheet(
     }
 
 
-def _reopen_case_protocol(case_id: str) -> dict[str, Any]:
+def _reopen_case_protocol(
+    case_id: str, source_only_binding: Mapping[str, Any]
+) -> dict[str, Any]:
     return {
         "document_type": "microsoft_project_reopen_recalculate_case_protocol",
         "schema_version": "microsoft-project-reopen-protocol-v0.1",
@@ -1683,7 +1778,7 @@ def _reopen_case_protocol(case_id: str) -> dict[str, Any]:
         "case_id": case_id,
         "status": PILOT_STATUS,
         "execution_track_id": "saved_file_reopen_recalculate_stability",
-        "source_bindings": _source_bindings_for(case_id),
+        "source_bindings": _operator_source_bindings(source_only_binding),
         "prerequisite_track": "manual_native_semantic_parity",
         "pre_execution_freeze_requirement": {
             "separate_track_b_manifest_required": True,
@@ -1812,7 +1907,11 @@ def _native_mapping(fixture: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _adapter_blocker(case_id: str, fixture: Mapping[str, Any]) -> dict[str, Any]:
+def _adapter_blocker(
+    case_id: str,
+    fixture: Mapping[str, Any],
+    source_only_binding: Mapping[str, Any],
+) -> dict[str, Any]:
     schedule = fixture["schedule"]
     calendar = next(item for item in schedule["calendars"] if item["id"] == "CAL-24X7")
     return {
@@ -1824,7 +1923,7 @@ def _adapter_blocker(case_id: str, fixture: Mapping[str, Any]) -> dict[str, Any]
         "execution_track_id": "adapter_interchange_round_trip",
         "adapter_preparation_status": "preparation_blocked",
         "native_execution_status": "not_executed",
-        "source_bindings": _source_bindings_for(case_id),
+        "source_bindings": _operator_source_bindings(source_only_binding),
         "blocked_source_fact": {
             "canonical_calendar_id": calendar["id"],
             "canonical_working_intervals": calendar["working_intervals"],
@@ -1878,9 +1977,10 @@ def _sealed_expected(case_id: str, fixture: Mapping[str, Any]) -> dict[str, Any]
         "pilot_id": PILOT_ID,
         "case_id": case_id,
         "status": PILOT_STATUS,
-        "source_bindings": _source_bindings_for(case_id),
+        "source_bindings": _sealed_source_bindings_for(case_id),
         "seal_control": {
             "separate_from_operator_and_pre_execution_reviewer_material": True,
+            "full_oracle_fixture_binding_is_sealed": True,
             "operator_access_before_native_evidence_freeze": "prohibited",
             "release_condition": (
                 "Release only to the controlled comparator after native artifacts, "
@@ -1952,6 +2052,7 @@ def _expected_relative_files() -> tuple[str, ...]:
     for case_id in CASE_IDS:
         files.extend(
             [
+                _source_only_projection_path(case_id),
                 _operator_path(case_id),
                 _environment_capture_path(case_id),
                 _review_path(case_id),
@@ -2094,8 +2195,24 @@ def _media_type(relative_path: str) -> str:
 
 def _pilot_index(output_dir: Path, sources: _BoundSources) -> dict[str, Any]:
     mapping_source_register = _artifact_ref(output_dir, MAPPING_SOURCE_REGISTER)
+    source_only_artifacts = {
+        case_id: _artifact_ref(output_dir, _source_only_projection_path(case_id))
+        for case_id in CASE_IDS
+    }
+    source_only_bindings = {
+        case_id: _source_only_binding_for(
+            case_id,
+            raw_sha256=source_only_artifacts[case_id]["sha256"],
+            byte_size=source_only_artifacts[case_id]["byte_size"],
+        )
+        for case_id in CASE_IDS
+    }
     input_identity_projection = pilot_input_identity_projection(
-        mapping_source_register_raw_sha256=mapping_source_register["sha256"]
+        mapping_source_register_raw_sha256=mapping_source_register["sha256"],
+        source_only_projection_raw_sha256_by_case_id={
+            case_id: binding["raw_sha256"]
+            for case_id, binding in source_only_bindings.items()
+        },
     )
     cases: list[dict[str, Any]] = []
     for case_id in CASE_IDS:
@@ -2115,8 +2232,7 @@ def _pilot_index(output_dir: Path, sources: _BoundSources) -> dict[str, Any]:
                 "adapter_preparation_blocked_reason": (
                     "CAL-24X7 exact MSPDI FromTime/ToTime serialization is unresolved"
                 ),
-                "fixture": _source_bindings_for(case_id)["fixture"],
-                "fixture_binding": _source_bindings_for(case_id)["fixture"],
+                "source_only_case_projection": source_only_bindings[case_id],
                 "native_mapping": _native_mapping(sources.fixtures[case_id]),
                 "environment_capture_template": environment_capture,
                 "operator_build_sheet": operator,
@@ -2160,12 +2276,10 @@ def _pilot_index(output_dir: Path, sources: _BoundSources) -> dict[str, Any]:
             "rounding_policy": "forbidden",
         },
         "source_bindings": {
-            "preregistration": _source_bindings_for(CASE_IDS[0])["preregistration"],
-            "comparison_profile": _source_bindings_for(CASE_IDS[0])["comparison_profile"],
+            **_protocol_source_bindings(),
         },
         "bindings": {
-            "preregistration": _source_bindings_for(CASE_IDS[0])["preregistration"],
-            "comparison_profile": _source_bindings_for(CASE_IDS[0])["comparison_profile"],
+            **_protocol_source_bindings(),
         },
         "pilot_input_identity": {
             "hash_algorithm": "sha256",
@@ -2343,6 +2457,18 @@ def prepare_pilot(
 
     for case_id in CASE_IDS:
         fixture = sources.fixtures[case_id]
+        source_only_path = _source_only_projection_path(case_id)
+        _write_json(
+            target,
+            source_only_path,
+            _source_only_case_projection(case_id, fixture),
+        )
+        source_only_ref = _artifact_ref(target, source_only_path)
+        source_only_binding = _source_only_binding_for(
+            case_id,
+            raw_sha256=source_only_ref["sha256"],
+            byte_size=source_only_ref["byte_size"],
+        )
         environment_path = _environment_capture_path(case_id)
         _write_json(
             target,
@@ -2354,16 +2480,36 @@ def prepare_pilot(
         _write_json(
             target,
             operator_path,
-            _operator_build_sheet(case_id, fixture, sources, environment_ref),
+            _operator_build_sheet(
+                case_id,
+                fixture,
+                sources,
+                environment_ref,
+                source_only_binding,
+            ),
         )
         operator_ref = _artifact_ref(target, operator_path)
         _write_json(
             target,
             _review_path(case_id),
-            _independent_review_sheet(case_id, fixture, sources, operator_ref),
+            _independent_review_sheet(
+                case_id,
+                fixture,
+                sources,
+                operator_ref,
+                source_only_binding,
+            ),
         )
-        _write_json(target, _reopen_path(case_id), _reopen_case_protocol(case_id))
-        _write_json(target, _adapter_path(case_id), _adapter_blocker(case_id, fixture))
+        _write_json(
+            target,
+            _reopen_path(case_id),
+            _reopen_case_protocol(case_id, source_only_binding),
+        )
+        _write_json(
+            target,
+            _adapter_path(case_id),
+            _adapter_blocker(case_id, fixture, source_only_binding),
+        )
         _write_json(target, _sealed_path(case_id), _sealed_expected(case_id, fixture))
 
     _write_json(target, PILOT_INDEX, _pilot_index(target, sources))

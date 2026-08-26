@@ -37,6 +37,27 @@ class WorkflowGovernanceTests(unittest.TestCase):
         )
         self.assertTrue(any("immutable full commit SHA" in error for error in self.action_errors(text)))
 
+    def test_equivalent_yaml_uses_keys_cannot_bypass_action_pin_validation(self) -> None:
+        original = self.workflow_texts["validate-phase0.yml"]
+        insertion = "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0"
+        bypass_candidates = (
+            "      - uses : example/action@v1",
+            "      - 'uses': example/action@v1",
+            '      - "uses": example/action@v1',
+            '      - "u\\u0073es": example/action@v1',
+            "      - &step uses: example/action@v1",
+            "      - {uses: example/action@v1}",
+        )
+        for candidate in bypass_candidates:
+            with self.subTest(candidate=candidate):
+                text = original.replace(insertion, f"{insertion}\n{candidate}")
+                self.assertTrue(
+                    any(
+                        "not a pinned uses declaration" in error
+                        for error in self.action_errors(text)
+                    )
+                )
+
     def test_abbreviated_and_unreviewed_action_commits_are_rejected(self) -> None:
         original = self.workflow_texts["validate-phase0.yml"]
         abbreviated = original.replace(
@@ -110,6 +131,10 @@ class WorkflowGovernanceTests(unittest.TestCase):
             copied_kit.mkdir()
             mapping = copied_kit / "mapping-source-register.json"
             shutil.copyfile(tracked_kit / mapping.name, mapping)
+            shutil.copytree(
+                tracked_kit / "source-only-case-projections",
+                copied_kit / "source-only-case-projections",
+            )
             copied_projection, copied_digest = (
                 validate_phase1_governance.recompute_msproject_pilot_input_identity(
                     ROOT, copied_kit
@@ -118,6 +143,35 @@ class WorkflowGovernanceTests(unittest.TestCase):
             self.assertEqual(baseline_projection, copied_projection)
             self.assertEqual(baseline_digest, copied_digest)
             mapping.write_bytes(mapping.read_bytes() + b"\n")
+            mutated_projection, mutated_digest = (
+                validate_phase1_governance.recompute_msproject_pilot_input_identity(
+                    ROOT, copied_kit
+                )
+            )
+        self.assertNotEqual(baseline_projection, mutated_projection)
+        self.assertNotEqual(baseline_digest, mutated_digest)
+
+    def test_pilot_input_identity_is_recomputed_from_source_only_projection_bytes(self) -> None:
+        tracked_kit = (
+            ROOT
+            / "native-validation"
+            / "pilot-kits"
+            / validate_phase1_governance.MSPROJECT_PILOT_ID
+        )
+        baseline_projection, baseline_digest = (
+            validate_phase1_governance.recompute_msproject_pilot_input_identity(
+                ROOT, tracked_kit
+            )
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            copied_kit = Path(temporary) / "pilot-kit"
+            shutil.copytree(tracked_kit, copied_kit)
+            projection = (
+                copied_kit
+                / "source-only-case-projections"
+                / "SEM-REL-001.json"
+            )
+            projection.write_bytes(projection.read_bytes() + b"\n")
             mutated_projection, mutated_digest = (
                 validate_phase1_governance.recompute_msproject_pilot_input_identity(
                     ROOT, copied_kit

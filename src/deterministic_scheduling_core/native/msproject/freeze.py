@@ -13,6 +13,10 @@ from typing import Any
 
 from rfc3339_validator import validate_rfc3339
 
+from deterministic_scheduling_core.canonical.frozen_suite import (
+    EXPECTED_FILENAME_BY_ID,
+    EXPECTED_FIXTURE_SHA256_BY_FILENAME,
+)
 from deterministic_scheduling_core.provenance.canonical_json import (
     canonical_text,
     sha256_digest,
@@ -146,10 +150,9 @@ CASE_REALISATION_REQUIRED_KEYS = frozenset(
         "case_id",
         "execution_track_id",
         "prerequisite_manual_case_realization_manifest_sha256",
-        "fixture_path",
         "fixture_raw_sha256",
-        "sealed_expected_path",
-        "sealed_expected_raw_sha256",
+        "source_only_projection_path",
+        "source_only_projection_raw_sha256",
         "preregistration_id",
         "preregistration_path",
         "preregistration_raw_sha256",
@@ -447,17 +450,23 @@ def _case_entry(pilot_index: Mapping[str, Any], case_id: str) -> Mapping[str, An
     return matches[0]
 
 
-def _fixture_binding(case_entry: Mapping[str, Any]) -> Mapping[str, Any]:
-    for key in ("fixture", "fixture_binding", "source_fixture"):
-        value = case_entry.get(key)
-        if isinstance(value, Mapping):
-            return value
-    if "fixture_path" in case_entry and "fixture_raw_sha256" in case_entry:
-        return {
-            "path": case_entry["fixture_path"],
-            "raw_sha256": case_entry["fixture_raw_sha256"],
-        }
-    raise NativeEvidenceError("pilot case has no fixture binding")
+def _source_only_projection_binding(case_entry: Mapping[str, Any]) -> Mapping[str, Any]:
+    value = case_entry.get("source_only_case_projection")
+    if not isinstance(value, Mapping):
+        raise NativeEvidenceError("pilot case has no source-only case projection binding")
+    return value
+
+
+def _frozen_fixture_raw_sha256(case_id: str) -> str:
+    """Return the preregistered full-fixture identity without opening oracle bytes."""
+
+    filename = EXPECTED_FILENAME_BY_ID.get(case_id)
+    if filename is None:
+        raise NativeEvidenceError(f"case {case_id} is outside the frozen semantic suite")
+    digest = EXPECTED_FIXTURE_SHA256_BY_FILENAME.get(filename)
+    if digest is None:
+        raise NativeEvidenceError(f"case {case_id} has no frozen fixture identity")
+    return _require_sha256(digest, field=f"frozen_fixture_registry.{filename}")
 
 
 def _sealed_expected_binding(case_entry: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -1179,6 +1188,66 @@ def _environment_capture(document: Mapping[str, Any]) -> Mapping[str, Any]:
     return capture
 
 
+def _reject_blocked_adapter_preparation(
+    *,
+    pilot_index: Mapping[str, Any],
+    case: Mapping[str, Any],
+    track_id: str,
+) -> None:
+    """Fail closed when any tracked scope blocks the adapter execution track.
+
+    The freeze path is not the only consumer of a case-realisation manifest.
+    In particular, the output analyser can be given retained or hand-authored
+    manifest bytes.  Rechecking every pilot- and case-level adapter status
+    against the tracked index prevents those bytes from bypassing a blocker
+    that was already in force when the repository was read.
+    """
+
+    if track_id != "adapter_interchange_round_trip":
+        return
+
+    blocked_sources: list[str] = []
+    if pilot_index.get("adapter_preparation_status") == "preparation_blocked":
+        blocked_sources.append("pilot adapter_preparation_status")
+
+    execution_tracks = pilot_index.get("execution_tracks", [])
+    if isinstance(execution_tracks, Sequence) and not isinstance(
+        execution_tracks, (str, bytes, bytearray)
+    ):
+        for track in execution_tracks:
+            if (
+                isinstance(track, Mapping)
+                and track.get("track_id") == track_id
+                and track.get("adapter_preparation_status") == "preparation_blocked"
+            ):
+                blocked_sources.append("pilot execution-track adapter_preparation_status")
+
+    if case.get("adapter_preparation_status") == "preparation_blocked":
+        blocked_sources.append("case adapter_preparation_status")
+    case_tracks = case.get("tracks", {})
+    if isinstance(case_tracks, Mapping):
+        case_track = case_tracks.get(track_id, {})
+        if (
+            isinstance(case_track, Mapping)
+            and case_track.get("adapter_preparation_status") == "preparation_blocked"
+        ):
+            blocked_sources.append("case execution-track adapter_preparation_status")
+
+    if not blocked_sources:
+        return
+    case_id = _require_nonblank(case.get("case_id"), field="case.case_id")
+    reason = case.get(
+        "adapter_preparation_blocked_reason",
+        "CAL-24X7 adapter serialization remains unresolved",
+    )
+    if not isinstance(reason, str) or not reason.strip():
+        reason = "CAL-24X7 adapter serialization remains unresolved"
+    raise NativeEvidenceError(
+        f"adapter preparation for {case_id} is blocked by "
+        f"{', '.join(blocked_sources)}: {reason}"
+    )
+
+
 def validate_case_realisation_manifest(document: Mapping[str, Any]) -> None:
     """Validate the complete frozen pre-execution manifest contract.
 
@@ -1194,7 +1263,7 @@ def validate_case_realisation_manifest(document: Mapping[str, Any]) -> None:
             f"case-realisation manifest has an inexact key set; missing={missing}, extra={extra}"
         )
     expected_scalars = {
-        "schema_version": "msproject-case-realisation-manifest-v0.1",
+        "schema_version": "msproject-case-realisation-manifest-v0.2",
         "pilot_id": PILOT_ID,
         "pilot_index_path": PILOT_INDEX_RELATIVE_PATH,
         "native_system": NATIVE_SYSTEM,
@@ -1222,7 +1291,7 @@ def validate_case_realisation_manifest(document: Mapping[str, Any]) -> None:
         "pilot_index_canonical_sha256",
         "pilot_index_raw_sha256",
         "fixture_raw_sha256",
-        "sealed_expected_raw_sha256",
+        "source_only_projection_raw_sha256",
         "preregistration_raw_sha256",
         "comparison_profile_raw_sha256",
         "native_source_file_sha256",
@@ -1230,8 +1299,7 @@ def validate_case_realisation_manifest(document: Mapping[str, Any]) -> None:
     ):
         _require_sha256(document[field], field=f"manifest.{field}")
     for field in (
-        "fixture_path",
-        "sealed_expected_path",
+        "source_only_projection_path",
         "preregistration_id",
         "preregistration_path",
         "comparison_profile_id",
@@ -1359,7 +1427,13 @@ def validate_case_realisation_manifest_against_repository(
     document: Mapping[str, Any],
     environment_capture_path: Path,
 ) -> None:
-    """Revalidate a frozen manifest against every live tracked pilot binding."""
+    """Revalidate a frozen manifest without opening fixture-oracle bytes.
+
+    The full fixture digest comes from the immutable semantic-suite identity
+    registry.  Only the source-only operator projection is opened here.  A
+    Track-A analyser releases the separately tracked sealed comparison control
+    after it has durably persisted the normalized native observation.
+    """
 
     validate_case_realisation_manifest(document)
     repository_root = repository_root.resolve()
@@ -1386,6 +1460,11 @@ def validate_case_realisation_manifest_against_repository(
 
     case_id = document["case_id"]
     case = _case_entry(pilot_index, case_id)
+    _reject_blocked_adapter_preparation(
+        pilot_index=pilot_index,
+        case=case,
+        track_id=document["execution_track_id"],
+    )
     activity_mapping = _normalise_activity_mapping(case)
     expected_observed_mapping = [
         {
@@ -1450,47 +1529,37 @@ def validate_case_realisation_manifest_against_repository(
             if document[field] != expected:
                 raise NativeEvidenceError(f"manifest {field} differs from the tracked binding")
 
-    fixture = _fixture_binding(case)
-    fixture_relative_path = _binding_path(fixture, label="fixture")
-    fixture_path = _safe_repository_file(
-        repository_root, fixture_relative_path, label="fixture"
+    source_projection = _source_only_projection_binding(case)
+    source_projection_relative_path = _binding_path(
+        source_projection, label="source-only projection"
     )
-    fixture_sha256 = _require_sha256(
-        fixture.get("raw_sha256"), field=f"{case_id}.fixture.raw_sha256"
+    source_projection_path = _safe_repository_file(
+        repository_root,
+        source_projection_relative_path,
+        label="source-only projection",
     )
-    if read_regular_file_snapshot(
-        fixture_path, label="tracked fixture"
-    ).sha256 != fixture_sha256:
-        raise NativeEvidenceError("tracked fixture bytes do not match the pilot binding")
-    if document["fixture_path"] != fixture_relative_path or document[
-        "fixture_raw_sha256"
-    ] != fixture_sha256:
-        raise NativeEvidenceError("manifest fixture binding differs from the tracked case")
-
-    sealed_binding = _sealed_expected_binding(case)
-    sealed_relative_within_kit = _binding_path(
-        sealed_binding, label="sealed_expected_normalized"
-    )
-    sealed_repository_relative = (
-        PurePosixPath("native-validation/pilot-kits")
-        / PILOT_ID
-        / PurePosixPath(sealed_relative_within_kit)
-    ).as_posix()
-    sealed_path = _safe_repository_file(
-        repository_root, sealed_repository_relative, label="sealed expected artifact"
-    )
-    sealed_sha256 = _require_sha256(
-        sealed_binding.get("sha256", sealed_binding.get("raw_sha256")),
-        field=f"{case_id}.sealed_expected.sha256",
+    source_projection_sha256 = _require_sha256(
+        source_projection.get("raw_sha256"),
+        field=f"{case_id}.source_only_case_projection.raw_sha256",
     )
     if read_regular_file_snapshot(
-        sealed_path, label="tracked sealed expected artifact"
-    ).sha256 != sealed_sha256:
-        raise NativeEvidenceError("tracked sealed expected bytes do not match the pilot binding")
-    if document["sealed_expected_path"] != sealed_repository_relative or document[
-        "sealed_expected_raw_sha256"
-    ] != sealed_sha256:
-        raise NativeEvidenceError("manifest sealed expected binding differs from the tracked case")
+        source_projection_path, label="tracked source-only projection"
+    ).sha256 != source_projection_sha256:
+        raise NativeEvidenceError(
+            "tracked source-only projection bytes do not match the pilot binding"
+        )
+    if (
+        document["source_only_projection_path"] != source_projection_relative_path
+        or document["source_only_projection_raw_sha256"]
+        != source_projection_sha256
+    ):
+        raise NativeEvidenceError(
+            "manifest source-only projection binding differs from the tracked case"
+        )
+    if document["fixture_raw_sha256"] != _frozen_fixture_raw_sha256(case_id):
+        raise NativeEvidenceError(
+            "manifest full-fixture digest differs from the frozen suite registry"
+        )
 
     environment_document, environment_snapshot = load_canonical_json_snapshot(
         environment_capture_path, label="environment capture"
@@ -1585,31 +1654,11 @@ def freeze_msproject_native_input(
     if track_id not in EXECUTION_TRACK_IDS or track_id not in _declared_track_ids(pilot_index):
         raise NativeEvidenceError(f"track {track_id!r} does not belong to the pilot")
     case = _case_entry(pilot_index, case_id)
-    if track_id == "adapter_interchange_round_trip":
-        case_tracks = case.get("tracks", {})
-        case_track = case_tracks.get(track_id, {}) if isinstance(case_tracks, Mapping) else {}
-        case_adapter_status = case.get(
-            "adapter_preparation_status",
-            case_track.get("adapter_preparation_status")
-            if isinstance(case_track, Mapping)
-            else None,
-        )
-        top_level_status = None
-        execution_tracks = pilot_index.get("execution_tracks", [])
-        if isinstance(execution_tracks, Sequence) and not isinstance(
-            execution_tracks, (str, bytes, bytearray)
-        ):
-            for track in execution_tracks:
-                if isinstance(track, Mapping) and track.get("track_id") == track_id:
-                    top_level_status = track.get("adapter_preparation_status")
-        if case_adapter_status == "preparation_blocked" or top_level_status == "preparation_blocked":
-            reason = case.get(
-                "adapter_preparation_blocked_reason",
-                "CAL-24X7 adapter serialization remains unresolved",
-            )
-            raise NativeEvidenceError(
-                f"adapter preparation for {case_id} is blocked: {reason}"
-            )
+    _reject_blocked_adapter_preparation(
+        pilot_index=pilot_index,
+        case=case,
+        track_id=track_id,
+    )
 
     activity_mapping = _normalise_activity_mapping(case)
     relationship_mapping = _normalise_relationship_mapping(case, activity_mapping)
@@ -1713,7 +1762,7 @@ def freeze_msproject_native_input(
             environment_capture_path=environment_capture_path,
         )
         required_prerequisite_values = {
-            "schema_version": "msproject-case-realisation-manifest-v0.1",
+            "schema_version": "msproject-case-realisation-manifest-v0.2",
             "pilot_id": pilot_id,
             "native_system": NATIVE_SYSTEM,
             "state": "frozen_before_native_calculation",
@@ -1757,54 +1806,36 @@ def freeze_msproject_native_input(
             "file_identity": bound_snapshot.file_identity,
         }
 
-    fixture = _fixture_binding(case)
-    fixture_relative_path = _binding_path(fixture, label="fixture")
-    fixture_path = _safe_repository_file(
-        repository_root, fixture_relative_path, label="fixture"
+    source_projection = _source_only_projection_binding(case)
+    source_projection_relative_path = _binding_path(
+        source_projection, label="source-only projection"
     )
-    fixture_sha256 = _require_sha256(
-        fixture.get("raw_sha256"), field=f"{case_id}.fixture.raw_sha256"
-    )
-    fixture_snapshot = read_regular_file_snapshot(fixture_path, label="fixture")
-    observed_fixture_sha256 = fixture_snapshot.sha256
-    if observed_fixture_sha256 != fixture_sha256:
-        raise NativeEvidenceError(
-            f"fixture raw hash mismatch: declared {fixture_sha256}, observed {observed_fixture_sha256}"
-        )
-    sealed_binding = _sealed_expected_binding(case)
-    sealed_relative_within_kit = _binding_path(
-        sealed_binding, label="sealed_expected_normalized"
-    )
-    sealed_pure = PurePosixPath(sealed_relative_within_kit)
-    if sealed_pure.is_absolute() or ".." in sealed_pure.parts or "\\" in sealed_relative_within_kit:
-        raise NativeEvidenceError("sealed expected path must be a safe pilot-kit-relative path")
-    sealed_repository_relative = (
-        PurePosixPath("native-validation/pilot-kits") / pilot_id / sealed_pure
-    ).as_posix()
-    sealed_path = _safe_repository_file(
+    source_projection_path = _safe_repository_file(
         repository_root,
-        sealed_repository_relative,
-        label="sealed expected artifact",
+        source_projection_relative_path,
+        label="source-only projection",
     )
-    sealed_sha256 = _require_sha256(
-        sealed_binding.get("sha256", sealed_binding.get("raw_sha256")),
-        field=f"{case_id}.sealed_expected.sha256",
+    source_projection_sha256 = _require_sha256(
+        source_projection.get("raw_sha256"),
+        field=f"{case_id}.source_only_case_projection.raw_sha256",
     )
-    sealed_snapshot = read_regular_file_snapshot(
-        sealed_path, label="sealed expected artifact"
+    source_projection_snapshot = read_regular_file_snapshot(
+        source_projection_path, label="source-only projection"
     )
-    if sealed_snapshot.sha256 != sealed_sha256:
-        raise NativeEvidenceError("sealed expected artifact raw hash does not match pilot index")
+    if source_projection_snapshot.sha256 != source_projection_sha256:
+        raise NativeEvidenceError(
+            "source-only projection raw hash does not match the pilot index"
+        )
+    fixture_sha256 = _frozen_fixture_raw_sha256(case_id)
     protected_role_identities = {
         tracked_index_snapshot.file_identity,
         environment_snapshot.file_identity,
-        fixture_snapshot.file_identity,
-        sealed_snapshot.file_identity,
+        source_projection_snapshot.file_identity,
         *(document["file_identity"] for document in bound_documents.values()),
     }
     if native_snapshot.file_identity in protected_role_identities:
         raise NativeEvidenceError(
-            "native input must be file-distinct from protocol, fixture, environment, and sealed-oracle files"
+            "native input must be file-distinct from protocol, source projection, and environment files"
         )
 
     product_fields = dict(environment)
@@ -1814,10 +1845,9 @@ def freeze_msproject_native_input(
             "pilot_index_raw_sha256": pilot_index_raw_sha256,
             "pilot_index_path": PILOT_INDEX_RELATIVE_PATH,
             "prerequisite_manual_case_realization_manifest_sha256": None,
-            "fixture_path": fixture_relative_path,
             "fixture_raw_sha256": fixture_sha256,
-            "sealed_expected_path": sealed_repository_relative,
-            "sealed_expected_raw_sha256": sealed_sha256,
+            "source_only_projection_path": source_projection_relative_path,
+            "source_only_projection_raw_sha256": source_projection_sha256,
             "preregistration_id": bound_documents["preregistration"]["id"],
             "preregistration_path": bound_documents["preregistration"]["path"],
             "preregistration_raw_sha256": bound_documents["preregistration"]["raw_sha256"],
@@ -1845,7 +1875,7 @@ def freeze_msproject_native_input(
                     f"prerequisite manual manifest {field} does not match the Track B realization"
                 )
     manifest = {
-        "schema_version": "msproject-case-realisation-manifest-v0.1",
+        "schema_version": "msproject-case-realisation-manifest-v0.2",
         "pilot_id": pilot_id,
         "pilot_index_canonical_sha256": sha256_digest(pilot_index),
         "pilot_index_raw_sha256": pilot_index_raw_sha256,
@@ -1857,10 +1887,9 @@ def freeze_msproject_native_input(
         "prerequisite_manual_case_realization_manifest_sha256": (
             prerequisite_manual_manifest_sha256
         ),
-        "fixture_path": fixture_relative_path,
         "fixture_raw_sha256": fixture_sha256,
-        "sealed_expected_path": sealed_repository_relative,
-        "sealed_expected_raw_sha256": sealed_sha256,
+        "source_only_projection_path": source_projection_relative_path,
+        "source_only_projection_raw_sha256": source_projection_sha256,
         "preregistration_id": bound_documents["preregistration"]["id"],
         "preregistration_path": bound_documents["preregistration"]["path"],
         "preregistration_raw_sha256": bound_documents["preregistration"]["raw_sha256"],

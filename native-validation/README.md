@@ -66,8 +66,9 @@ round-trip, optimiser superiority, practitioner acceptance or buyer validation.
 `pilot-kits/microsoft-project-relationship-v0.1/` is a deterministic,
 preparation-only subset for `SEM-REL-001` through `SEM-REL-012`. It keeps manual
 build instructions, per-case environment-capture templates, independent review
-sheets and sealed expected outputs in separate paths and binds the frozen
-Microsoft Project preregistration, profile and fixture bytes. The completed
+sheets and sealed expected outputs in separate paths. Operator-visible packets
+bind oracle-free source-only case projections; only the sealed comparison
+artifact binds the matching full fixture path and bytes. The completed
 capture must record the exact observed Project ID/Unique ID/name mapping,
 Schedule From Start, native Manual calculation mode, the separate pre-calculation
 protocol state, structured action log, progress settings and evidence roles.
@@ -87,16 +88,17 @@ input mapping remains blocked.
 
 Mandatory stop conditions use the separate
 `record-msproject-native-attempt-stop` command. It binds the live pilot, case,
-track, fixture, preregistration and profile; hashes only evidence that actually
+track, source-only case projection, preregistration and profile; hashes only evidence that actually
 exists; refuses overwrite; and emits a non-claimable stopped-attempt record,
 never a native-run record or pass. The tracked
 `native-attempt-stop-record-template.json` is instructions only. Missing stage
 hashes must not be invented, and retry requires a new frozen realization.
 
 The pilot index's domain-separated input identity binds the ordered twelve
-cases, frozen preregistration/profile/fixture bytes and mapping-source-register
-bytes. Governance recomputes it from the live tree before accepting the
-experiment-register input hash.
+cases, frozen preregistration/profile, source-only projection bytes and
+mapping-source-register bytes. Governance recomputes it from the live tree
+before accepting the experiment-register input hash. Full fixture bindings are
+kept solely in the sealed comparison files.
 
 The manual track is prepared around Microsoft Project's documented built-in
 **24 Hours** calendar. MSPDI adapter creation is `preparation_blocked` because

@@ -23,12 +23,13 @@ from .freeze import (
     _case_entry,
     _declared_track_ids,
     _environment_capture,
-    _fixture_binding,
+    _frozen_fixture_raw_sha256,
     _named_binding,
     _prepare_new_output_directory,
     _require_nonblank,
     _require_sha256,
     _safe_repository_file,
+    _source_only_projection_binding,
     load_canonical_json_snapshot,
     read_regular_file_snapshot,
     validate_case_realisation_manifest_against_repository,
@@ -108,8 +109,9 @@ STOP_RECORD_REQUIRED_FIELDS = (
     "comparison_profile_id",
     "comparison_profile_path",
     "comparison_profile_raw_sha256",
-    "fixture_path",
     "fixture_raw_sha256",
+    "source_only_projection_path",
+    "source_only_projection_raw_sha256",
     "stopped_at",
     "recorded_by",
     "stop_condition_id",
@@ -252,22 +254,31 @@ def record_msproject_native_attempt_stop(
             "path": relative_path,
             "raw_sha256": declared,
         }
-    fixture = _fixture_binding(case)
-    fixture_path_text = _binding_path(fixture, label="fixture")
-    fixture_path = _safe_repository_file(
-        repository_root, fixture_path_text, label="fixture"
+    source_projection = _source_only_projection_binding(case)
+    source_projection_path_text = _binding_path(
+        source_projection, label="source-only projection"
     )
-    fixture_snapshot = read_regular_file_snapshot(fixture_path, label="fixture")
-    fixture_hash = _require_sha256(
-        fixture.get("raw_sha256"), field=f"{case_id}.fixture.raw_sha256"
+    source_projection_path = _safe_repository_file(
+        repository_root,
+        source_projection_path_text,
+        label="source-only projection",
     )
-    if fixture_snapshot.sha256 != fixture_hash:
-        raise NativeAttemptStopError("tracked fixture bytes changed")
-    if fixture_snapshot.file_identity in protected_files:
+    source_projection_snapshot = read_regular_file_snapshot(
+        source_projection_path, label="source-only projection"
+    )
+    source_projection_hash = _require_sha256(
+        source_projection.get("raw_sha256"),
+        field=f"{case_id}.source_only_case_projection.raw_sha256",
+    )
+    if source_projection_snapshot.sha256 != source_projection_hash:
+        raise NativeAttemptStopError("tracked source-only projection bytes changed")
+    if source_projection_snapshot.file_identity in protected_files:
         raise NativeAttemptStopError(
-            f"tracked fixture aliases {protected_files[fixture_snapshot.file_identity]}"
+            "tracked source-only projection aliases "
+            f"{protected_files[source_projection_snapshot.file_identity]}"
         )
-    protected_files[fixture_snapshot.file_identity] = "fixture"
+    protected_files[source_projection_snapshot.file_identity] = "source_only_projection"
+    fixture_hash = _frozen_fixture_raw_sha256(case_id)
 
     manifest_document: Mapping[str, Any] | None = None
     manifest_snapshot: RegularFileSnapshot | None = None
@@ -368,7 +379,7 @@ def record_msproject_native_attempt_stop(
     if environment_snapshot is None:
         missing.insert(1 if manifest_snapshot is None else 0, "complete_environment_capture")
     record = {
-        "schema_version": "microsoft-project-native-attempt-stop-record-v0.1",
+        "schema_version": "microsoft-project-native-attempt-stop-record-v0.2",
         "record_type": "native_attempt_stop_non_claimable",
         "pilot_id": PILOT_ID,
         "pilot_index_raw_sha256": index_snapshot.sha256,
@@ -381,8 +392,9 @@ def record_msproject_native_attempt_stop(
         "comparison_profile_id": bindings["comparison_profile"]["id"],
         "comparison_profile_path": bindings["comparison_profile"]["path"],
         "comparison_profile_raw_sha256": bindings["comparison_profile"]["raw_sha256"],
-        "fixture_path": fixture_path_text,
         "fixture_raw_sha256": fixture_hash,
+        "source_only_projection_path": source_projection_path_text,
+        "source_only_projection_raw_sha256": source_projection_hash,
         "stopped_at": stopped_at,
         "recorded_by": recorded_by,
         "stop_condition_id": stop_condition_id,

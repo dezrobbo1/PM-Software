@@ -208,6 +208,55 @@ class MicrosoftProjectPilotCliTests(unittest.TestCase):
             self.assertIsNone(kwargs["case_realisation_manifest_path"])
             self.assertIsNone(kwargs["environment_capture_path"])
 
+    def test_track_b_cli_rejects_a_sealed_expected_argument(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = root / "manifest.json"
+            write_canonical_json(
+                manifest,
+                {
+                    "pilot_id": "microsoft-project-relationship-v0.1",
+                    "case_id": "SEM-REL-001",
+                    "execution_track_id": "saved_file_reopen_recalculate_stability",
+                },
+            )
+            with patch.object(cli, "analyse_msproject_native_output") as analyser:
+                result = cli.main(
+                    [
+                        "analyse-msproject-native-output",
+                        "--repository-root",
+                        str(ROOT),
+                        "--case",
+                        "SEM-REL-001",
+                        "--track",
+                        "saved_file_reopen_recalculate_stability",
+                        "--native-output",
+                        str(root / "output.xml"),
+                        "--case-realisation-manifest",
+                        str(manifest),
+                        "--sealed-expected",
+                        str(root / "forbidden-seal.json"),
+                        "--environment-capture",
+                        str(root / "environment.json"),
+                        "--post-execution-attestation",
+                        str(root / "attestation.json"),
+                        "--post-execution-action-log",
+                        str(root / "actions.json"),
+                        "--stage-artifact",
+                        f"native_pre_close_file_sha256={root / 'pre-close.mpp'}",
+                        "--evidence-artifact",
+                        f"task_table={root / 'task-table.png'}",
+                        "--output-dir",
+                        str(root / "analysis"),
+                        "--run-id",
+                        "track-b-forbidden-seal",
+                        "--executed-at",
+                        "2026-08-26T11:00:00+08:00",
+                    ]
+                )
+            self.assertEqual(1, result)
+            analyser.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
