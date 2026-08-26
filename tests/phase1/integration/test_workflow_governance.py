@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 import shutil
@@ -51,12 +52,49 @@ class WorkflowGovernanceTests(unittest.TestCase):
         for candidate in bypass_candidates:
             with self.subTest(candidate=candidate):
                 text = original.replace(insertion, f"{insertion}\n{candidate}")
-                self.assertTrue(
-                    any(
-                        "not a pinned uses declaration" in error
-                        for error in self.action_errors(text)
-                    )
-                )
+                self.assertTrue(self.action_errors(text))
+
+    def test_combined_unicode_key_and_value_escape_cannot_hide_mutable_action(self) -> None:
+        original = self.workflow_texts["validate-phase0.yml"]
+        insertion = "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0"
+        encoded = '      - "u\\u0073es": "example/action\\u0040v1"'
+        errors = self.action_errors(
+            original.replace(insertion, f"{insertion}\n{encoded}")
+        )
+        self.assertTrue(
+            any("unreviewed or non-official action" in error for error in errors),
+            errors,
+        )
+
+    def test_structural_parser_rejects_duplicate_and_unsupported_yaml(self) -> None:
+        original = self.workflow_texts["validate-phase0.yml"]
+        checkout = "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0"
+        duplicate = (
+            "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0\n"
+            "        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0"
+        )
+        self.assertTrue(
+            any(
+                "workflow YAML parse failed closed" in error
+                for error in self.action_errors(original.replace(checkout, duplicate))
+            )
+        )
+        anchored = original.replace(checkout, f"{checkout}\n      - &hidden uses: example/action@v1")
+        self.assertTrue(
+            any(
+                "workflow YAML parse failed closed" in error
+                for error in self.action_errors(anchored)
+            )
+        )
+
+    def test_action_shaped_text_inside_run_block_is_not_an_action_step(self) -> None:
+        original = self.workflow_texts["validate-phase1.yml"]
+        marker = "          git diff --check"
+        script_only = original.replace(
+            marker,
+            marker + "\n          printf '%s\\n' 'example/action@v1'",
+        )
+        self.assertEqual([], self.action_errors(script_only))
 
     def test_abbreviated_and_unreviewed_action_commits_are_rejected(self) -> None:
         original = self.workflow_texts["validate-phase0.yml"]
@@ -179,6 +217,59 @@ class WorkflowGovernanceTests(unittest.TestCase):
             )
         self.assertNotEqual(baseline_projection, mutated_projection)
         self.assertNotEqual(baseline_digest, mutated_digest)
+
+    def test_operator_index_rejects_a_reintroduced_seal_binding(self) -> None:
+        tracked_kit = (
+            ROOT
+            / "native-validation"
+            / "pilot-kits"
+            / validate_phase1_governance.MSPROJECT_PILOT_ID
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            copied_kit = Path(temporary) / "pilot-kit"
+            shutil.copytree(tracked_kit, copied_kit)
+            index_path = copied_kit / "pilot-index.json"
+            index = json.loads(index_path.read_text(encoding="utf-8"))
+            index["cases"][0]["sealed_expected_normalized"] = {
+                "relative_path": "sealed-expected-normalized/SEM-REL-001.json",
+                "sha256": "0" * 64,
+            }
+            index_path.write_text(json.dumps(index), encoding="utf-8")
+            errors = validate_phase1_governance.validate_msproject_pilot_oracle_blinding(
+                ROOT, copied_kit
+            )
+        self.assertTrue(
+            any("sealed-control binding alias" in error for error in errors), errors
+        )
+
+    def test_operator_manifest_rejects_a_reintroduced_control_reference(self) -> None:
+        tracked_kit = (
+            ROOT
+            / "native-validation"
+            / "pilot-kits"
+            / validate_phase1_governance.MSPROJECT_PILOT_ID
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            copied_kit = Path(temporary) / "pilot-kit"
+            shutil.copytree(tracked_kit, copied_kit)
+            manifest_path = copied_kit / "pilot-kit-manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["artifacts"].append(
+                {
+                    "relative_path": "sealed-expected-normalized/SEM-REL-001.json",
+                    "sha256": "0" * 64,
+                    "byte_size": 1,
+                    "media_type": "application/json",
+                }
+            )
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            errors = validate_phase1_governance.validate_msproject_pilot_oracle_blinding(
+                ROOT, copied_kit
+            )
+        self.assertTrue(
+            any("operator-visible pilot bytes expose" in error for error in errors),
+            errors,
+        )
 
 
 if __name__ == "__main__":

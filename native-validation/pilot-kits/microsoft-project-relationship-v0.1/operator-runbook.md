@@ -17,10 +17,11 @@ can establish observed native behavior.
 
 ## Before any track
 
-Verify the raw preregistration, comparison-profile, and source-only case
-projection hashes in `pilot-index.json`. Operator-visible bindings deliberately
-do not identify the oracle-bearing frozen fixture; that full-fixture binding
-exists only inside the sealed comparison artifact. Copy the selected file under
+Use only the files inventoried by `pilot-kit-manifest.json`; do not use an
+unrestricted repository checkout as the operator packet. Verify the raw
+preregistration, comparison-profile, and source-only case projection hashes in
+`pilot-index.json`. The operator packet contains no expected-result path or
+digest. Copy the selected file under
 `tracks/manual_native_semantic_parity/environment-capture-templates/`,
 `post-execution-attestation-template.json`, and the selected case sheets into
 the ignored controlled execution workspace. Copy the matching Track A or Track
@@ -38,11 +39,10 @@ Values under `required_value` and other prefilled mapping fields are plans, not
 observations: fill `observed_value`, operator/reviewer IDs, and both RFC 3339
 times from the native UI and independent evidence.
 Complete the attestation copy only after real desktop execution.
-Never edit the tracked deterministic kit.
-Keep the operator, independent-review, and sealed-expectation files separate.
-The operator and pre-execution reviewer must not open or receive a sealed
-expected-normalized file until the native artifacts and normalized observation
-have been frozen and hashed.
+Never edit the tracked deterministic kit. The operator and pre-execution
+reviewer must not receive comparison-control materials. A separate comparison
+custodian retains those materials until the native artifacts and normalized
+observation have been durably frozen and hashed.
 
 Required capture fields (placeholder null is incomplete except for the required
 null `status_date`):
@@ -158,8 +158,9 @@ three domains and rejects a mismatch; the same file may not satisfy two roles.
    hash it, and stop as inconclusive if that exact dialect is unavailable.
 10. Complete the post-execution action log, freeze all six independent-evidence
     artifacts and the required track-stage artifacts, then hash-bind them in the
-    post-execution attestation and run the analyser. Keep the sealed expectation
-    inaccessible until the native output and its hashes are frozen.
+    post-execution attestation and run the analyser. The analyser releases its
+    separately controlled comparison material only after the normalized native
+    observation is durably written and hash-verified.
 11. Preserve the analyser bundle and submit it, the screenshots/reports, and
     raw controlled artifacts for independent post-execution review.
 
@@ -223,9 +224,9 @@ union is exactly the six roles shown above.
 6. Submit the separate reopen evidence for independent review.
 
 This track can test stability only. It cannot satisfy the native-semantic or
-adapter-interchange track. Do not supply `--sealed-expected`: Track B compares
-only its independently normalized pre-close and post-recalculation observations,
-and the analyser rejects access to the Track A oracle.
+adapter-interchange track. Track B compares only its independently normalized
+pre-close and post-recalculation observations and has no comparison-control
+access.
 
 Example Track B freeze, using the same native source and exact environment file:
 

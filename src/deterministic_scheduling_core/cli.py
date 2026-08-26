@@ -103,14 +103,6 @@ def _parser() -> argparse.ArgumentParser:
     analyse.add_argument("--track", required=True, choices=MSPROJECT_PILOT_TRACK_IDS)
     analyse.add_argument("--native-output", required=True, type=Path)
     analyse.add_argument("--case-realisation-manifest", required=True, type=Path)
-    analyse.add_argument(
-        "--sealed-expected",
-        type=Path,
-        help=(
-            "optional Track-A/C assertion of the exact tracked comparison-control path; "
-            "forbidden for Track B"
-        ),
-    )
     analyse.add_argument("--environment-capture", required=True, type=Path)
     analyse.add_argument("--post-execution-attestation", required=True, type=Path)
     analyse.add_argument("--post-execution-action-log", required=True, type=Path)
@@ -299,18 +291,10 @@ def main(argv: list[str] | None = None) -> int:
                         f"case-realisation manifest {field} is {manifest.get(field)!r}, "
                         f"not {expected!r}"
                     )
-            if (
-                args.track == "saved_file_reopen_recalculate_stability"
-                and args.sealed_expected is not None
-            ):
-                raise ValueError(
-                    "--sealed-expected is forbidden for the saved-file reopen/recalculate track"
-                )
             analysis = analyse_msproject_native_output(
                 repository_root=root,
                 native_output_path=args.native_output,
                 case_realisation_manifest_path=args.case_realisation_manifest,
-                sealed_expected_path=args.sealed_expected,
                 environment_capture_path=args.environment_capture,
                 post_execution_attestation_path=args.post_execution_attestation,
                 post_execution_action_log_path=args.post_execution_action_log,

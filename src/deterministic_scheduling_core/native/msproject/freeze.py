@@ -469,18 +469,6 @@ def _frozen_fixture_raw_sha256(case_id: str) -> str:
     return _require_sha256(digest, field=f"frozen_fixture_registry.{filename}")
 
 
-def _sealed_expected_binding(case_entry: Mapping[str, Any]) -> Mapping[str, Any]:
-    for key in (
-        "sealed_expected_normalized",
-        "sealed_expected",
-        "sealed_expected_binding",
-    ):
-        value = case_entry.get(key)
-        if isinstance(value, Mapping):
-            return value
-    raise NativeEvidenceError("pilot case has no sealed expected artifact binding")
-
-
 def _mapping_container(case_entry: Mapping[str, Any]) -> Mapping[str, Any]:
     for key in ("native_mapping", "native_realization", "mapping"):
         value = case_entry.get(key)

@@ -67,6 +67,8 @@ OPERATOR_RUNBOOK = "operator-runbook.md"
 MANIFEST = "pilot-kit-manifest.json"
 MANIFEST_CHECKSUM = "pilot-kit-manifest.sha256"
 SOURCE_ONLY_PROJECTION_DIRECTORY = "source-only-case-projections"
+SEALED_CONTROL_DIRECTORY = "sealed-expected-normalized"
+SEALED_CONTROL_INDEX = f"{SEALED_CONTROL_DIRECTORY}/sealed-control-index.json"
 
 PREREGISTRATION_PATH = (
     "native-validation/preregistrations/"
@@ -1229,10 +1231,11 @@ can establish observed native behavior.
 
 ## Before any track
 
-Verify the raw preregistration, comparison-profile, and source-only case
-projection hashes in `pilot-index.json`. Operator-visible bindings deliberately
-do not identify the oracle-bearing frozen fixture; that full-fixture binding
-exists only inside the sealed comparison artifact. Copy the selected file under
+Use only the files inventoried by `pilot-kit-manifest.json`; do not use an
+unrestricted repository checkout as the operator packet. Verify the raw
+preregistration, comparison-profile, and source-only case projection hashes in
+`pilot-index.json`. The operator packet contains no expected-result path or
+digest. Copy the selected file under
 `tracks/manual_native_semantic_parity/environment-capture-templates/`,
 `post-execution-attestation-template.json`, and the selected case sheets into
 the ignored controlled execution workspace. Copy the matching Track A or Track
@@ -1250,11 +1253,10 @@ Values under `required_value` and other prefilled mapping fields are plans, not
 observations: fill `observed_value`, operator/reviewer IDs, and both RFC 3339
 times from the native UI and independent evidence.
 Complete the attestation copy only after real desktop execution.
-Never edit the tracked deterministic kit.
-Keep the operator, independent-review, and sealed-expectation files separate.
-The operator and pre-execution reviewer must not open or receive a sealed
-expected-normalized file until the native artifacts and normalized observation
-have been frozen and hashed.
+Never edit the tracked deterministic kit. The operator and pre-execution
+reviewer must not receive comparison-control materials. A separate comparison
+custodian retains those materials until the native artifacts and normalized
+observation have been durably frozen and hashed.
 
 Required capture fields (placeholder null is incomplete except for the required
 null `status_date`):
@@ -1327,8 +1329,9 @@ three domains and rejects a mismatch; the same file may not satisfy two roles.
    hash it, and stop as inconclusive if that exact dialect is unavailable.
 10. Complete the post-execution action log, freeze all six independent-evidence
     artifacts and the required track-stage artifacts, then hash-bind them in the
-    post-execution attestation and run the analyser. Keep the sealed expectation
-    inaccessible until the native output and its hashes are frozen.
+    post-execution attestation and run the analyser. The analyser releases its
+    separately controlled comparison material only after the normalized native
+    observation is durably written and hash-verified.
 11. Preserve the analyser bundle and submit it, the screenshots/reports, and
     raw controlled artifacts for independent post-execution review.
 
@@ -1392,9 +1395,9 @@ union is exactly the six roles shown above.
 6. Submit the separate reopen evidence for independent review.
 
 This track can test stability only. It cannot satisfy the native-semantic or
-adapter-interchange track. Do not supply `--sealed-expected`: Track B compares
-only its independently normalized pre-close and post-recalculation observations,
-and the analyser rejects access to the Track A oracle.
+adapter-interchange track. Track B compares only its independently normalized
+pre-close and post-recalculation observations and has no comparison-control
+access.
 
 Example Track B freeze, using the same native source and exact environment file:
 
@@ -2035,7 +2038,7 @@ def _adapter_path(case_id: str) -> str:
 
 
 def _sealed_path(case_id: str) -> str:
-    return f"sealed-expected-normalized/{case_id}.json"
+    return f"{SEALED_CONTROL_DIRECTORY}/{case_id}.json"
 
 
 def _expected_relative_files() -> tuple[str, ...]:
@@ -2061,7 +2064,7 @@ def _expected_relative_files() -> tuple[str, ...]:
                 _sealed_path(case_id),
             ]
         )
-    files.extend([PILOT_INDEX, MANIFEST, MANIFEST_CHECKSUM])
+    files.extend([PILOT_INDEX, SEALED_CONTROL_INDEX, MANIFEST, MANIFEST_CHECKSUM])
     return tuple(files)
 
 
@@ -2223,7 +2226,6 @@ def _pilot_index(output_dir: Path, sources: _BoundSources) -> dict[str, Any]:
         review = _artifact_ref(output_dir, _review_path(case_id))
         reopen = _artifact_ref(output_dir, _reopen_path(case_id))
         adapter = _artifact_ref(output_dir, _adapter_path(case_id))
-        sealed = _artifact_ref(output_dir, _sealed_path(case_id))
         cases.append(
             {
                 "case_id": case_id,
@@ -2237,7 +2239,6 @@ def _pilot_index(output_dir: Path, sources: _BoundSources) -> dict[str, Any]:
                 "environment_capture_template": environment_capture,
                 "operator_build_sheet": operator,
                 "independent_review_sheet": review,
-                "sealed_expected_normalized": sealed,
                 "tracks": {
                     "manual_native_semantic_parity": {
                         "preparation_status": "prepared",
@@ -2341,10 +2342,65 @@ def _pilot_index(output_dir: Path, sources: _BoundSources) -> dict[str, Any]:
     }
 
 
+def _sealed_control_index(
+    output_dir: Path,
+    pilot_index: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the post-observation-only comparison-control index.
+
+    The operator index deliberately has no reverse reference to this document.
+    Case artifact paths are derived from the frozen case IDs by the comparator,
+    so this control contains no caller-selectable path.
+    """
+
+    cases: list[dict[str, Any]] = []
+    indexed_cases = {
+        item["case_id"]: item
+        for item in pilot_index["cases"]
+    }
+    for case_id in CASE_IDS:
+        sealed = _artifact_ref(output_dir, _sealed_path(case_id))
+        projection = indexed_cases[case_id]["source_only_case_projection"]
+        cases.append(
+            {
+                "case_id": case_id,
+                "sealed_expected_raw_sha256": sealed["sha256"],
+                "sealed_expected_byte_size": sealed["byte_size"],
+                "source_only_projection_raw_sha256": projection["raw_sha256"],
+                "frozen_fixture_raw_sha256": FIXTURE_RAW_SHA256_BY_CASE_ID[case_id],
+            }
+        )
+    pilot_index_bytes = (output_dir / PILOT_INDEX).read_bytes()
+    return {
+        "document_type": "microsoft_project_sealed_comparison_control_index",
+        "schema_version": "microsoft-project-sealed-control-index-v0.1",
+        "pilot_id": PILOT_ID,
+        "status": "sealed_until_post_observation_release",
+        "ordered_case_ids": list(CASE_IDS),
+        "operator_pilot_index_binding": {
+            "raw_sha256": _sha256(pilot_index_bytes),
+            "canonical_sha256": _sha256(canonical_bytes(pilot_index)),
+            "pilot_input_identity_sha256": pilot_index["pilot_input_identity"][
+                "sha256"
+            ],
+        },
+        "protocol_bindings": _protocol_source_bindings(),
+        "cases": cases,
+        "release_policy": {
+            "allowed_execution_track_id": "manual_native_semantic_parity",
+            "normalized_observation_must_be_durably_written_and_hash_verified": True,
+            "operator_and_pre_execution_reviewer_access": "prohibited",
+            "caller_selected_control_or_seal_path": "forbidden",
+        },
+    }
+
+
 def _build_manifest(output_dir: Path) -> dict[str, Any]:
     excluded = {MANIFEST, MANIFEST_CHECKSUM}
     inventory: list[dict[str, Any]] = []
     for relative_path in sorted(set(_expected_relative_files()) - excluded):
+        if relative_path.startswith(f"{SEALED_CONTROL_DIRECTORY}/"):
+            continue
         data = (output_dir / relative_path).read_bytes()
         inventory.append(
             {
@@ -2356,12 +2412,18 @@ def _build_manifest(output_dir: Path) -> dict[str, Any]:
         )
     return {
         "document_type": "microsoft_project_pilot_kit_manifest",
-        "schema_version": "microsoft-project-pilot-kit-manifest-v0.1",
+        "schema_version": "microsoft-project-operator-packet-manifest-v0.2",
         "pilot_id": PILOT_ID,
         "status": PILOT_STATUS,
         "hash_algorithm": "sha256",
         "path_policy": "relative_posix_paths_only",
-        "manifest_excludes": [MANIFEST, MANIFEST_CHECKSUM],
+        "artifact_scope": "operator_visible_pre_observation_packet_only",
+        "comparison_control_artifacts_included": False,
+        "scope_exclusions": [
+            "post_observation_comparison_control_domain",
+            "manifest_self_and_checksum",
+        ],
+        "self_excluded_artifacts": [MANIFEST, MANIFEST_CHECKSUM],
         "artifact_count": len(inventory),
         "artifacts": inventory,
         "claim_boundary": _claim_boundary(),
@@ -2512,7 +2574,13 @@ def prepare_pilot(
         )
         _write_json(target, _sealed_path(case_id), _sealed_expected(case_id, fixture))
 
-    _write_json(target, PILOT_INDEX, _pilot_index(target, sources))
+    pilot_index = _pilot_index(target, sources)
+    _write_json(target, PILOT_INDEX, pilot_index)
+    _write_json(
+        target,
+        SEALED_CONTROL_INDEX,
+        _sealed_control_index(target, pilot_index),
+    )
     manifest = _build_manifest(target)
     _write_json(target, MANIFEST, manifest)
     manifest_sha256 = _sha256((target / MANIFEST).read_bytes())
@@ -2577,6 +2645,8 @@ __all__ = [
     "POST_EXECUTION_ATTESTATION_TEMPLATE",
     "POST_EXECUTION_ACTION_IDS_BY_TRACK",
     "PREREGISTRATION_ID",
+    "SEALED_CONTROL_DIRECTORY",
+    "SEALED_CONTROL_INDEX",
     "TRACK_IDS",
     "TRACK_A_POST_EXECUTION_ACTION_LOG_TEMPLATE",
     "TRACK_B_POST_EXECUTION_ACTION_LOG_TEMPLATE",

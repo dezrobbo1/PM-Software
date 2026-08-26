@@ -35,6 +35,8 @@ from deterministic_scheduling_core.native.msproject.pilot import (
     PREREGISTRATION_RAW_SHA256,
     PROFILE_PATH,
     PROFILE_RAW_SHA256,
+    SEALED_CONTROL_DIRECTORY,
+    SEALED_CONTROL_INDEX,
     PROJECT_SUMMARY_UID_OFFICIAL_URL,
     PROJECT_SUMMARY_VISIBILITY_OFFICIAL_URL,
     SUMMARY_ELEMENT_OFFICIAL_URL,
@@ -216,8 +218,7 @@ class MicrosoftProjectPilotTests(unittest.TestCase):
             visible_files = {
                 relative_path: data
                 for relative_path, data in _snapshot(output).items()
-                if not relative_path.startswith("sealed-expected-normalized/")
-                and relative_path not in {MANIFEST, "pilot-kit-manifest.sha256"}
+                if not relative_path.startswith(f"{SEALED_CONTROL_DIRECTORY}/")
             }
             for relative_path, data in visible_files.items():
                 if relative_path.endswith(".json"):
@@ -259,7 +260,7 @@ class MicrosoftProjectPilotTests(unittest.TestCase):
             visible_bytes = b"\n".join(
                 data
                 for relative_path, data in snapshot.items()
-                if not relative_path.startswith("sealed-expected-normalized/")
+                if not relative_path.startswith(f"{SEALED_CONTROL_DIRECTORY}/")
             )
             index = _json(output / PILOT_INDEX)
             indexed_cases = {item["case_id"]: item for item in index["cases"]}
@@ -291,6 +292,13 @@ class MicrosoftProjectPilotTests(unittest.TestCase):
                     )
                     self.assertNotIn("expected", projection)
                     binding = indexed_cases[case_id]["source_only_case_projection"]
+                    self.assertTrue(
+                        {
+                            "sealed_expected_normalized",
+                            "sealed_expected",
+                            "sealed_expected_binding",
+                        }.isdisjoint(indexed_cases[case_id])
+                    )
                     self.assertEqual(
                         "source_only_case_projection", binding["binding_role"]
                     )
@@ -340,6 +348,69 @@ class MicrosoftProjectPilotTests(unittest.TestCase):
                             "full_oracle_fixture_binding_is_sealed"
                         ]
                     )
+
+            control = _json(output / SEALED_CONTROL_INDEX)
+            self.assertEqual(list(CASE_IDS), control["ordered_case_ids"])
+            self.assertEqual(
+                [
+                    {
+                        "case_id": case_id,
+                        "sealed_expected_raw_sha256": _sha256(
+                            output
+                            / SEALED_CONTROL_DIRECTORY
+                            / f"{case_id}.json"
+                        ),
+                        "sealed_expected_byte_size": (
+                            output
+                            / SEALED_CONTROL_DIRECTORY
+                            / f"{case_id}.json"
+                        ).stat().st_size,
+                        "source_only_projection_raw_sha256": _sha256(
+                            output
+                            / "source-only-case-projections"
+                            / f"{case_id}.json"
+                        ),
+                        "frozen_fixture_raw_sha256": FIXTURE_RAW_SHA256_BY_CASE_ID[
+                            case_id
+                        ],
+                    }
+                    for case_id in CASE_IDS
+                ],
+                control["cases"],
+            )
+            operator_manifest = _json(output / MANIFEST)
+            self.assertEqual(
+                "microsoft-project-operator-packet-manifest-v0.2",
+                operator_manifest["schema_version"],
+            )
+            self.assertEqual(
+                "operator_visible_pre_observation_packet_only",
+                operator_manifest["artifact_scope"],
+            )
+            self.assertFalse(
+                operator_manifest["comparison_control_artifacts_included"]
+            )
+            self.assertEqual(
+                [
+                    "post_observation_comparison_control_domain",
+                    "manifest_self_and_checksum",
+                ],
+                operator_manifest["scope_exclusions"],
+            )
+            self.assertTrue(
+                all(
+                    not item["relative_path"].startswith(
+                        f"{SEALED_CONTROL_DIRECTORY}/"
+                    )
+                    for item in operator_manifest["artifacts"]
+                )
+            )
+            for case in control["cases"]:
+                self.assertNotIn(
+                    case["sealed_expected_raw_sha256"],
+                    visible_bytes.decode("utf-8"),
+                )
+            self.assertNotIn(SEALED_CONTROL_INDEX, visible_bytes.decode("utf-8"))
 
     def test_tracks_are_separate_and_adapter_is_honestly_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

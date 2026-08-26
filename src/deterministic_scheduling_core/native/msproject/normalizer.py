@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -13,7 +14,10 @@ import xml.etree.ElementTree as ET
 from jsonschema import Draft202012Validator, FormatChecker
 from rfc3339_validator import validate_rfc3339
 
-from deterministic_scheduling_core.canonical.frozen_suite import EXPECTED_FILENAME_BY_ID
+from deterministic_scheduling_core.canonical.frozen_suite import (
+    EXPECTED_FILENAME_BY_ID,
+    EXPECTED_FIXTURE_SHA256_BY_FILENAME,
+)
 from deterministic_scheduling_core.provenance.canonical_json import (
     canonical_text,
     sha256_digest,
@@ -31,7 +35,6 @@ from .freeze import (
     _prepare_new_output_directory,
     _require_regular_file,
     _safe_repository_file,
-    _sealed_expected_binding,
     load_canonical_json,
     load_canonical_json_snapshot,
     parse_canonical_json_snapshot,
@@ -46,6 +49,11 @@ from .freeze import (
 # rejected instead of being treated as equivalent dialects.
 MSPDI_NAMESPACE = "http://schemas.microsoft.com/project/2010"
 MSPDI_SAVE_VERSION = 14
+SEALED_CONTROL_DIRECTORY = "sealed-expected-normalized"
+SEALED_CONTROL_INDEX_RELATIVE_PATH = (
+    f"native-validation/pilot-kits/{PILOT_ID}/"
+    f"{SEALED_CONTROL_DIRECTORY}/sealed-control-index.json"
+)
 XSI_NAMESPACE = "http://www.w3.org/2001/XMLSchema-instance"
 COORDINATE_TRANSFORMATION_ID = "microsoft-project-coordinate-normalisation-v0.1"
 ENUM_TRANSFORMATION_ID = "microsoft-project-enumeration-normalisation-v0.1"
@@ -212,6 +220,34 @@ def _parse_bounded_mspdi(snapshot: RegularFileSnapshot) -> ET.Element:
 
 def _canonical_json_file_sha256(document: Mapping[str, Any]) -> str:
     return hashlib.sha256((canonical_text(document) + "\n").encode("utf-8")).hexdigest()
+
+
+def _write_durable_normalized_observation(
+    path: Path,
+    document: Mapping[str, Any],
+    *,
+    label: str,
+) -> None:
+    """Create and durably sync an observation before any oracle is released."""
+
+    data = (canonical_text(document) + "\n").encode("utf-8")
+    try:
+        with path.open("xb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+
+        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        directory_fd = os.open(path.parent, directory_flags)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except OSError as exc:
+        raise NativeOutputError(
+            f"could not durably persist {label}: {exc}",
+            outcome="executed_inconclusive",
+        ) from exc
 
 
 def _element_state(parent: ET.Element, local_name: str) -> dict[str, Any]:
@@ -2105,9 +2141,14 @@ def _release_tracked_sealed_expected(
     *,
     repository_root: Path,
     manifest: Mapping[str, Any],
-    supplied_path: Path | None,
 ) -> tuple[dict[str, Any], RegularFileSnapshot]:
-    """Release the case-specific tracked comparison control after observation freeze."""
+    """Release the case control through the independent post-observation index."""
+
+    if manifest.get("execution_track_id") != "manual_native_semantic_parity":
+        raise NativeOutputError(
+            "sealed comparison control is available only to Track A",
+            outcome="executed_inconclusive",
+        )
 
     index_path = _safe_repository_file(
         repository_root,
@@ -2141,48 +2182,331 @@ def _release_tracked_sealed_expected(
             outcome="executed_inconclusive",
         )
     case = _case_entry(pilot_index, case_id)
-    binding = _sealed_expected_binding(case)
-    relative_within_kit = _binding_path(
-        binding, label="sealed_expected_normalized"
-    )
-    expected_relative_within_kit = f"sealed-expected-normalized/{case_id}.json"
-    if relative_within_kit != expected_relative_within_kit:
+    declared_case_ids = pilot_index.get("case_ids")
+    if not isinstance(declared_case_ids, list) or not all(
+        isinstance(item, str) for item in declared_case_ids
+    ):
         raise NativeOutputError(
-            "sealed expected path must be the exact case-specific pilot-kit path",
+            "tracked pilot index lacks its exact ordered case identities",
+            outcome="executed_inconclusive",
+        )
+    control_path = _safe_repository_file(
+        repository_root,
+        SEALED_CONTROL_INDEX_RELATIVE_PATH,
+        label="sealed comparison control index",
+    )
+    control, _ = load_canonical_json_snapshot(
+        control_path,
+        label="sealed comparison control index",
+    )
+    required_control_keys = {
+        "document_type",
+        "schema_version",
+        "pilot_id",
+        "status",
+        "ordered_case_ids",
+        "operator_pilot_index_binding",
+        "protocol_bindings",
+        "cases",
+        "release_policy",
+    }
+    if set(control) != required_control_keys:
+        raise NativeOutputError(
+            "sealed comparison control index has an inexact key set",
+            outcome="executed_inconclusive",
+        )
+    if (
+        control.get("document_type")
+        != "microsoft_project_sealed_comparison_control_index"
+        or control.get("schema_version")
+        != "microsoft-project-sealed-control-index-v0.1"
+        or control.get("pilot_id") != PILOT_ID
+        or control.get("status") != "sealed_until_post_observation_release"
+        or control.get("ordered_case_ids") != declared_case_ids
+    ):
+        raise NativeOutputError(
+            "sealed comparison control index identity or case order is invalid",
+            outcome="executed_inconclusive",
+        )
+    control_index_binding = control.get("operator_pilot_index_binding")
+    expected_control_index_binding = {
+        "raw_sha256": index_snapshot.sha256,
+        "canonical_sha256": sha256_digest(pilot_index),
+        "pilot_input_identity_sha256": (
+            pilot_index.get("pilot_input_identity", {}).get("sha256")
+            if isinstance(pilot_index.get("pilot_input_identity"), Mapping)
+            else None
+        ),
+    }
+    if control_index_binding != expected_control_index_binding:
+        raise NativeOutputError(
+            "sealed comparison control does not bind the frozen operator index",
+            outcome="executed_inconclusive",
+        )
+    public_protocol_bindings = pilot_index.get(
+        "source_bindings", pilot_index.get("bindings")
+    )
+    if (
+        not isinstance(public_protocol_bindings, Mapping)
+        or control.get("protocol_bindings") != public_protocol_bindings
+    ):
+        raise NativeOutputError(
+            "sealed comparison control protocol bindings differ from the operator index",
+            outcome="executed_inconclusive",
+        )
+    release_policy = control.get("release_policy")
+    if release_policy != {
+        "allowed_execution_track_id": "manual_native_semantic_parity",
+        "normalized_observation_must_be_durably_written_and_hash_verified": True,
+        "operator_and_pre_execution_reviewer_access": "prohibited",
+        "caller_selected_control_or_seal_path": "forbidden",
+    }:
+        raise NativeOutputError(
+            "sealed comparison control release policy is invalid",
+            outcome="executed_inconclusive",
+        )
+    control_cases = control.get("cases")
+    if not isinstance(control_cases, list) or not all(
+        isinstance(item, Mapping) for item in control_cases
+    ):
+        raise NativeOutputError(
+            "sealed comparison control cases must be an array of objects",
+            outcome="executed_inconclusive",
+        )
+    control_case_ids = [item.get("case_id") for item in control_cases]
+    if control_case_ids != declared_case_ids or len(control_case_ids) != len(
+        set(control_case_ids)
+    ):
+        raise NativeOutputError(
+            "sealed comparison control case identities/order are invalid",
+            outcome="executed_inconclusive",
+        )
+    control_case = next(item for item in control_cases if item["case_id"] == case_id)
+    required_case_keys = {
+        "case_id",
+        "sealed_expected_raw_sha256",
+        "sealed_expected_byte_size",
+        "source_only_projection_raw_sha256",
+        "frozen_fixture_raw_sha256",
+    }
+    if set(control_case) != required_case_keys:
+        raise NativeOutputError(
+            "sealed comparison control case has an inexact key set",
+            outcome="executed_inconclusive",
+        )
+    source_projection = case.get("source_only_case_projection")
+    if not isinstance(source_projection, Mapping):
+        raise NativeOutputError(
+            "operator index case lacks its source-only projection binding",
+            outcome="executed_inconclusive",
+        )
+    expected_fixture_digest = EXPECTED_FIXTURE_SHA256_BY_FILENAME[
+        EXPECTED_FILENAME_BY_ID[case_id]
+    ]
+    if (
+        control_case.get("source_only_projection_raw_sha256")
+        != source_projection.get("raw_sha256")
+        or control_case.get("frozen_fixture_raw_sha256")
+        != expected_fixture_digest
+        or control_case.get("frozen_fixture_raw_sha256")
+        != manifest.get("fixture_raw_sha256")
+    ):
+        raise NativeOutputError(
+            "sealed comparison control case provenance is inconsistent",
             outcome="executed_inconclusive",
         )
     repository_relative = (
         Path("native-validation")
         / "pilot-kits"
         / PILOT_ID
-        / Path(*relative_within_kit.split("/"))
+        / SEALED_CONTROL_DIRECTORY
+        / f"{case_id}.json"
     ).as_posix()
     tracked_path = _safe_repository_file(
         repository_root,
         repository_relative,
         label="sealed expected artifact",
     )
-    if supplied_path is not None and supplied_path.resolve() != tracked_path.resolve():
-        raise NativeOutputError(
-            "--sealed-expected must identify the exact tracked case-specific artifact",
-            outcome="executed_inconclusive",
-        )
     declared_sha256 = _require_sha256(
-        binding.get("sha256", binding.get("raw_sha256")),
-        field=f"{case_id}.sealed_expected.sha256",
+        control_case.get("sealed_expected_raw_sha256"),
+        field=f"{case_id}.sealed_expected_raw_sha256",
     )
     snapshot = read_regular_file_snapshot(
         tracked_path, label="sealed expected artifact"
     )
-    if snapshot.sha256 != declared_sha256:
+    if (
+        snapshot.sha256 != declared_sha256
+        or snapshot.byte_size != control_case.get("sealed_expected_byte_size")
+    ):
         raise NativeOutputError(
-            "sealed expected artifact bytes do not match the tracked pilot binding",
+            "sealed expected artifact bytes do not match the comparison control",
             outcome="executed_inconclusive",
         )
-    return (
-        parse_canonical_json_snapshot(snapshot, label="sealed expected artifact"),
-        snapshot,
+    sealed = parse_canonical_json_snapshot(snapshot, label="sealed expected artifact")
+    if sealed.get("case_id") != case_id or sealed.get("pilot_id", PILOT_ID) != PILOT_ID:
+        raise NativeOutputError(
+            "sealed expected artifact identity does not match the released case",
+            outcome="executed_inconclusive",
+        )
+    sealed_bindings = sealed.get("source_bindings")
+    if not isinstance(sealed_bindings, Mapping):
+        raise NativeOutputError(
+            "sealed expected artifact lacks source bindings",
+            outcome="executed_inconclusive",
+        )
+    for role, public_binding in public_protocol_bindings.items():
+        if sealed_bindings.get(role) != public_binding:
+            raise NativeOutputError(
+                f"sealed expected artifact {role} binding differs from the operator index",
+                outcome="executed_inconclusive",
+            )
+    expected_fixture_relative = (
+        "benchmarks/semantic/cases/" + EXPECTED_FILENAME_BY_ID[case_id]
     )
+    expected_fixture_binding = {
+        "case_id": case_id,
+        "path": expected_fixture_relative,
+        "relative_path": expected_fixture_relative,
+        "raw_sha256": expected_fixture_digest,
+    }
+    if sealed_bindings.get("fixture") != expected_fixture_binding:
+        raise NativeOutputError(
+            "sealed expected artifact full-fixture binding is not exact",
+            outcome="executed_inconclusive",
+        )
+    full_fixture_path = _safe_repository_file(
+        repository_root,
+        expected_fixture_relative,
+        label="sealed full fixture",
+    )
+    fixture_snapshot = read_regular_file_snapshot(
+        full_fixture_path, label="sealed full fixture"
+    )
+    if fixture_snapshot.sha256 != expected_fixture_digest:
+        raise NativeOutputError(
+            "sealed expected artifact full-fixture binding does not match live bytes",
+            outcome="executed_inconclusive",
+        )
+    try:
+        fixture = json.loads(fixture_snapshot.data.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise NativeOutputError(
+            "sealed full fixture is not valid UTF-8 JSON",
+            outcome="executed_inconclusive",
+        ) from exc
+    if not isinstance(fixture, Mapping) or fixture.get("case_id") != case_id:
+        raise NativeOutputError(
+            "sealed full fixture identity does not match the released case",
+            outcome="executed_inconclusive",
+        )
+    fixture_expected = fixture.get("expected")
+    if not isinstance(fixture_expected, Mapping):
+        raise NativeOutputError(
+            "sealed full fixture lacks its expected result",
+            outcome="executed_inconclusive",
+        )
+    required_expected_fields = {
+        "reference_status",
+        "activity_times",
+        "project_finish",
+    }
+    if not required_expected_fields.issubset(fixture_expected):
+        raise NativeOutputError(
+            "sealed full fixture expected result is incomplete",
+            outcome="executed_inconclusive",
+        )
+    expected_normalized = {
+        field: fixture_expected[field]
+        for field in ("reference_status", "activity_times", "project_finish")
+    }
+    for optional_field in ("total_float", "free_float"):
+        if optional_field in fixture_expected:
+            expected_normalized[optional_field] = fixture_expected[optional_field]
+
+    required_sealed_keys = {
+        "document_type",
+        "schema_version",
+        "pilot_id",
+        "case_id",
+        "status",
+        "source_bindings",
+        "seal_control",
+        "coordinate_contract",
+        "expected_normalized",
+        "native_execution_status",
+        "claim_boundary",
+    }
+    if set(sealed) != required_sealed_keys:
+        raise NativeOutputError(
+            "sealed expected artifact has an inexact key set",
+            outcome="executed_inconclusive",
+        )
+    if (
+        sealed.get("document_type")
+        != "microsoft_project_sealed_expected_normalized"
+        or sealed.get("schema_version") != "microsoft-project-sealed-expected-v0.1"
+        or sealed.get("pilot_id") != PILOT_ID
+        or sealed.get("case_id") != case_id
+        or sealed.get("status") != "prepared_not_executed"
+        or sealed.get("native_execution_status") != "not_executed"
+    ):
+        raise NativeOutputError(
+            "sealed expected artifact identity or status is invalid",
+            outcome="executed_inconclusive",
+        )
+    if sealed.get("seal_control") != {
+        "separate_from_operator_and_pre_execution_reviewer_material": True,
+        "full_oracle_fixture_binding_is_sealed": True,
+        "operator_access_before_native_evidence_freeze": "prohibited",
+        "release_condition": (
+            "Release only to the controlled comparator after native artifacts, "
+            "normalization, and their hashes are frozen."
+        ),
+    }:
+        raise NativeOutputError(
+            "sealed expected artifact release control is invalid",
+            outcome="executed_inconclusive",
+        )
+    if sealed.get("coordinate_contract") != {
+        "origin": "2026-01-05T08:00:00+08:00",
+        "unit": "hour",
+        "timestamp_tolerance_seconds": 0,
+        "rounding": "forbidden",
+    }:
+        raise NativeOutputError(
+            "sealed expected artifact coordinate contract is invalid",
+            outcome="executed_inconclusive",
+        )
+    if sealed.get("claim_boundary") != {
+        "pilot_is_partial_profile_preparation": True,
+        "pilot_case_count": 12,
+        "full_profile_claim_eligible_case_count": 45,
+        "full_45_case_gate_satisfied": False,
+        "native_execution_performed": False,
+        "native_semantic_claim": False,
+        "reopen_stability_claim": False,
+        "adapter_execution_performed": False,
+        "adapter_interchange_claim": False,
+        "full_microsoft_project_compatibility_claim": False,
+        "mpp_binary_compatibility_claim": False,
+        "safe_production_round_trip_claim": False,
+        "optimizer_benchmark_performed": False,
+        "optimizer_superiority_claim": False,
+        "boundary_statement": (
+            "Preparation of 12 relationship cases is partial and supplies no native, "
+            "adapter, compatibility, production-round-trip, or optimizer result."
+        ),
+    }:
+        raise NativeOutputError(
+            "sealed expected artifact claim boundary is invalid",
+            outcome="executed_inconclusive",
+        )
+    if sealed.get("expected_normalized") != expected_normalized:
+        raise NativeOutputError(
+            "sealed expected artifact does not match the frozen fixture projection",
+            outcome="executed_inconclusive",
+        )
+    return sealed, snapshot
 
 
 def analyse_msproject_native_output(
@@ -2190,7 +2514,6 @@ def analyse_msproject_native_output(
     repository_root: Path,
     native_output_path: Path,
     case_realisation_manifest_path: Path,
-    sealed_expected_path: Path | None,
     environment_capture_path: Path,
     post_execution_attestation_path: Path,
     post_execution_action_log_path: Path,
@@ -2234,14 +2557,6 @@ def analyse_msproject_native_output(
         raise NativeOutputError("environment capture hash does not match the frozen manifest")
     _validate_manifest_for_normalization(manifest)
     track_id = manifest.get("execution_track_id")
-    if (
-        track_id == "saved_file_reopen_recalculate_stability"
-        and sealed_expected_path is not None
-    ):
-        raise NativeOutputError(
-            "Track B forbids a sealed expected path",
-            outcome="executed_inconclusive",
-        )
     prerequisite_result = _validate_track_b_prerequisite(
         repository_root=repository_root,
         track_b_manifest=manifest,
@@ -2437,7 +2752,11 @@ def analyse_msproject_native_output(
     construction_log_path = output_dir / "pre-execution-construction-action-log.json"
     pre_close_normalized_path = output_dir / "normalized-native-output-pre-close.json"
     stability_difference_path = output_dir / "reopen-stability-difference.json"
-    write_canonical_json(normalized_path, normalized)
+    _write_durable_normalized_observation(
+        normalized_path,
+        normalized,
+        label="normalized native observation",
+    )
     normalized_sha = raw_file_sha256(normalized_path)
     if normalized_sha != _canonical_json_file_sha256(normalized):
         raise NativeOutputError(
@@ -2448,7 +2767,11 @@ def analyse_msproject_native_output(
     if track_id == "saved_file_reopen_recalculate_stability":
         if pre_close_normalized is None:
             raise AssertionError("Track B retained pre-close observation was not produced")
-        write_canonical_json(pre_close_normalized_path, pre_close_normalized)
+        _write_durable_normalized_observation(
+            pre_close_normalized_path,
+            pre_close_normalized,
+            label="pre-close normalized native observation",
+        )
         pre_close_normalized_sha = raw_file_sha256(pre_close_normalized_path)
         if pre_close_normalized_sha != _canonical_json_file_sha256(
             pre_close_normalized
@@ -2465,7 +2788,6 @@ def analyse_msproject_native_output(
             sealed_expected, sealed_expected_snapshot = _release_tracked_sealed_expected(
                 repository_root=repository_root,
                 manifest=manifest,
-                supplied_path=sealed_expected_path,
             )
             oracle_forbidden_files = dict(occupied_evidence_files)
             oracle_forbidden_files.update(

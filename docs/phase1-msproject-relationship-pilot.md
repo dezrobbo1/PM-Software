@@ -36,14 +36,33 @@ No artifact or result from one track substitutes for another.
 Each case has a deterministic `source-only-case-projections/` artifact containing
 only the construction inputs needed by the operator and pre-execution reviewer.
 The operator build sheet, review sheet, reopen protocol, adapter blocker and
-pilot index bind that projection's bytes. None of those operator-visible
-materials identifies or hash-binds the oracle-bearing semantic fixture.
+operator-facing preparation metadata bind that projection's bytes. None of the
+artifacts admitted to the operator packet identifies or hash-binds the
+oracle-bearing semantic fixture or the sealed comparison control.
 
-The full frozen fixture path and raw hash remain bound only inside the matching
-`sealed-expected-normalized/` artifact. That artifact stays unavailable to the
-operator and pre-execution reviewer until the native observation and its hashes
-are frozen. The controlled comparison path revalidates the sealed full-fixture
-binding against live repository bytes before releasing the oracle.
+`pilot-index.json` is the operator index and contains no sealed-control path or
+digest. `pilot-kit-manifest.json` is the allowlisted pre-observation
+operator-packet manifest and has the same exclusion. The full frozen fixture
+binding remains only in a separate repository-held comparison-custodian control
+plane, independent from both operator documents. For Track A, the analyser first
+normalizes the native observation, creates and durably syncs
+`normalized-native-output.json`, and verifies its hash. Only after that durable
+observation exists does the controlled comparison path automatically resolve
+the case-specific control, revalidate its full-fixture binding against live
+repository bytes, and open the oracle. Oracle release is therefore not an
+operator action.
+
+Track B has no oracle access or expected-result comparison. Its analyser rejects
+a supplied sealed path and compares only independently normalized pre-close and
+post-recalculation observations. A Track A comparison must not be repurposed as
+Track B stability evidence.
+
+The tracked repository itself is not an operator packet. It necessarily
+contains frozen fixtures with expected results as well as the separately held
+comparison controls. During construction, freeze, calculation and native-output
+capture, the operator and pre-execution reviewer must work only from the
+explicitly allowlisted packet for the selected case and track, never from an
+unrestricted repository checkout.
 
 ## Fail-closed MSPDI calendar finding
 
@@ -150,8 +169,11 @@ The tracked kit is immutable. Operators copy the selected per-case template
 under
 `tracks/manual_native_semantic_parity/environment-capture-templates/` and the
 selected case sheets into the ignored controlled-execution workspace; they do
-not fill in tracked files. Only the template's `capture` object is written as
-canonical `environment.json`. Every required placeholder is completed except
+not fill in tracked files. This copy is an allowlisted export, not a copy of the
+kit directory or repository checkout: exclude every sealed expectation,
+oracle-bearing fixture, sealed path/digest and comparison-custodian control.
+Only the template's `capture` object is written as canonical
+`environment.json`. Every required placeholder is completed except
 `status_date`, which must remain null for these no-status relationship cases.
 Prefilled required settings are plans, not observations. The operator must fill
 each `observed_product_settings` value plus operator/reviewer identities and
@@ -202,4 +224,8 @@ tasks, freeze each applicable track before
 calculation, calculate natively, save and hash each required stage, export the
 reviewed Project 2010 XML dialect, complete the post-execution attestation,
 retain screenshots or reports, run the analyser, and obtain independent
-review. Until that happens, no native result exists.
+review. The operator must use only the allowlisted execution packet and must not
+open an unrestricted repository checkout; the comparison custodian retains the
+sealed Track A control until the analyser has durably frozen the normalized
+observation. Track B never receives that control. Until the desktop work occurs,
+no native result exists and no Microsoft Project compatibility claim exists.

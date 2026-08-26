@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import csv
+from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
@@ -34,6 +35,10 @@ MSPROJECT_PILOT_CASE_IDS = tuple(f"SEM-REL-{number:03d}" for number in range(1, 
 MSPROJECT_PILOT_INPUT_IDENTITY_DOMAIN = (
     "microsoft-project-relationship-pilot-input-identity-v0.2"
 )
+MSPROJECT_SEALED_CONTROL_DIRECTORY = "sealed-expected-normalized"
+MSPROJECT_SEALED_CONTROL_INDEX = (
+    f"{MSPROJECT_SEALED_CONTROL_DIRECTORY}/sealed-control-index.json"
+)
 ACCEPTANCE_WORKFLOWS = {
     "validate-phase0.yml": "phase0-validation",
     "validate-phase1.yml": "phase1-validation",
@@ -49,15 +54,7 @@ REVIEWED_ACTION_PINS = {
     },
 }
 _FULL_COMMIT_SHA = re.compile(r"[0-9a-f]{40}")
-_ACTION_REFERENCE = re.compile(
-    r"^\s*-\s+uses:\s+([^@\s#]+)@([^\s#]+)(?:\s+#\s*(\S+)\s*)?$"
-)
-_ACTION_USES_KEY = re.compile(
-    r'''(?:^\s*(?:-\s*)?|[,{]\s*)(?:uses|'uses'|"uses")\s*:'''
-)
-_ACTION_SHAPED_REFERENCE = re.compile(
-    r'''(?<![A-Za-z0-9_.-])[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[^\s#,'"}\]]+'''
-)
+_ACTION_VALUE = re.compile(r"([^@\s]+)@([^@\s]+)")
 _EXPECTED_WORKFLOW_TRIGGER_LINES = [
     "on:",
     "  push:",
@@ -539,38 +536,414 @@ def _workflow_trigger_errors(filename: str, text: str) -> list[str]:
     return []
 
 
+class _WorkflowYamlError(ValueError):
+    """The acceptance workflow is outside the deliberately small YAML dialect."""
+
+
+@dataclass(frozen=True)
+class _WorkflowScalar:
+    value: str
+    line_number: int
+    comment: str | None = None
+
+
+@dataclass(frozen=True)
+class _WorkflowMapping:
+    entries: tuple[tuple[_WorkflowScalar, "_WorkflowNode"], ...]
+
+
+@dataclass(frozen=True)
+class _WorkflowSequence:
+    items: tuple["_WorkflowNode", ...]
+
+
+_WorkflowNode = _WorkflowScalar | _WorkflowMapping | _WorkflowSequence
+
+
+@dataclass(frozen=True)
+class _WorkflowYamlToken:
+    indent: int
+    line_number: int
+    sequence_item: bool
+    key: _WorkflowScalar | None
+    value: _WorkflowScalar | None
+
+
+def _split_workflow_yaml_comment(source: str, *, line_number: int) -> tuple[str, str | None]:
+    """Split a YAML comment without treating quoted ``#`` characters as syntax."""
+
+    quote: str | None = None
+    escaped = False
+    index = 0
+    while index < len(source):
+        character = source[index]
+        if quote == '"':
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                quote = None
+            index += 1
+            continue
+        elif quote == "'":
+            if character != "'":
+                index += 1
+                continue
+            if index + 1 < len(source) and source[index + 1] == "'":
+                index += 2
+                continue
+            quote = None
+        elif character in {'"', "'"}:
+            quote = character
+        elif character == "#" and (index == 0 or source[index - 1].isspace()):
+            comment = source[index + 1 :].strip()
+            return source[:index].rstrip(), comment or None
+        index += 1
+    if quote is not None or escaped:
+        raise _WorkflowYamlError(f"line {line_number}: unterminated quoted scalar")
+    return source.rstrip(), None
+
+
+def _split_workflow_mapping_entry(
+    source: str, *, line_number: int
+) -> tuple[str, str] | None:
+    quote: str | None = None
+    escaped = False
+    index = 0
+    while index < len(source):
+        character = source[index]
+        if quote == '"':
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                quote = None
+        elif quote == "'":
+            if character == "'":
+                if index + 1 < len(source) and source[index + 1] == "'":
+                    index += 1
+                else:
+                    quote = None
+        elif character in {'"', "'"}:
+            quote = character
+        elif character == ":" and (
+            index + 1 == len(source) or source[index + 1].isspace()
+        ):
+            return source[:index].strip(), source[index + 1 :].strip()
+        index += 1
+    if quote is not None or escaped:
+        raise _WorkflowYamlError(f"line {line_number}: unterminated quoted scalar")
+    return None
+
+
+def _decode_workflow_yaml_scalar(
+    source: str,
+    *,
+    line_number: int,
+    key: bool = False,
+) -> str:
+    source = source.strip()
+    if not source:
+        raise _WorkflowYamlError(f"line {line_number}: empty YAML scalar")
+    if source.startswith('"'):
+        try:
+            value = json.loads(source)
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise _WorkflowYamlError(
+                f"line {line_number}: invalid double-quoted YAML scalar"
+            ) from exc
+        if not isinstance(value, str):
+            raise _WorkflowYamlError(
+                f"line {line_number}: YAML keys and values must be strings"
+            )
+    elif source.startswith("'"):
+        if len(source) < 2 or not source.endswith("'"):
+            raise _WorkflowYamlError(
+                f"line {line_number}: unterminated single-quoted YAML scalar"
+            )
+        interior = source[1:-1]
+        decoded: list[str] = []
+        index = 0
+        while index < len(interior):
+            if interior[index] != "'":
+                decoded.append(interior[index])
+                index += 1
+                continue
+            if index + 1 >= len(interior) or interior[index + 1] != "'":
+                raise _WorkflowYamlError(
+                    f"line {line_number}: malformed single-quoted YAML scalar"
+                )
+            decoded.append("'")
+            index += 2
+        value = "".join(decoded)
+    else:
+        if source.startswith(("&", "*", "!")) or source == "<<":
+            raise _WorkflowYamlError(
+                f"line {line_number}: anchors, aliases, tags, and merge keys are forbidden"
+            )
+        if any(character in source for character in "{}[]`"):
+            raise _WorkflowYamlError(
+                f"line {line_number}: flow collections are outside the accepted YAML dialect"
+            )
+        value = source
+    if key and re.fullmatch(r"[A-Za-z0-9_.-]+", value) is None:
+        raise _WorkflowYamlError(
+            f"line {line_number}: unsupported mapping key {value!r}"
+        )
+    return value
+
+
+def _tokenize_workflow_yaml(text: str) -> list[_WorkflowYamlToken]:
+    tokens: list[_WorkflowYamlToken] = []
+    block_scalar_parent_indent: int | None = None
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        if not raw_line.strip():
+            continue
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        if block_scalar_parent_indent is not None:
+            if indent > block_scalar_parent_indent:
+                continue
+            block_scalar_parent_indent = None
+        if "\t" in raw_line:
+            raise _WorkflowYamlError(f"line {line_number}: tabs are forbidden")
+        if indent % 2:
+            raise _WorkflowYamlError(
+                f"line {line_number}: indentation must use two-space levels"
+            )
+        source, comment = _split_workflow_yaml_comment(
+            raw_line[indent:], line_number=line_number
+        )
+        source = source.strip()
+        if not source:
+            continue
+        if source in {"---", "..."} or source.startswith("%"):
+            raise _WorkflowYamlError(
+                f"line {line_number}: directives and multiple documents are forbidden"
+            )
+        sequence_item = source == "-" or source.startswith("- ")
+        if sequence_item:
+            source = source[1:].strip()
+            if not source:
+                raise _WorkflowYamlError(
+                    f"line {line_number}: empty sequence items are forbidden"
+                )
+        mapping = _split_workflow_mapping_entry(source, line_number=line_number)
+        if mapping is None:
+            if not sequence_item:
+                raise _WorkflowYamlError(
+                    f"line {line_number}: expected a mapping entry"
+                )
+            value = _WorkflowScalar(
+                _decode_workflow_yaml_scalar(source, line_number=line_number),
+                line_number,
+                comment,
+            )
+            tokens.append(
+                _WorkflowYamlToken(indent, line_number, True, None, value)
+            )
+            continue
+        raw_key, raw_value = mapping
+        decoded_key = _WorkflowScalar(
+            _decode_workflow_yaml_scalar(raw_key, line_number=line_number, key=True),
+            line_number,
+            comment,
+        )
+        value: _WorkflowScalar | None
+        if raw_value in {"|", "|-", "|+", ">", ">-", ">+"}:
+            value = _WorkflowScalar(raw_value, line_number, comment)
+            block_scalar_parent_indent = indent
+        elif raw_value:
+            value = _WorkflowScalar(
+                _decode_workflow_yaml_scalar(raw_value, line_number=line_number),
+                line_number,
+                comment,
+            )
+        else:
+            value = None
+        tokens.append(
+            _WorkflowYamlToken(
+                indent,
+                line_number,
+                sequence_item,
+                decoded_key,
+                value,
+            )
+        )
+    if not tokens:
+        raise _WorkflowYamlError("workflow is empty")
+    return tokens
+
+
+class _StrictWorkflowYamlParser:
+    """Structural parser for the intentionally restricted acceptance YAML."""
+
+    def __init__(self, tokens: list[_WorkflowYamlToken]) -> None:
+        self.tokens = tokens
+        self.index = 0
+
+    def parse(self) -> _WorkflowMapping:
+        if self.tokens[0].indent != 0 or self.tokens[0].sequence_item:
+            raise _WorkflowYamlError("workflow root must be a mapping")
+        document = self._mapping(0)
+        if self.index != len(self.tokens):
+            token = self.tokens[self.index]
+            raise _WorkflowYamlError(
+                f"line {token.line_number}: unexpected indentation or collection type"
+            )
+        return document
+
+    def _child(self, indent: int) -> _WorkflowNode:
+        if self.index >= len(self.tokens) or self.tokens[self.index].indent != indent:
+            line_number = (
+                self.tokens[self.index - 1].line_number if self.index else 1
+            )
+            raise _WorkflowYamlError(
+                f"line {line_number}: an empty mapping value requires an indented collection"
+            )
+        if self.tokens[self.index].sequence_item:
+            return self._sequence(indent)
+        return self._mapping(indent)
+
+    def _entry_value(self, token: _WorkflowYamlToken, child_indent: int) -> _WorkflowNode:
+        if token.value is not None:
+            return token.value
+        return self._child(child_indent)
+
+    @staticmethod
+    def _add_mapping_entry(
+        entries: list[tuple[_WorkflowScalar, _WorkflowNode]],
+        seen: set[str],
+        key: _WorkflowScalar,
+        value: _WorkflowNode,
+    ) -> None:
+        if key.value in seen:
+            raise _WorkflowYamlError(
+                f"line {key.line_number}: duplicate mapping key {key.value!r}"
+            )
+        seen.add(key.value)
+        entries.append((key, value))
+
+    def _mapping(self, indent: int) -> _WorkflowMapping:
+        entries: list[tuple[_WorkflowScalar, _WorkflowNode]] = []
+        seen: set[str] = set()
+        while self.index < len(self.tokens):
+            token = self.tokens[self.index]
+            if token.indent < indent:
+                break
+            if token.indent > indent or token.sequence_item:
+                break
+            if token.key is None:
+                raise _WorkflowYamlError(
+                    f"line {token.line_number}: mapping entry has no key"
+                )
+            self.index += 1
+            value = self._entry_value(token, indent + 2)
+            self._add_mapping_entry(entries, seen, token.key, value)
+        if not entries:
+            token = self.tokens[self.index]
+            raise _WorkflowYamlError(
+                f"line {token.line_number}: expected a mapping entry"
+            )
+        return _WorkflowMapping(tuple(entries))
+
+    def _sequence(self, indent: int) -> _WorkflowSequence:
+        items: list[_WorkflowNode] = []
+        while self.index < len(self.tokens):
+            token = self.tokens[self.index]
+            if token.indent != indent or not token.sequence_item:
+                break
+            self.index += 1
+            if token.key is None:
+                if token.value is None:
+                    raise _WorkflowYamlError(
+                        f"line {token.line_number}: empty sequence item"
+                    )
+                items.append(token.value)
+                continue
+
+            entries: list[tuple[_WorkflowScalar, _WorkflowNode]] = []
+            seen: set[str] = set()
+            first_value = self._entry_value(token, indent + 4)
+            self._add_mapping_entry(entries, seen, token.key, first_value)
+            while self.index < len(self.tokens):
+                sibling = self.tokens[self.index]
+                if sibling.indent != indent + 2 or sibling.sequence_item:
+                    break
+                if sibling.key is None:
+                    raise _WorkflowYamlError(
+                        f"line {sibling.line_number}: mapping entry has no key"
+                    )
+                self.index += 1
+                sibling_value = self._entry_value(sibling, indent + 4)
+                self._add_mapping_entry(
+                    entries, seen, sibling.key, sibling_value
+                )
+            items.append(_WorkflowMapping(tuple(entries)))
+        if not items:
+            token = self.tokens[self.index]
+            raise _WorkflowYamlError(
+                f"line {token.line_number}: expected a sequence item"
+            )
+        return _WorkflowSequence(tuple(items))
+
+
+def _parse_workflow_yaml(text: str) -> _WorkflowMapping:
+    return _StrictWorkflowYamlParser(_tokenize_workflow_yaml(text)).parse()
+
+
+def _workflow_uses_nodes(node: _WorkflowNode) -> list[tuple[_WorkflowScalar, _WorkflowScalar]]:
+    uses: list[tuple[_WorkflowScalar, _WorkflowScalar]] = []
+    if isinstance(node, _WorkflowMapping):
+        for key, value in node.entries:
+            if key.value == "uses":
+                if not isinstance(value, _WorkflowScalar):
+                    raise _WorkflowYamlError(
+                        f"line {key.line_number}: uses must have a scalar action reference"
+                    )
+                uses.append((key, value))
+            uses.extend(_workflow_uses_nodes(value))
+    elif isinstance(node, _WorkflowSequence):
+        for item in node.items:
+            uses.extend(_workflow_uses_nodes(item))
+    return uses
+
+
 def _workflow_action_pin_errors(filename: str, text: str) -> list[str]:
     errors: list[str] = []
     seen = {action: 0 for action in REVIEWED_ACTION_PINS}
-    for line_number, line in enumerate(text.splitlines(), start=1):
-        if line.lstrip().startswith("#"):
-            continue
-        if (
-            _ACTION_USES_KEY.search(line) is None
-            and _ACTION_SHAPED_REFERENCE.search(line) is None
-        ):
-            continue
-        match = _ACTION_REFERENCE.fullmatch(line)
+    try:
+        document = _parse_workflow_yaml(text)
+        uses_nodes = _workflow_uses_nodes(document)
+    except _WorkflowYamlError as exc:
+        return [f"{filename}: workflow YAML parse failed closed: {exc}"]
+    for key, value in uses_nodes:
+        match = _ACTION_VALUE.fullmatch(value.value)
         if match is None:
-            errors.append(f"{filename}:{line_number}: action reference is not a pinned uses declaration")
+            errors.append(
+                f"{filename}:{key.line_number}: action reference is not a pinned uses declaration"
+            )
             continue
-        action, reference, comment = match.groups()
+        action, reference = match.groups()
         reviewed = REVIEWED_ACTION_PINS.get(action)
         if reviewed is None:
-            errors.append(f"{filename}:{line_number}: unreviewed or non-official action {action} is forbidden")
+            errors.append(
+                f"{filename}:{key.line_number}: unreviewed or non-official action {action} is forbidden"
+            )
             continue
         seen[action] += 1
         if _FULL_COMMIT_SHA.fullmatch(reference) is None:
             errors.append(
-                f"{filename}:{line_number}: {action} must use an immutable full commit SHA"
+                f"{filename}:{key.line_number}: {action} must use an immutable full commit SHA"
             )
         elif reference != reviewed["sha"]:
             errors.append(
-                f"{filename}:{line_number}: {action} does not use the reviewed commit SHA"
+                f"{filename}:{key.line_number}: {action} does not use the reviewed commit SHA"
             )
-        if comment != reviewed["release_tag"]:
+        if value.comment != reviewed["release_tag"]:
             errors.append(
-                f"{filename}:{line_number}: {action} must retain reviewed release tag comment "
+                f"{filename}:{key.line_number}: {action} must retain reviewed release tag comment "
                 f"{reviewed['release_tag']}"
             )
     for action, count in seen.items():
@@ -677,7 +1050,7 @@ def validate_msproject_pilot_oracle_blinding(
     visible_payloads = [
         path
         for path in sorted(kit.rglob("*"))
-        if path.is_file() and "sealed-expected-normalized" not in path.parts
+        if path.is_file() and MSPROJECT_SEALED_CONTROL_DIRECTORY not in path.parts
     ]
     visible_bytes = b"\n".join(path.read_bytes() for path in visible_payloads)
     oracle_keys = {
@@ -690,6 +1063,14 @@ def validate_msproject_pilot_oracle_blinding(
         "driving_relationships",
         "resource_order",
         "assertions",
+    }
+    seal_binding_aliases = {
+        "sealed_expected_normalized",
+        "sealed_expected",
+        "sealed_expected_binding",
+        "sealed_control",
+        "sealed_control_index",
+        "comparison_control_binding",
     }
 
     def all_keys(value: Any) -> set[str]:
@@ -732,10 +1113,16 @@ def validate_msproject_pilot_oracle_blinding(
             errors.append(f"{case_id}: source-only projection contract is not blinded")
 
         case_entry = case_entries.get(case_id, {})
-        if any(
-            key in case_entry for key in ("fixture", "fixture_binding", "source_fixture")
-        ):
-            errors.append(f"{case_id}: pilot index retains a full-fixture binding alias")
+        forbidden_case_aliases = {
+            "fixture",
+            "fixture_binding",
+            "source_fixture",
+            *seal_binding_aliases,
+        }
+        if not forbidden_case_aliases.isdisjoint(all_keys(case_entry)):
+            errors.append(
+                f"{case_id}: pilot index retains a fixture or sealed-control binding alias"
+            )
         binding = case_entry.get("source_only_case_projection", {})
         expected_repository_path = (
             "native-validation/pilot-kits/"
@@ -750,7 +1137,8 @@ def validate_msproject_pilot_oracle_blinding(
         ):
             errors.append(f"{case_id}: pilot index source-only binding is inconsistent")
 
-        sealed_path = kit / "sealed-expected-normalized" / f"{case_id}.json"
+        sealed_relative = f"{MSPROJECT_SEALED_CONTROL_DIRECTORY}/{case_id}.json"
+        sealed_path = kit / sealed_relative
         try:
             sealed = _load_json(sealed_path)
             full_binding = sealed["source_bindings"]["fixture"]
@@ -768,6 +1156,149 @@ def validate_msproject_pilot_oracle_blinding(
             is not True
         ):
             errors.append(f"{case_id}: sealed full-fixture binding is inconsistent")
+
+    control_path = kit / MSPROJECT_SEALED_CONTROL_INDEX
+    try:
+        control = _load_json(control_path)
+    except Exception as exc:
+        errors.append(f"Microsoft Project sealed comparison control is invalid: {exc}")
+        return errors
+    expected_control_keys = {
+        "document_type",
+        "schema_version",
+        "pilot_id",
+        "status",
+        "ordered_case_ids",
+        "operator_pilot_index_binding",
+        "protocol_bindings",
+        "cases",
+        "release_policy",
+    }
+    if set(control) != expected_control_keys:
+        errors.append("Microsoft Project sealed comparison control has an inexact key set")
+    if (
+        control.get("document_type")
+        != "microsoft_project_sealed_comparison_control_index"
+        or control.get("schema_version")
+        != "microsoft-project-sealed-control-index-v0.1"
+        or control.get("pilot_id") != MSPROJECT_PILOT_ID
+        or control.get("status") != "sealed_until_post_observation_release"
+        or control.get("ordered_case_ids") != list(MSPROJECT_PILOT_CASE_IDS)
+    ):
+        errors.append("Microsoft Project sealed comparison control identity/order changed")
+    expected_index_binding = {
+        "raw_sha256": _sha256(kit / "pilot-index.json"),
+        "canonical_sha256": hashlib.sha256(canonical_bytes(index)).hexdigest(),
+        "pilot_input_identity_sha256": index.get("pilot_input_identity", {}).get(
+            "sha256"
+        ),
+    }
+    if control.get("operator_pilot_index_binding") != expected_index_binding:
+        errors.append("Microsoft Project sealed control does not bind the operator index")
+    if control.get("protocol_bindings") != index.get("source_bindings"):
+        errors.append("Microsoft Project sealed control protocol bindings changed")
+    expected_release_policy = {
+        "allowed_execution_track_id": "manual_native_semantic_parity",
+        "normalized_observation_must_be_durably_written_and_hash_verified": True,
+        "operator_and_pre_execution_reviewer_access": "prohibited",
+        "caller_selected_control_or_seal_path": "forbidden",
+    }
+    if control.get("release_policy") != expected_release_policy:
+        errors.append("Microsoft Project sealed control release policy changed")
+    control_cases = control.get("cases")
+    if not isinstance(control_cases, list):
+        errors.append("Microsoft Project sealed control cases must be an array")
+        control_cases = []
+    control_case_ids = [
+        item.get("case_id") if isinstance(item, dict) else None
+        for item in control_cases
+    ]
+    if (
+        control_case_ids != list(MSPROJECT_PILOT_CASE_IDS)
+        or len(control_case_ids) != len(set(control_case_ids))
+    ):
+        errors.append("Microsoft Project sealed control case identity/order changed")
+    control_cases_by_id = {
+        item.get("case_id"): item
+        for item in control_cases
+        if isinstance(item, dict)
+    }
+    forbidden_control_fragments = {
+        MSPROJECT_SEALED_CONTROL_INDEX.encode("utf-8"),
+        _sha256(control_path).encode("ascii"),
+    }
+    for case_id in MSPROJECT_PILOT_CASE_IDS:
+        sealed_path = kit / MSPROJECT_SEALED_CONTROL_DIRECTORY / f"{case_id}.json"
+        control_case = control_cases_by_id.get(case_id, {})
+        expected_case_keys = {
+            "case_id",
+            "sealed_expected_raw_sha256",
+            "sealed_expected_byte_size",
+            "source_only_projection_raw_sha256",
+            "frozen_fixture_raw_sha256",
+        }
+        if set(control_case) != expected_case_keys:
+            errors.append(f"{case_id}: sealed control case has an inexact key set")
+            continue
+        sealed_hash = _sha256(sealed_path)
+        projection_hash = _sha256(
+            kit / "source-only-case-projections" / f"{case_id}.json"
+        )
+        fixture_hash = _sha256(
+            root / "benchmarks" / "semantic" / "cases" / f"{case_id.lower()}.json"
+        )
+        if control_case != {
+            "case_id": case_id,
+            "sealed_expected_raw_sha256": sealed_hash,
+            "sealed_expected_byte_size": sealed_path.stat().st_size,
+            "source_only_projection_raw_sha256": projection_hash,
+            "frozen_fixture_raw_sha256": fixture_hash,
+        }:
+            errors.append(f"{case_id}: sealed control case binding is inconsistent")
+        forbidden_control_fragments.update(
+            {
+                f"{MSPROJECT_SEALED_CONTROL_DIRECTORY}/{case_id}.json".encode(
+                    "utf-8"
+                ),
+                sealed_hash.encode("ascii"),
+            }
+        )
+    for fragment in forbidden_control_fragments:
+        if fragment in visible_bytes:
+            errors.append(
+                "operator-visible pilot bytes expose a sealed-control path or digest"
+            )
+            break
+
+    try:
+        operator_manifest = _load_json(kit / "pilot-kit-manifest.json")
+        manifest_artifacts = operator_manifest.get("artifacts", [])
+    except Exception as exc:
+        errors.append(f"operator packet manifest cannot be validated: {exc}")
+        manifest_artifacts = []
+        operator_manifest = {}
+    if (
+        operator_manifest.get("schema_version")
+        != "microsoft-project-operator-packet-manifest-v0.2"
+        or operator_manifest.get("self_excluded_artifacts")
+        != ["pilot-kit-manifest.json", "pilot-kit-manifest.sha256"]
+        or operator_manifest.get("scope_exclusions")
+        != [
+            "post_observation_comparison_control_domain",
+            "manifest_self_and_checksum",
+        ]
+        or operator_manifest.get("artifact_scope")
+        != "operator_visible_pre_observation_packet_only"
+        or operator_manifest.get("comparison_control_artifacts_included") is not False
+        or any(
+            isinstance(item, dict)
+            and str(item.get("relative_path", "")).startswith(
+                f"{MSPROJECT_SEALED_CONTROL_DIRECTORY}/"
+            )
+            for item in manifest_artifacts
+        )
+    ):
+        errors.append("operator packet manifest exposes comparison-control artifacts")
     return errors
 
 
@@ -832,9 +1363,9 @@ def validate_msproject_relationship_pilot(root: Path = ROOT) -> list[str]:
             errors.append(f"Microsoft Project pilot claim boundary does not keep {field} false")
 
     tracked_payloads = sorted(path for path in kit.rglob("*") if path.is_file())
-    if len(tracked_payloads) != 95:
+    if len(tracked_payloads) != 96:
         errors.append(
-            f"Microsoft Project pilot must contain exactly 95 prepared files, found {len(tracked_payloads)}"
+            f"Microsoft Project pilot must contain exactly 96 prepared files, found {len(tracked_payloads)}"
         )
     forbidden_suffixes = {".mpp", ".mpx", ".xml"}
     forbidden = [

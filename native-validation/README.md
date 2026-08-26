@@ -79,6 +79,25 @@ continuity and leveling attestations remain null in the tracked templates, and
 pre-execution actions must be strictly chronological and no later than freeze.
 Its status is `prepared_not_executed`; it contains no native result.
 
+Native execution uses split control. The operator-visible execution packet is
+assembled from an explicit allowlist of the source-only projection, build and
+review sheets, environment/action/attestation templates, and runbook material
+needed for the selected case and track. `pilot-index.json` is the operator index,
+and `pilot-kit-manifest.json` is the allowlisted pre-observation packet manifest.
+Neither may include a sealed expected artifact, sealed path, sealed digest,
+oracle-bearing fixture, or comparison-custodian metadata. The repository
+checkout is not an operator packet: frozen semantic fixtures committed for
+protocol verification contain their expected results, so an operator must not
+use an unrestricted checkout while constructing or calculating a native case.
+
+For Track A, the comparison custodian retains the case-specific sealed control.
+The analyser first normalizes the observed native output, creates and durably
+syncs the normalized file, and verifies its hash; only then does it automatically
+resolve and open the repository-held comparison control. The operator does not
+release or inspect it. Track B has no oracle comparison at any stage: it rejects
+a supplied sealed control and compares only the independently normalized
+pre-close and post-recalculation observations.
+
 Track A and Track B have separate exact post-execution action-log templates.
 The analysis command receives one with `--post-execution-action-log`, receives
 each actual screenshot/report as repeatable `--evidence-artifact ROLE=PATH`,

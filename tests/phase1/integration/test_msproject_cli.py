@@ -95,8 +95,6 @@ class MicrosoftProjectPilotCliTests(unittest.TestCase):
                         str(root / "output.xml"),
                         "--case-realisation-manifest",
                         str(manifest),
-                        "--sealed-expected",
-                        str(root / "sealed.json"),
                         "--environment-capture",
                         str(root / "environment.json"),
                         "--post-execution-attestation",
@@ -119,6 +117,7 @@ class MicrosoftProjectPilotCliTests(unittest.TestCase):
                 )
             self.assertEqual(result, 0)
             kwargs = analyser.call_args.kwargs
+            self.assertNotIn("sealed_expected_path", kwargs)
             self.assertEqual(kwargs["post_execution_action_log_path"], root / "actions.json")
             self.assertEqual(
                 kwargs[
@@ -208,7 +207,7 @@ class MicrosoftProjectPilotCliTests(unittest.TestCase):
             self.assertIsNone(kwargs["case_realisation_manifest_path"])
             self.assertIsNone(kwargs["environment_capture_path"])
 
-    def test_track_b_cli_rejects_a_sealed_expected_argument(self) -> None:
+    def test_cli_does_not_expose_a_caller_selected_sealed_expected_argument(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             manifest = root / "manifest.json"
@@ -221,7 +220,8 @@ class MicrosoftProjectPilotCliTests(unittest.TestCase):
                 },
             )
             with patch.object(cli, "analyse_msproject_native_output") as analyser:
-                result = cli.main(
+                with self.assertRaises(SystemExit) as raised:
+                    cli.main(
                     [
                         "analyse-msproject-native-output",
                         "--repository-root",
@@ -253,8 +253,8 @@ class MicrosoftProjectPilotCliTests(unittest.TestCase):
                         "--executed-at",
                         "2026-08-26T11:00:00+08:00",
                     ]
-                )
-            self.assertEqual(1, result)
+                    )
+            self.assertEqual(2, raised.exception.code)
             analyser.assert_not_called()
 
 

@@ -88,11 +88,23 @@ forecasting fail closed at the execution boundary. See
 cases, manual build/review sheets, sealed comparison oracles and pre-execution
 evidence tooling. Operator-visible materials bind deterministic source-only
 case projections, while full oracle-bearing fixture bindings remain inside the
-sealed comparison path. Microsoft Project has not been executed and the three native
-evidence tracks remain separate. Exact `CAL-24X7` MSPDI serialization is not
-normatively established by the official XML reference, so adapter generation
-is explicitly `preparation_blocked`; no XML is invented and no compatibility
-claim exists. See `docs/phase1-msproject-relationship-pilot.md`.
+sealed comparison path. For actual native work, the operator receives only an
+explicitly allowlisted packet of construction and evidence-capture artifacts;
+`pilot-index.json` is its operator index and `pilot-kit-manifest.json` is its
+pre-observation packet manifest. Neither exposes a sealed-oracle path or digest.
+A separate comparison custodian retains that control. Track A releases it
+automatically only after the observed native output has been normalized,
+durably written and hash-verified. Track B never receives or consults an
+expected oracle and compares only its frozen pre-close and post-recalculation
+observations.
+
+The operator must not use an unrestricted repository checkout during native
+execution: the committed frozen semantic fixtures necessarily contain expected
+results. Microsoft Project has not been executed and the three native evidence
+tracks remain separate. Exact `CAL-24X7` MSPDI serialization is not normatively
+established by the official XML reference, so adapter generation is explicitly
+`preparation_blocked`; no XML is invented and no compatibility claim exists.
+See `docs/phase1-msproject-relationship-pilot.md`.
 
 ```bash
 python -m deterministic_scheduling_core prepare-msproject-relationship-pilot
