@@ -44,7 +44,7 @@ ACCEPTANCE_WORKFLOWS = {
     "validate-phase1.yml": "phase1-validation",
 }
 WINDOWS_NATIVE_WORKFLOW = (
-    "validate-msproject-windows.yml",
+    "validate-phase1.yml",
     "msproject-windows-smoke",
 )
 REVIEWED_ACTION_PINS = {
@@ -1006,7 +1006,7 @@ def validate_workflow_governance(root: Path = ROOT) -> list[str]:
         errors.extend(_workflow_action_pin_errors(windows_filename, windows_text))
         if "runs-on: windows-latest" not in windows_text:
             errors.append(f"{windows_filename}: Windows runner is required")
-        if "python tests/windows_native_smoke.py" not in windows_text:
+        if "tests/windows_native_smoke.py" not in windows_text:
             errors.append(
                 f"{windows_filename}: native Windows durability smoke test is missing"
             )
