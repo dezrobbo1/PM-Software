@@ -765,7 +765,12 @@ def _tokenize_workflow_yaml(text: str) -> list[_WorkflowYamlToken]:
         value: _WorkflowScalar | None
         if raw_value in {"|", "|-", "|+", ">", ">-", ">+"}:
             value = _WorkflowScalar(raw_value, line_number, comment)
-            block_scalar_parent_indent = indent
+            # For a mapping entry introduced on a sequence-item line, sibling
+            # keys begin two columns after the sequence marker. Block content
+            # must be indented beyond that effective mapping-key indentation.
+            # Without this adjustment, an empty block scalar can hide a sibling
+            # `uses:` declaration from action-pin validation.
+            block_scalar_parent_indent = indent + (2 if sequence_item else 0)
             block_scalar_content_indent = None
         elif raw_value:
             value = _WorkflowScalar(

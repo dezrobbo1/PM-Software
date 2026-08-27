@@ -44,6 +44,27 @@ jobs:
             errors,
         )
 
+    def test_empty_block_scalar_does_not_hide_sibling_uses(self) -> None:
+        workflow = f"""name: probe
+on:
+  push:
+    branches:
+      - "**"
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: {self._pinned('actions/checkout')}
+      - name: |
+        uses: evil/action@v1
+      - uses: {self._pinned('actions/setup-python')}
+"""
+        errors = _workflow_action_pin_errors("probe.yml", workflow)
+        self.assertTrue(
+            any("evil/action" in error or "unreviewed" in error for error in errors),
+            errors,
+        )
+
     def test_folded_scalar_ends_before_next_sequence_item(self) -> None:
         workflow = f"""name: probe
 on:
