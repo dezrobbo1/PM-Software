@@ -43,6 +43,10 @@ ACCEPTANCE_WORKFLOWS = {
     "validate-phase0.yml": "phase0-validation",
     "validate-phase1.yml": "phase1-validation",
 }
+WINDOWS_NATIVE_WORKFLOW = (
+    "validate-msproject-windows.yml",
+    "msproject-windows-smoke",
+)
 REVIEWED_ACTION_PINS = {
     "actions/checkout": {
         "sha": "11d5960a326750d5838078e36cf38b85af677262",
@@ -698,14 +702,22 @@ def _decode_workflow_yaml_scalar(
 def _tokenize_workflow_yaml(text: str) -> list[_WorkflowYamlToken]:
     tokens: list[_WorkflowYamlToken] = []
     block_scalar_parent_indent: int | None = None
+    block_scalar_content_indent: int | None = None
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
         if not raw_line.strip():
             continue
         indent = len(raw_line) - len(raw_line.lstrip(" "))
         if block_scalar_parent_indent is not None:
-            if indent > block_scalar_parent_indent:
+            if block_scalar_content_indent is None:
+                if indent > block_scalar_parent_indent:
+                    block_scalar_content_indent = indent
+                    continue
+                block_scalar_parent_indent = None
+            elif indent >= block_scalar_content_indent:
                 continue
-            block_scalar_parent_indent = None
+            else:
+                block_scalar_parent_indent = None
+                block_scalar_content_indent = None
         if "\t" in raw_line:
             raise _WorkflowYamlError(f"line {line_number}: tabs are forbidden")
         if indent % 2:
@@ -754,6 +766,7 @@ def _tokenize_workflow_yaml(text: str) -> list[_WorkflowYamlToken]:
         if raw_value in {"|", "|-", "|+", ">", ">-", ">+"}:
             value = _WorkflowScalar(raw_value, line_number, comment)
             block_scalar_parent_indent = indent
+            block_scalar_content_indent = None
         elif raw_value:
             value = _WorkflowScalar(
                 _decode_workflow_yaml_scalar(raw_value, line_number=line_number),
@@ -975,6 +988,29 @@ def validate_workflow_governance(root: Path = ROOT) -> list[str]:
             errors.append(f"{filename}: hash-locked install sequence is incomplete")
         if "cache-dependency-path: requirements/phase1-ci.lock" not in text:
             errors.append(f"{filename}: setup-python cache is not bound to the lock")
+    windows_filename, windows_check_name = WINDOWS_NATIVE_WORKFLOW
+    windows_path = root / ".github" / "workflows" / windows_filename
+    if not windows_path.is_file():
+        errors.append(f"workflow is missing: {windows_filename}")
+    else:
+        windows_text = windows_path.read_text(encoding="utf-8")
+        if (
+            f"  {windows_check_name}:" not in windows_text
+            or f"name: {windows_check_name}" not in windows_text
+        ):
+            errors.append(
+                f"{windows_filename}: stable unique check name "
+                f"{windows_check_name} is missing"
+            )
+        errors.extend(_workflow_trigger_errors(windows_filename, windows_text))
+        errors.extend(_workflow_action_pin_errors(windows_filename, windows_text))
+        if "runs-on: windows-latest" not in windows_text:
+            errors.append(f"{windows_filename}: Windows runner is required")
+        if "python tests/windows_native_smoke.py" not in windows_text:
+            errors.append(
+                f"{windows_filename}: native Windows durability smoke test is missing"
+            )
+
     governance_path = root / ".github" / "repository-governance.json"
     if not governance_path.is_file() or _load_json(governance_path) != EXPECTED_GOVERNANCE:
         errors.append("tracked repository governance policy does not match the required main ruleset")
@@ -1324,6 +1360,10 @@ def validate_msproject_relationship_pilot(root: Path = ROOT) -> list[str]:
         errors.append("Microsoft Project adapter preparation is not fail-closed")
     if summary.get("full_45_case_gate_satisfied") is not False:
         errors.append("partial Microsoft Project pilot incorrectly satisfies the 45-case gate")
+    if summary.get("blinding_classification") != "procedural_non_access_controlled":
+        errors.append("Microsoft Project pilot blinding classification is not explicit")
+    if summary.get("operator_access_control_guaranteed") is not False:
+        errors.append("Microsoft Project pilot incorrectly claims operator access control")
 
     index_path = kit / "pilot-index.json"
     try:
@@ -1443,6 +1483,7 @@ def main() -> int:
     print("- complete hash-locked dependency closure verified")
     print("- P6 and Microsoft Project preregistrations remain separate and unexecuted")
     print("- feature-branch push/main PR workflow policy and immutable action pins verified")
+    print("- Windows native-tool durability smoke workflow verified")
     print("- deterministic 12-case Microsoft Project pilot remains prepared-only and adapter-blocked")
     print("- exact Phase 1 test metadata and named hash domains verified")
     return 0

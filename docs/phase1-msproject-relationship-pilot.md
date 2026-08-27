@@ -33,36 +33,42 @@ No artifact or result from one track substitutes for another.
 
 ## Oracle blinding
 
+The experiment uses **procedural blinding**, not access-controlled blinding.
+The public repository necessarily retains the frozen semantic fixtures and
+comparison controls, so a person with repository access can obtain the expected
+values. The operator packet is nevertheless deterministic and intentionally
+excludes every oracle path, digest and oracle-bearing fixture. The operator and
+pre-execution reviewer must work only from that packet and attest that they did
+not inspect repository oracle material before the native observation was frozen.
+A breach invalidates the blind classification; it does not erase the observed
+native artifact, which may still be retained as unblinded characterisation.
+
 Each case has a deterministic `source-only-case-projections/` artifact containing
 only the construction inputs needed by the operator and pre-execution reviewer.
 The operator build sheet, review sheet, reopen protocol, adapter blocker and
 operator-facing preparation metadata bind that projection's bytes. None of the
 artifacts admitted to the operator packet identifies or hash-binds the
-oracle-bearing semantic fixture or the sealed comparison control.
+oracle-bearing semantic fixture or the comparison control.
 
-`pilot-index.json` is the operator index and contains no sealed-control path or
-digest. `pilot-kit-manifest.json` is the allowlisted pre-observation
-operator-packet manifest and has the same exclusion. The full frozen fixture
-binding remains only in a separate repository-held comparison-custodian control
-plane, independent from both operator documents. For Track A, the analyser first
-normalizes the native observation, creates and durably syncs
-`normalized-native-output.json`, and verifies its hash. Only after that durable
-observation exists does the controlled comparison path automatically resolve
-the case-specific control, revalidate its full-fixture binding against live
-repository bytes, and open the oracle. Oracle release is therefore not an
-operator action.
+`pilot-index.json` is the operator index and contains no comparison-control path
+or digest. `pilot-kit-manifest.json` is the allowlisted pre-observation operator
+packet and has the same exclusion. For Track A, the analyser first normalizes the
+native observation, creates and durably persists
+`normalized-native-output.json`, and verifies its hash. Only then does the
+comparison path resolve the case-specific control, revalidate its full-fixture
+binding against live repository bytes and open the oracle. On Windows, durable
+persistence uses an exclusive `CreateFileW` write-through handle followed by
+`FlushFileBuffers`; on POSIX, the file and containing directory are fsynced. Any
+durability failure prevents oracle release and retains an inconclusive result.
 
-Track B has no oracle access or expected-result comparison. Its analyser rejects
-a supplied sealed path and compares only independently normalized pre-close and
+Track B has no oracle access or expected-result comparison. It rejects a supplied
+comparison path and compares only independently normalized pre-close and
 post-recalculation observations. A Track A comparison must not be repurposed as
 Track B stability evidence.
 
-The tracked repository itself is not an operator packet. It necessarily
-contains frozen fixtures with expected results as well as the separately held
-comparison controls. During construction, freeze, calculation and native-output
-capture, the operator and pre-execution reviewer must work only from the
-explicitly allowlisted packet for the selected case and track, never from an
-unrestricted repository checkout.
+The procedural boundary is explicit in the generated operator runbook and
+verification summary. No report may describe this public repository as making
+the oracle technically unavailable to the operator.
 
 ## Fail-closed MSPDI calendar finding
 
@@ -225,7 +231,8 @@ calculation, calculate natively, save and hash each required stage, export the
 reviewed Project 2010 XML dialect, complete the post-execution attestation,
 retain screenshots or reports, run the analyser, and obtain independent
 review. The operator must use only the allowlisted execution packet and must not
-open an unrestricted repository checkout; the comparison custodian retains the
-sealed Track A control until the analyser has durably frozen the normalized
-observation. Track B never receives that control. Until the desktop work occurs,
+open an unrestricted repository checkout. This is a recorded procedural
+restriction, not a technical access-control guarantee. The Track A comparison
+control is released only after the analyser has durably frozen the normalized
+observation; Track B never consults that control. Until the desktop work occurs,
 no native result exists and no Microsoft Project compatibility claim exists.

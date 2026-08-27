@@ -39,10 +39,13 @@ Values under `required_value` and other prefilled mapping fields are plans, not
 observations: fill `observed_value`, operator/reviewer IDs, and both RFC 3339
 times from the native UI and independent evidence.
 Complete the attestation copy only after real desktop execution.
-Never edit the tracked deterministic kit. The operator and pre-execution
-reviewer must not receive comparison-control materials. A separate comparison
-custodian retains those materials until the native artifacts and normalized
-observation have been durably frozen and hashed.
+Never edit the tracked deterministic kit. This is a procedural blind, not an
+access-controlled blind: the public repository necessarily contains frozen
+oracle-bearing fixtures and comparison controls. The operator packet excludes
+those materials, and the operator and pre-execution reviewer must attest that
+they did not inspect them before the native observation was frozen. A separate
+comparison role releases the control only after the native artifacts and
+normalized observation have been durably frozen and hashed.
 
 Required capture fields (placeholder null is incomplete except for the required
 null `status_date`):
@@ -159,8 +162,10 @@ three domains and rejects a mismatch; the same file may not satisfy two roles.
 10. Complete the post-execution action log, freeze all six independent-evidence
     artifacts and the required track-stage artifacts, then hash-bind them in the
     post-execution attestation and run the analyser. The analyser releases its
-    separately controlled comparison material only after the normalized native
-    observation is durably written and hash-verified.
+    procedurally withheld comparison material only after the normalized native
+    observation is durably written and hash-verified. On Windows it uses an
+    exclusive write-through handle plus FlushFileBuffers; on POSIX it fsyncs the
+    file and containing directory.
 11. Preserve the analyser bundle and submit it, the screenshots/reports, and
     raw controlled artifacts for independent post-execution review.
 

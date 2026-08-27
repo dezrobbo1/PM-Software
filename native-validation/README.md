@@ -53,6 +53,8 @@ committed under `native-validation/evidence-index/` with the hashes, product
 build/configuration, outcomes, review disposition, controlled artifact location
 and retention owner required by the preregistration.
 
+The Microsoft Project relationship pilot uses procedural rather than access-controlled blinding. Its operator packet omits oracle material, but the public repository retains the frozen expected fixtures. Operators must attest non-access before observation freeze; a breach removes the blind classification rather than fabricating or discarding the native observation.
+
 The preregistration files remain `preregistered_not_executed`. Results are new,
 separate evidence records; they never rewrite a preregistration or its oracle.
 Any protocol or oracle change requires a new preregistration and profile ID.

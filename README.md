@@ -85,26 +85,28 @@ forecasting fail closed at the execution boundary. See
 ## Microsoft Project relationship-pilot preparation
 
 `microsoft-project-relationship-v0.1` prepares twelve independent relationship
-cases, manual build/review sheets, sealed comparison oracles and pre-execution
-evidence tooling. Operator-visible materials bind deterministic source-only
-case projections, while full oracle-bearing fixture bindings remain inside the
-sealed comparison path. For actual native work, the operator receives only an
-explicitly allowlisted packet of construction and evidence-capture artifacts;
-`pilot-index.json` is its operator index and `pilot-kit-manifest.json` is its
-pre-observation packet manifest. Neither exposes a sealed-oracle path or digest.
-A separate comparison custodian retains that control. Track A releases it
-automatically only after the observed native output has been normalized,
-durably written and hash-verified. Track B never receives or consults an
-expected oracle and compares only its frozen pre-close and post-recalculation
-observations.
+cases, manual build/review sheets, comparison controls and pre-execution evidence
+tooling. Operator-visible materials bind deterministic source-only case
+projections. `pilot-index.json` and `pilot-kit-manifest.json` exclude every
+comparison-control path and digest. Track A opens the comparison control only
+after the observed native output has been normalized, durably persisted and
+hash-verified. Track B never consults an expected oracle and compares only its
+frozen pre-close and post-recalculation observations.
 
-The operator must not use an unrestricted repository checkout during native
-execution: the committed frozen semantic fixtures necessarily contain expected
-results. Microsoft Project has not been executed and the three native evidence
-tracks remain separate. Exact `CAL-24X7` MSPDI serialization is not normatively
-established by the official XML reference, so adapter generation is explicitly
-`preparation_blocked`; no XML is invented and no compatibility claim exists.
-See `docs/phase1-msproject-relationship-pilot.md`.
+This is a **procedural, non-access-controlled blind**. The public repository
+necessarily contains oracle-bearing frozen fixtures and comparison controls. The
+operator and pre-execution reviewer must use only the allowlisted packet and
+attest that they did not inspect those public oracle materials before observation
+freeze. A breach invalidates the blind classification, though the native
+observation may still be retained as unblinded characterisation.
+
+The native analyser has a platform-specific durability boundary: Windows uses an
+exclusive write-through `CreateFileW` handle followed by `FlushFileBuffers`;
+POSIX uses file and directory `fsync`. Microsoft Project has not been executed and
+the three native evidence tracks remain separate. Exact `CAL-24X7` MSPDI
+serialization is not normatively established by the official XML reference, so
+adapter generation remains `preparation_blocked`; no XML is invented and no
+compatibility claim exists. See `docs/phase1-msproject-relationship-pilot.md`.
 
 ```bash
 python -m deterministic_scheduling_core prepare-msproject-relationship-pilot

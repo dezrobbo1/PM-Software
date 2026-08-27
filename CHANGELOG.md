@@ -4,8 +4,8 @@
 
 - Prepared the twelve-case Microsoft Project relationship pilot without executing Microsoft Project or creating a native result.
 - Added deterministic manual build, independent review, sealed-oracle and pre-execution evidence tooling while preserving the three frozen evidence tracks.
-- Blinded explicitly allowlisted operator packets with deterministic source-only case projections and no sealed path or digest; a separate comparison custodian retains each full oracle binding until Track A has durably frozen and hash-verified the normalized observation, while Track B never receives oracle access.
-- Hardened post-observation release with file-and-directory durability, exact frozen-fixture oracle projection checks, and structural workflow parsing that rejects encoded mutable-action references.
+- Classified the operator packet as a procedural, non-access-controlled blind: it excludes oracle paths and digests, but the public repository still contains frozen expected values; a breach invalidates the blind classification while Track B remains oracle-free.
+- Hardened post-observation release with POSIX file/directory fsync, Windows write-through plus FlushFileBuffers, exact frozen-fixture oracle checks, and structural workflow parsing that honors block-scalar boundaries.
 - Failed closed on the unresolved exact `CAL-24X7` MSPDI serialization; all adapter realizations remain `preparation_blocked` and no apparently valid XML was fabricated.
 - Pinned the two official GitHub Actions used by both acceptance workflows to reviewed immutable release commits and added a mutable-reference guard.
 - Preserved every frozen fixture, preregistration, comparison profile, semantic profile, objective policy and deterministic profile byte-for-byte; no optimiser or compatibility claim was added.

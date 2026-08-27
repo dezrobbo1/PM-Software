@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import csv
+from datetime import date
 import hashlib
 import json
 import re
@@ -31,12 +32,22 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMAS = ROOT / "schemas"
 CASES = ROOT / "benchmarks" / "semantic" / "cases"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 _CANONICAL_SCHEMA_VERSION = "0.1.3"
 _EXECUTION_SCHEMA_VERSION = "0.1.4"
 _EXPLANATION_SCHEMA_VERSION = "0.1.3"
 _ACTIVE_SEMANTIC_PROFILE_ID = "reference-v0.3"
 _ACTIVE_OBJECTIVE_POLICY_ID = "objective-v0.3"
+
+
+def _is_canonical_ascii_date(value: str) -> bool:
+    if _DATE_RE.fullmatch(value) is None:
+        return False
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        return False
+    return parsed.isoformat() == value
 
 _EXPECTED_REGISTERS: dict[str, list[str]] = {
     "comparator-run-register.csv": [
@@ -3272,8 +3283,10 @@ def validate_registers(root: Path = ROOT) -> list[str]:
                 errors.append(
                     f"{path.name}:{row_number}: prepared_not_executed must not record an output hash"
                 )
-            if _DATE_RE.fullmatch(record["date"]) is None:
-                errors.append(f"{path.name}:{row_number}: date must use YYYY-MM-DD")
+            if not _is_canonical_ascii_date(record["date"]):
+                errors.append(
+                    f"{path.name}:{row_number}: date must be a real canonical ASCII YYYY-MM-DD"
+                )
         for duplicate in _duplicate_values(experiment_ids):
             errors.append(f"{path.name}: duplicate experiment_id {duplicate}")
     return errors
