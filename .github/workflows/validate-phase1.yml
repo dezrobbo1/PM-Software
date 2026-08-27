@@ -3,7 +3,7 @@ name: Validate Phase 1 reference prototype
 on:
   push:
     branches:
-      - main
+      - "**"
   pull_request:
     branches:
       - main
@@ -17,8 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
           cache: pip
@@ -35,9 +35,35 @@ jobs:
         run: python tools/validate_phase1_governance.py
       - name: Execute the frozen semantic suite
         run: python -m deterministic_scheduling_core run-semantic-suite
+      - name: Regenerate and verify the non-executed Microsoft Project pilot kit
+        run: |
+          python -m deterministic_scheduling_core prepare-msproject-relationship-pilot
+          python -m deterministic_scheduling_core verify-msproject-relationship-pilot
       - name: Compile Python sources
         run: python -m compileall -q src tools tests
       - name: Check patch whitespace and tracked-tree cleanliness
         run: |
           git diff --check
           test -z "$(git status --short --untracked-files=all)"
+
+  msproject-windows-smoke:
+    name: msproject-windows-smoke
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch the exact workflow commit without an additional action
+        shell: pwsh
+        run: |
+          git init .
+          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+          git -c protocol.version=2 fetch --depth=1 origin "${{ github.sha }}"
+          git checkout --detach FETCH_HEAD
+      - name: Install exact native-tool smoke dependencies
+        shell: pwsh
+        run: py -3.12 -m pip install attrs==26.1.0 jsonschema==4.26.0 jsonschema-specifications==2025.9.1 referencing==0.37.0 rfc3339-validator==0.1.4 rpds-py==2026.6.3 setuptools==80.9.0 six==1.17.0 typing-extensions==4.16.0
+      - name: Install repository package without dependency resolution
+        shell: pwsh
+        run: py -3.12 -m pip install --no-deps --no-build-isolation -e .
+      - name: Exercise the Windows write-through durability boundary
+        shell: pwsh
+        run: py -3.12 tests/windows_native_smoke.py

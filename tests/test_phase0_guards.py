@@ -548,6 +548,58 @@ class Phase0GuardTests(unittest.TestCase):
                 )
             )
 
+    def test_prepared_experiment_register_rows_are_strictly_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            register_dir = root / "registers"
+            register_dir.mkdir()
+            for name, fields in validate_phase0._EXPECTED_REGISTERS.items():
+                (register_dir / name).write_text(
+                    ",".join(fields) + "\n", encoding="utf-8", newline="\n"
+                )
+            target = register_dir / "experiment-register.csv"
+            valid = [
+                "microsoft-project-relationship-v0.1",
+                "Test a bounded native relationship mapping.",
+                "SEM-REL-001 through SEM-REL-012",
+                "microsoft-project-semantic-comparison-profile-v0.1",
+                "reference-v0.3",
+                "prepared_not_executed",
+                "No native calculation occurred.",
+                HASH_A,
+                "",
+                "native-validation/pilot-kits/microsoft-project-relationship-v0.1",
+                "The adapter mapping remains blocked.",
+                "",
+                "2026-08-26",
+            ]
+            with target.open("a", encoding="utf-8", newline="") as stream:
+                csv.writer(stream, lineterminator="\n").writerow(valid)
+            self.assertEqual([], validate_phase0.validate_registers(root))
+
+            invalid = valid.copy()
+            invalid[5] = "prepared_not_executed"
+            invalid[8] = HASH_B
+            with target.open("a", encoding="utf-8", newline="") as stream:
+                csv.writer(stream, lineterminator="\n").writerow(invalid)
+            errors = validate_phase0.validate_registers(root)
+            self.assertTrue(any("duplicate experiment_id" in error for error in errors))
+            self.assertTrue(
+                any("prepared_not_executed must not record an output hash" in error for error in errors)
+            )
+
+            executed = valid.copy()
+            executed[5] = "executed_pass"
+            executed[8] = HASH_B
+            with target.open("w", encoding="utf-8", newline="") as stream:
+                writer = csv.writer(stream, lineterminator="\n")
+                writer.writerow(validate_phase0._EXPECTED_REGISTERS["experiment-register.csv"])
+                writer.writerow(executed)
+            errors = validate_phase0.validate_registers(root)
+            self.assertTrue(
+                any("unsupported execution_status 'executed_pass'" in error for error in errors)
+            )
+
     def test_reversed_schedule_state_interval_is_rejected(self) -> None:
         data = copy.deepcopy(self.relationship_case)
         data["schedule"]["baseline"] = {

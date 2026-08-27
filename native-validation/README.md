@@ -53,6 +53,8 @@ committed under `native-validation/evidence-index/` with the hashes, product
 build/configuration, outcomes, review disposition, controlled artifact location
 and retention owner required by the preregistration.
 
+The Microsoft Project relationship pilot uses procedural rather than access-controlled blinding. Its operator packet omits oracle material, but the public repository retains the frozen expected fixtures. Operators must attest non-access before observation freeze; a breach removes the blind classification rather than fabricating or discarding the native observation.
+
 The preregistration files remain `preregistered_not_executed`. Results are new,
 separate evidence records; they never rewrite a preregistration or its oracle.
 Any protocol or oracle change requires a new preregistration and profile ID.
@@ -60,3 +62,67 @@ Any protocol or oracle change requires a new preregistration and profile ID.
 Even a complete profile pass cannot establish full P6 compatibility, full
 Microsoft Project compatibility, MPP binary compatibility, safe production
 round-trip, optimiser superiority, practitioner acceptance or buyer validation.
+
+## Prepared pilot kits
+
+`pilot-kits/microsoft-project-relationship-v0.1/` is a deterministic,
+preparation-only subset for `SEM-REL-001` through `SEM-REL-012`. It keeps manual
+build instructions, per-case environment-capture templates, independent review
+sheets and sealed expected outputs in separate paths. Operator-visible packets
+bind oracle-free source-only case projections; only the sealed comparison
+artifact binds the matching full fixture path and bytes. The completed
+capture must record the exact observed Project ID/Unique ID/name mapping,
+Schedule From Start, native Manual calculation mode, the separate pre-calculation
+protocol state, structured action log, progress settings and evidence roles.
+Generated required values are plans rather than observations: every
+`observed_product_settings` record requires the native value, operator and
+independent-review identities, and RFC 3339 observation times. Calendar
+continuity and leveling attestations remain null in the tracked templates, and
+pre-execution actions must be strictly chronological and no later than freeze.
+Its status is `prepared_not_executed`; it contains no native result.
+
+Native execution uses split control. The operator-visible execution packet is
+assembled from an explicit allowlist of the source-only projection, build and
+review sheets, environment/action/attestation templates, and runbook material
+needed for the selected case and track. `pilot-index.json` is the operator index,
+and `pilot-kit-manifest.json` is the allowlisted pre-observation packet manifest.
+Neither may include a sealed expected artifact, sealed path, sealed digest,
+oracle-bearing fixture, or comparison-custodian metadata. The repository
+checkout is not an operator packet: frozen semantic fixtures committed for
+protocol verification contain their expected results, so an operator must not
+use an unrestricted checkout while constructing or calculating a native case.
+
+For Track A, the comparison custodian retains the case-specific sealed control.
+The analyser first normalizes the observed native output, creates and durably
+syncs the normalized file, and verifies its hash; only then does it automatically
+resolve and open the repository-held comparison control. The operator does not
+release or inspect it. Track B has no oracle comparison at any stage: it rejects
+a supplied sealed control and compares only the independently normalized
+pre-close and post-recalculation observations.
+
+Track A and Track B have separate exact post-execution action-log templates.
+The analysis command receives one with `--post-execution-action-log`, receives
+each actual screenshot/report as repeatable `--evidence-artifact ROLE=PATH`,
+and recomputes the action-log, stage and evidence SHA-256 values bound by the
+post-execution attestation. Track C has no executable template while its MSPDI
+input mapping remains blocked.
+
+Mandatory stop conditions use the separate
+`record-msproject-native-attempt-stop` command. It binds the live pilot, case,
+track, source-only case projection, preregistration and profile; hashes only evidence that actually
+exists; refuses overwrite; and emits a non-claimable stopped-attempt record,
+never a native-run record or pass. The tracked
+`native-attempt-stop-record-template.json` is instructions only. Missing stage
+hashes must not be invented, and retry requires a new frozen realization.
+
+The pilot index's domain-separated input identity binds the ordered twelve
+cases, frozen preregistration/profile, source-only projection bytes and
+mapping-source-register bytes. Governance recomputes it from the live tree
+before accepting the experiment-register input hash. Full fixture bindings are
+kept solely in the sealed comparison files.
+
+The manual track is prepared around Microsoft Project's documented built-in
+**24 Hours** calendar. MSPDI adapter creation is `preparation_blocked` because
+the official XML reference does not establish the exact serialization of a
+continuous midnight-to-midnight interval. The blocker records are not XML
+inputs and cannot support an adapter or compatibility claim.
