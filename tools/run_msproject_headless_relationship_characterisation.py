@@ -90,6 +90,15 @@ CASE_SUPPORT_ARTIFACT_ROLES = headless.CASE_SUPPORT_ARTIFACT_ROLES
 CALENDAR_ARTIFACT_ROLES = frozenset(
     {"authored_mpp", "authored_xml", "reexported_xml"}
 )
+COMPARATOR_MODULE = "deterministic_scheduling_core.native.msproject.headless_compare"
+COMPARATOR_SOURCE_RELATIVE_PATH = (
+    "src/deterministic_scheduling_core/native/msproject/headless_compare.py"
+)
+SEALED_REFERENCE_RELATIVE_DIRECTORY = (
+    "native-validation/pilot-kits/microsoft-project-relationship-v0.1/"
+    "sealed-expected-normalized"
+)
+ORACLE_PROVENANCE_SCHEMA = "headless-msproject-oracle-provenance-v0.1"
 
 
 class SupervisionError(RuntimeError):
@@ -267,13 +276,27 @@ def _matching_new_project_processes(
         pid = process.get("pid")
         creation = process.get("creation_time_100ns")
         raw_path = process.get("executable_path")
-        if not isinstance(pid, int) or not raw_path:
+        if not isinstance(pid, int):
             continue
         identity = (pid, creation if isinstance(creation, int) else None)
-        if identity in baseline_identities:
+        complete_identity = (
+            isinstance(creation, int)
+            and isinstance(raw_path, str)
+            and bool(raw_path)
+        )
+        if complete_identity and identity in baseline_identities:
             continue
-        if Path(str(raw_path)).resolve(strict=False) == expected:
-            result.append(process)
+        retained = dict(process)
+        query_failures: list[str] = []
+        if not isinstance(creation, int):
+            query_failures.append("creation_time_unavailable")
+        if not isinstance(raw_path, str) or not raw_path:
+            query_failures.append("executable_path_unavailable")
+        if query_failures:
+            retained["identity_query_failures"] = query_failures
+        elif Path(raw_path).resolve(strict=False) != expected:
+            retained["identity_mismatch"] = "unexpected_executable_path"
+        result.append(retained)
     return result
 
 
@@ -435,6 +458,24 @@ def run_supervised_worker(
                     "recorded_at": _now(),
                 }
                 break
+            identity_query_failures = [
+                item
+                for item in latest_new_processes
+                if item.get("identity_query_failures")
+            ]
+            if identity_query_failures:
+                stopped = {
+                    "schema_version": "headless-msproject-watchdog-stop-v0.1",
+                    "characterisation_label": TRACK_ID,
+                    "classification": "characterisation_inconclusive",
+                    "condition": "project_process_identity_query_failure",
+                    "operation": operation,
+                    "case_id": case_id,
+                    "stage": current_stage,
+                    "processes": _window_inventory(identity_query_failures),
+                    "recorded_at": _now(),
+                }
+                break
             if latest_verified_identities:
                 owned_identity = latest_verified_identities[-1]
                 try:
@@ -443,7 +484,7 @@ def run_supervised_worker(
                         for item in headless_com.windows_for_pid(
                             int(owned_identity["pid"])
                         )
-                        if item.get("visible") and item.get("title")
+                        if item.get("visible")
                     ]
                 except Exception as error:
                     stopped = {
@@ -707,6 +748,15 @@ def _automation_hashes(repository_root: Path) -> dict[str, str]:
 
 def _result_sidecar_path(path: Path) -> Path:
     return path.with_name(f"{path.name}.sha256")
+
+
+def _is_sha256(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and value == value.lower()
+        and all(character in "0123456789abcdef" for character in value)
+    )
 
 
 def _write_result_sidecar(path: Path) -> None:
@@ -1300,6 +1350,26 @@ def _existing_calendar_result(run_path: Path) -> tuple[Path, dict[str, Any]] | N
     return path, result
 
 
+def _exact_wall_clock(value: Any, *, require_perth_offset: bool) -> str | None:
+    """Return a canonical second-resolution wall clock without converting it."""
+
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.microsecond != 0 or value != parsed.isoformat(timespec="seconds"):
+        return None
+    offset = parsed.utcoffset()
+    if require_perth_offset:
+        if offset != timedelta(hours=8):
+            return None
+    elif parsed.tzinfo is not None or offset is not None:
+        return None
+    return parsed.replace(tzinfo=None).isoformat(timespec="seconds")
+
+
 def _calendar_schedule_projection(capture: Any) -> dict[str, Any] | None:
     """Return the exact claimed CAL task/project dates from a COM capture."""
 
@@ -1317,30 +1387,79 @@ def _calendar_schedule_projection(capture: Any) -> dict[str, Any] | None:
         or tasks[0].get("name") != "CAL-24X7-characterisation"
         or not isinstance(tasks[0].get("start"), str)
         or not isinstance(tasks[0].get("finish"), str)
+        or not isinstance(tasks[0].get("duration_minutes"), int)
+        or isinstance(tasks[0].get("duration_minutes"), bool)
+        or tasks[0].get("duration_minutes") != 1_440
     ):
         return None
     task = tasks[0]
-    timestamps = (
-        project["start"],
-        project["finish"],
-        task["start"],
-        task["finish"],
-    )
-    try:
-        parsed = [datetime.fromisoformat(value) for value in timestamps]
-    except ValueError:
-        return None
-    if any(value.tzinfo is None for value in parsed):
+    wall_clocks = [
+        _exact_wall_clock(value, require_perth_offset=True)
+        for value in (
+            project["start"],
+            project["finish"],
+            task["start"],
+            task["finish"],
+        )
+    ]
+    if any(value is None for value in wall_clocks):
         return None
     return {
         "project": {
-            "start": project["start"],
-            "finish": project["finish"],
+            "start": wall_clocks[0],
+            "finish": wall_clocks[1],
         },
         "task": {
             "name": task["name"],
-            "start": task["start"],
-            "finish": task["finish"],
+            "start": wall_clocks[2],
+            "finish": wall_clocks[3],
+            "duration_minutes": 1_440,
+        },
+    }
+
+
+def _calendar_xml_schedule_projection(
+    observation: Any,
+) -> dict[str, Any] | None:
+    """Return exact CAL project/task wall clocks from parsed bound XML bytes."""
+
+    if not isinstance(observation, Mapping):
+        return None
+    project = observation.get("project")
+    tasks = observation.get("tasks")
+    matching_tasks = (
+        [
+            item
+            for item in tasks
+            if isinstance(item, Mapping)
+            and item.get("name") == "CAL-24X7-characterisation"
+        ]
+        if isinstance(tasks, list)
+        else []
+    )
+    if not isinstance(project, Mapping) or len(matching_tasks) != 1:
+        return None
+    task = matching_tasks[0]
+    if task.get("duration") != "PT24H0M0S":
+        return None
+    wall_clocks = [
+        _exact_wall_clock(value, require_perth_offset=False)
+        for value in (
+            project.get("start"),
+            project.get("finish"),
+            task.get("start"),
+            task.get("finish"),
+        )
+    ]
+    if any(value is None for value in wall_clocks):
+        return None
+    return {
+        "project": {"start": wall_clocks[0], "finish": wall_clocks[1]},
+        "task": {
+            "name": "CAL-24X7-characterisation",
+            "start": wall_clocks[2],
+            "finish": wall_clocks[3],
+            "duration_minutes": 1_440,
         },
     }
 
@@ -1413,6 +1532,18 @@ def _validate_calendar_result(
         raise SupervisionError(
             "CAL-24X7 task dates changed across XML reopen or explicit recalculation"
         )
+    xml_projections = [
+        _calendar_xml_schedule_projection(parsed_first),
+        _calendar_xml_schedule_projection(parsed_second),
+    ]
+    if (
+        any(projection is None for projection in xml_projections)
+        or xml_projections[0] != projections[0]
+        or xml_projections[1] != projections[2]
+    ):
+        raise SupervisionError(
+            "CAL-24X7 exact XML/COM project or task wall clocks disagree"
+        )
     return artifacts
 
 
@@ -1437,6 +1568,49 @@ def _validate_comparison_result(
         raise SupervisionError(
             "comparison did not return twelve unique cases in canonical order"
         )
+    provenance = comparison.get("oracle_provenance")
+    comparator = (
+        provenance.get("comparator") if isinstance(provenance, Mapping) else None
+    )
+    references = (
+        provenance.get("sealed_references")
+        if isinstance(provenance, Mapping)
+        else None
+    )
+    expected_reference_paths = [
+        f"{SEALED_REFERENCE_RELATIVE_DIRECTORY}/{case_id}.json"
+        for case_id in CASE_IDS
+    ]
+    if (
+        not isinstance(provenance, Mapping)
+        or set(provenance) != {"schema_version", "comparator", "sealed_references"}
+        or provenance.get("schema_version") != ORACLE_PROVENANCE_SCHEMA
+        or not isinstance(comparator, Mapping)
+        or set(comparator) != {"module", "relative_path", "sha256"}
+        or comparator.get("module") != COMPARATOR_MODULE
+        or comparator.get("relative_path") != COMPARATOR_SOURCE_RELATIVE_PATH
+        or not _is_sha256(comparator.get("sha256"))
+        or not isinstance(references, list)
+        or len(references) != len(CASE_IDS)
+    ):
+        raise SupervisionError(
+            "comparison lacks exact comparator and sealed-reference provenance"
+        )
+    for case_id, relative_path, reference in zip(
+        CASE_IDS, expected_reference_paths, references, strict=True
+    ):
+        if (
+            not isinstance(reference, Mapping)
+            or set(reference)
+            != {"case_id", "relative_path", "sha256", "source_kind"}
+            or reference.get("case_id") != case_id
+            or reference.get("relative_path") != relative_path
+            or reference.get("source_kind") != "sealed_reference_byte_snapshot"
+            or not _is_sha256(reference.get("sha256"))
+        ):
+            raise SupervisionError(
+                "comparison sealed-reference provenance is malformed or noncanonical"
+            )
     allowed_statuses = {
         "characterisation_exact",
         "characterisation_mismatch",
@@ -1561,6 +1735,31 @@ def _validate_comparison_result(
             )
 
 
+def _verify_cached_comparison_against_current_oracle(
+    run: headless.RunWorkspace,
+    cached: Mapping[str, Any],
+) -> None:
+    """Re-execute the isolated comparator and require exact cache identity."""
+
+    _validate_comparison_result(cached, run_id=run.run_id)
+    verification_workspace = _next_attempt_workspace(
+        run.path, "comparison-cache-verification"
+    )
+    verification_path = verification_workspace / "comparison.json"
+    current = run_comparison_worker(
+        repository_root=run.repository_root,
+        run_id=run.run_id,
+        workspace=verification_workspace,
+        result_path=verification_path,
+    )
+    _validate_comparison_result(current, run_id=run.run_id)
+    _write_result_sidecar(verification_path)
+    if current != cached:
+        raise SupervisionError(
+            "cached comparison disagrees with the current comparator or oracle"
+        )
+
+
 def _complete_run(
     run: headless.RunWorkspace,
     environment: Mapping[str, Any],
@@ -1581,6 +1780,9 @@ def _complete_run(
     if existing_calendar is None:
         calendar_workspace = _next_attempt_workspace(run.path, "calendar-characterisation")
         calendar_path = calendar_workspace / "calendar-characterisation.json"
+        # Calendar construction is a separate COM launch and therefore needs
+        # the same just-in-time live environment/Perth gate as every case.
+        _validate_environment_capture(environment)
         calendar = run_supervised_worker(
             operation="calendar",
             repository_root=run.repository_root,
@@ -1615,6 +1817,11 @@ def _complete_run(
     if comparison_path.exists():
         _verify_result_sidecar(comparison_path)
         comparison = _read_json(comparison_path)
+        # A digest sidecar binds only the old bytes to themselves.  Re-run the
+        # isolated oracle-capable comparator after the freeze gate and require
+        # byte-content equivalence of the semantic result plus its comparator
+        # source and twelve exact sealed-reference snapshot digests.
+        _verify_cached_comparison_against_current_oracle(run, comparison)
     else:
         comparison_workspace = _next_attempt_workspace(run.path, "comparison-operation")
         if comparison_workspace.name != "comparison-operation":

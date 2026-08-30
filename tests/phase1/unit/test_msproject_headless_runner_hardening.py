@@ -69,11 +69,54 @@ def _comparison() -> dict:
         "characterisation_label": headless.TRACK_ID,
         "run_id": "run",
         "manual_native_semantic_parity_status_emitted": False,
+        "oracle_provenance": {
+            "schema_version": "headless-msproject-oracle-provenance-v0.1",
+            "comparator": {
+                "module": "deterministic_scheduling_core.native.msproject.headless_compare",
+                "relative_path": "src/deterministic_scheduling_core/native/msproject/headless_compare.py",
+                "sha256": "a" * 64,
+            },
+            "sealed_references": [
+                {
+                    "case_id": case_id,
+                    "relative_path": (
+                        "native-validation/pilot-kits/"
+                        "microsoft-project-relationship-v0.1/"
+                        f"sealed-expected-normalized/{case_id}.json"
+                    ),
+                    "sha256": f"{index:064x}",
+                    "source_kind": "sealed_reference_byte_snapshot",
+                }
+                for index, case_id in enumerate(headless.CASE_IDS, start=1)
+            ],
+        },
         "cases": cases,
     }
 
 
 class RunnerHardeningTests(unittest.TestCase):
+    def test_new_winproj_identity_query_failure_is_retained_for_stop(self) -> None:
+        runner = _runner()
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+        queried = runner["_matching_new_project_processes"](
+            [
+                {
+                    "pid": 321,
+                    "creation_time_100ns": 9_999,
+                    "executable_name": "WINPROJ.EXE",
+                    "executable_path": None,
+                }
+            ],
+            baseline_identities={(321, 9_999)},
+            expected_path=expected,
+        )
+
+        self.assertEqual(1, len(queried))
+        self.assertEqual(
+            ["executable_path_unavailable"],
+            queried[0]["identity_query_failures"],
+        )
+
     def test_wrong_live_timezone_precedes_every_com_worker(self) -> None:
         runner = _runner()
         worker = Mock()
@@ -92,6 +135,39 @@ class RunnerHardeningTests(unittest.TestCase):
             runner["SupervisionError"], "required Australia/Perth"
         ):
             runner["_ensure_environment_and_preflight"](Mock())
+        worker.assert_not_called()
+
+    def test_calendar_worker_has_immediate_live_environment_gate(self) -> None:
+        runner = _runner()
+        observations = {
+            case_id: {"case_id": case_id, "stop_conditions": []}
+            for case_id in headless.CASE_IDS
+        }
+        environment = {"retained": "environment"}
+        worker = Mock()
+        live_gate = Mock(
+            side_effect=runner["SupervisionError"]("live Perth gate failed")
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            run = Mock(
+                path=Path(temporary),
+                repository_root=ROOT,
+                run_id="run",
+            )
+            with patch.dict(
+                runner["_complete_run"].__globals__,
+                {
+                    "_reject_run_stop_conditions": Mock(),
+                    "verify_run_freeze_gate": Mock(return_value={}),
+                    "_existing_calendar_result": Mock(return_value=None),
+                    "_validate_environment_capture": live_gate,
+                    "run_supervised_worker": worker,
+                },
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "live Perth gate failed"
+            ):
+                runner["_complete_run"](run, environment, observations)
+        live_gate.assert_called_once_with(environment)
         worker.assert_not_called()
 
     def test_sparse_resume_prefix_is_rejected_before_any_worker(self) -> None:
@@ -231,6 +307,64 @@ class RunnerHardeningTests(unittest.TestCase):
         ):
             runner["_validate_comparison_result"](comparison, run_id="run")
 
+    def test_cached_comparison_is_reexecuted_against_current_oracle(self) -> None:
+        runner = _runner()
+        cached = _comparison()
+
+        def emit_current(*, result_path: Path, **_kwargs: object) -> dict:
+            result_path.parent.mkdir(parents=True, exist_ok=True)
+            headless.durable_write_canonical_json(result_path, current)
+            return current
+
+        with tempfile.TemporaryDirectory() as temporary:
+            run = Mock(
+                path=Path(temporary),
+                repository_root=ROOT,
+                run_id="run",
+            )
+            current = json.loads(json.dumps(cached))
+            with patch.dict(
+                runner[
+                    "_verify_cached_comparison_against_current_oracle"
+                ].__globals__,
+                {"run_comparison_worker": Mock(side_effect=emit_current)},
+            ):
+                runner["_verify_cached_comparison_against_current_oracle"](
+                    run, cached
+                )
+
+            current = json.loads(json.dumps(cached))
+            current["oracle_provenance"]["sealed_references"][0]["sha256"] = (
+                "f" * 64
+            )
+            with patch.dict(
+                runner[
+                    "_verify_cached_comparison_against_current_oracle"
+                ].__globals__,
+                {"run_comparison_worker": Mock(side_effect=emit_current)},
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "current comparator or oracle"
+            ):
+                runner["_verify_cached_comparison_against_current_oracle"](
+                    run, cached
+                )
+
+            missing = json.loads(json.dumps(cached))
+            del missing["oracle_provenance"]
+            comparator = Mock()
+            with patch.dict(
+                runner[
+                    "_verify_cached_comparison_against_current_oracle"
+                ].__globals__,
+                {"run_comparison_worker": comparator},
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "lacks exact comparator"
+            ):
+                runner["_verify_cached_comparison_against_current_oracle"](
+                    run, missing
+                )
+            comparator.assert_not_called()
+
     def test_cached_calendar_schedule_projection_must_remain_stable(self) -> None:
         runner = _runner()
         with tempfile.TemporaryDirectory() as temporary:
@@ -248,18 +382,33 @@ class RunnerHardeningTests(unittest.TestCase):
                         "name": "CAL-24X7-characterisation",
                         "start": "2026-01-05T08:00:00+08:00",
                         "finish": "2026-01-06T08:00:00+08:00",
+                        "duration_minutes": 1_440,
                     }
                 ],
             }
             changed = json.loads(json.dumps(before))
             changed["tasks"][0]["finish"] = "2026-01-06T09:00:00+08:00"
+            xml_dates = {
+                "project": {
+                    "start": "2026-01-05T08:00:00",
+                    "finish": "2026-01-06T08:00:00",
+                },
+                "tasks": [
+                    {
+                        "name": "CAL-24X7-characterisation",
+                        "start": "2026-01-05T08:00:00",
+                        "finish": "2026-01-06T08:00:00",
+                        "duration": "PT24H0M0S",
+                    }
+                ],
+            }
             calendar = {
                 "schema_version": "headless-msproject-cal24x7-characterisation-v0.1",
                 "characterisation_label": headless.TRACK_ID,
                 "automatic_track_c_unblock": False,
                 "calendar_representation_stable": True,
-                "project_authored_xml": {},
-                "reexported_xml": {},
+                "project_authored_xml": xml_dates,
+                "reexported_xml": xml_dates,
                 "calendar_representation_before": {"uid": "3"},
                 "calendar_representation_after": {"uid": "3"},
                 "process_sessions": [
@@ -287,7 +436,7 @@ class RunnerHardeningTests(unittest.TestCase):
             ), patch.object(
                 runner["headless"],
                 "parse_project_xml_observation",
-                return_value={},
+                return_value=xml_dates,
             ):
                 stable = dict(calendar)
                 stable["task_dates_after_xml_open"] = before
@@ -306,6 +455,16 @@ class RunnerHardeningTests(unittest.TestCase):
                     runner["_validate_calendar_result"](
                         calendar, workspace=workspace
                     )
+                wrong_duration = json.loads(json.dumps(stable))
+                wrong_duration["task_dates_before_xml_reopen"]["tasks"][0][
+                    "duration_minutes"
+                ] = 1_439
+                with self.assertRaisesRegex(
+                    runner["SupervisionError"], "task dates changed"
+                ):
+                    runner["_validate_calendar_result"](
+                        wrong_duration, workspace=workspace
+                    )
                 malformed = dict(stable)
                 malformed_capture = json.loads(json.dumps(before))
                 malformed_capture["project"]["start"] = "not-a-timestamp"
@@ -316,6 +475,53 @@ class RunnerHardeningTests(unittest.TestCase):
                     runner["_validate_calendar_result"](
                         malformed, workspace=workspace
                     )
+
+            shifted_xml = json.loads(json.dumps(xml_dates))
+            shifted_xml["project"]["start"] = "2026-01-05T00:00:00"
+            shifted_xml["project"]["finish"] = "2026-01-06T00:00:00"
+            shifted_xml["tasks"][0]["start"] = "2026-01-05T00:00:00"
+            shifted_xml["tasks"][0]["finish"] = "2026-01-06T00:00:00"
+            shifted = dict(calendar)
+            shifted["task_dates_after_xml_open"] = before
+            shifted["task_dates_after_xml_recalculate"] = before
+            shifted["project_authored_xml"] = shifted_xml
+            shifted["reexported_xml"] = shifted_xml
+            with patch.object(
+                runner["headless"],
+                "validated_cal24x7_calendar",
+                return_value={"uid": "3"},
+            ), patch.object(
+                runner["headless"],
+                "parse_project_xml_observation",
+                return_value=shifted_xml,
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "exact XML/COM"
+            ):
+                runner["_validate_calendar_result"](
+                    shifted, workspace=workspace
+                )
+
+            wrong_xml_duration = json.loads(json.dumps(xml_dates))
+            wrong_xml_duration["tasks"][0]["duration"] = "PT23H59M0S"
+            duration_mismatch = dict(calendar)
+            duration_mismatch["task_dates_after_xml_open"] = before
+            duration_mismatch["task_dates_after_xml_recalculate"] = before
+            duration_mismatch["project_authored_xml"] = wrong_xml_duration
+            duration_mismatch["reexported_xml"] = wrong_xml_duration
+            with patch.object(
+                runner["headless"],
+                "validated_cal24x7_calendar",
+                return_value={"uid": "3"},
+            ), patch.object(
+                runner["headless"],
+                "parse_project_xml_observation",
+                return_value=wrong_xml_duration,
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "exact XML/COM"
+            ):
+                runner["_validate_calendar_result"](
+                    duration_mismatch, workspace=workspace
+                )
 
     def test_post_gate_observation_mutation_keeps_oracle_closed(self) -> None:
         helpers = runpy.run_path(str(LEGACY_TEST))

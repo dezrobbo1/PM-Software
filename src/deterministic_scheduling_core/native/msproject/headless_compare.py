@@ -35,6 +35,13 @@ SEALED_DIRECTORY = PurePosixPath(
     "native-validation/pilot-kits/microsoft-project-relationship-v0.1/"
     "sealed-expected-normalized"
 )
+COMPARATOR_MODULE = (
+    "deterministic_scheduling_core.native.msproject.headless_compare"
+)
+COMPARATOR_SOURCE = PurePosixPath(
+    "src/deterministic_scheduling_core/native/msproject/headless_compare.py"
+)
+ORACLE_PROVENANCE_SCHEMA = "headless-msproject-oracle-provenance-v0.1"
 
 
 def _expected_projection(
@@ -102,10 +109,25 @@ def _expected_projection(
 def _default_expected_reader(
     repository_root: Path, case_id: str
 ) -> Mapping[str, Any]:
-    path = repository_root.joinpath(*SEALED_DIRECTORY.parts, f"{case_id}.json")
+    value, _identity = _default_expected_snapshot(repository_root, case_id)
+    return value
+
+
+def _default_expected_snapshot(
+    repository_root: Path, case_id: str
+) -> tuple[Mapping[str, Any], dict[str, Any]]:
+    """Read, hash and parse one exact sealed-reference byte snapshot."""
+
+    relative_path = SEALED_DIRECTORY / f"{case_id}.json"
+    path = repository_root.joinpath(*relative_path.parts)
     _regular_file(path, label="sealed normalized expectation")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        expected_bytes = path.read_bytes()
+        if len(expected_bytes) > 1024 * 1024:
+            raise ObservationFreezeError(
+                "sealed normalized expectation exceeds the bounded 1 MiB limit"
+            )
+        value = json.loads(expected_bytes.decode("utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ObservationFreezeError(
             "sealed normalized expectation is not valid UTF-8 JSON"
@@ -114,7 +136,45 @@ def _default_expected_reader(
         raise ObservationFreezeError(
             "sealed normalized expectation must be an object"
         )
-    return value
+    return value, {
+        "case_id": case_id,
+        "relative_path": relative_path.as_posix(),
+        "sha256": hashlib.sha256(expected_bytes).hexdigest(),
+        "source_kind": "sealed_reference_byte_snapshot",
+    }
+
+
+def _comparator_source_identity(
+    repository_root: Path, *, require_repository_source: bool
+) -> dict[str, str]:
+    """Bind the comparison to the exact checked-out comparator source bytes."""
+
+    repository_path = repository_root.joinpath(*COMPARATOR_SOURCE.parts)
+    module_path = Path(__file__).resolve()
+    if require_repository_source:
+        try:
+            if repository_path.resolve(strict=True) != module_path:
+                raise ObservationFreezeError(
+                    "executed comparator is not the checked-out repository source"
+                )
+        except OSError as error:
+            raise ObservationFreezeError(
+                "checked-out comparison source cannot be resolved"
+            ) from error
+        path = repository_path
+    else:
+        # Injected readers are a parser/test seam, never a production cache.
+        path = module_path
+    _regular_file(path, label="comparison source")
+    try:
+        source_bytes = path.read_bytes()
+    except OSError as error:
+        raise ObservationFreezeError("comparison source cannot be read") from error
+    return {
+        "module": COMPARATOR_MODULE,
+        "relative_path": COMPARATOR_SOURCE.as_posix(),
+        "sha256": hashlib.sha256(source_bytes).hexdigest(),
+    }
 
 
 def compare_frozen_observations(
@@ -187,11 +247,32 @@ def compare_frozen_observations(
         # Complete every fallible native normalization before the first oracle
         # read, so a malformed later case cannot reveal any earlier reference.
         normalized_by_case[case_id] = normalize_observation(observations[case_id])
+    # The source identity and sealed snapshots are intentionally acquired only
+    # after every frozen native observation has passed stop validation and
+    # normalization.  Native construction never imports this module.
+    comparator_identity = _comparator_source_identity(
+        run.repository_root,
+        require_repository_source=expected_reader is _default_expected_reader,
+    )
     cases: list[dict[str, Any]] = []
+    reference_identities: list[dict[str, Any]] = []
     for case_id in CASE_IDS:
         native = normalized_by_case[case_id]
+        if expected_reader is _default_expected_reader:
+            expected_value, reference_identity = _default_expected_snapshot(
+                run.repository_root, case_id
+            )
+        else:
+            expected_value = expected_reader(run.repository_root, case_id)
+            reference_identity = {
+                "case_id": case_id,
+                "relative_path": (SEALED_DIRECTORY / f"{case_id}.json").as_posix(),
+                "sha256": hashlib.sha256(canonical_bytes(expected_value)).hexdigest(),
+                "source_kind": "injected_mapping_canonical_json",
+            }
+        reference_identities.append(reference_identity)
         expected_activities, expected_finish = _expected_projection(
-            expected_reader(run.repository_root, case_id)
+            expected_value
         )
         fields: list[dict[str, Any]] = []
         for activity_id in sorted(set(expected_activities) | set(native["activities"])):
@@ -244,6 +325,11 @@ def compare_frozen_observations(
         "characterisation_label": TRACK_ID,
         "run_id": run.run_id,
         "manual_native_semantic_parity_status_emitted": False,
+        "oracle_provenance": {
+            "schema_version": ORACLE_PROVENANCE_SCHEMA,
+            "comparator": comparator_identity,
+            "sealed_references": reference_identities,
+        },
         "cases": cases,
     }
 

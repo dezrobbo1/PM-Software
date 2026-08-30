@@ -141,6 +141,10 @@ def registered_project_executable() -> Path:
 TH32CS_SNAPPROCESS = 0x00000002
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 PROCESS_TERMINATE = 0x0001
+SYNCHRONIZE = 0x00100000
+WAIT_OBJECT_0 = 0x00000000
+WAIT_TIMEOUT = 0x00000102
+WAIT_FAILED = 0xFFFFFFFF
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 
 OWNED_PROCESS_IDENTITY_FIELDS = (
@@ -208,6 +212,8 @@ def _configured_kernel32() -> Any:
     kernel32.Process32NextW.restype = wintypes.BOOL
     kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
     kernel32.TerminateProcess.restype = wintypes.BOOL
+    kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
     return kernel32
 
 
@@ -609,13 +615,76 @@ def terminate_verified_project_process(
         kernel32.CloseHandle(handle)
 
 
-def _wait_process_exit(pid: int, timeout: float = 10.0) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if _query_process_path(pid) is None:
-            return True
-        time.sleep(0.1)
-    return _query_process_path(pid) is None
+def _open_verified_process_wait_handle(
+    process: Mapping[str, Any], expected_path: Path
+) -> tuple[Any, Any]:
+    """Open a waitable handle and bind it to the retained process identity."""
+
+    pid = int(process["pid"])
+    retained_creation = process.get("creation_time_100ns")
+    if retained_creation is None:
+        raise ProjectComError(
+            f"cannot acquire Project process wait handle without creation time: {pid}"
+        )
+    kernel32 = _configured_kernel32()
+    handle = kernel32.OpenProcess(
+        SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
+        False,
+        pid,
+    )
+    if not handle:
+        raise ProjectComError(f"could not acquire Project process wait handle: {pid}")
+    try:
+        actual = _query_process_path_from_handle(kernel32, handle)
+        creation = _query_process_creation_time_from_handle(kernel32, handle)
+        if (
+            not actual
+            or Path(actual).resolve(strict=False)
+            != expected_path.resolve(strict=False)
+            or creation != int(retained_creation)
+        ):
+            raise ProjectComError(
+                f"Project process wait-handle identity did not match retained identity: {pid}"
+            )
+    except Exception as error:
+        kernel32.CloseHandle(handle)
+        if isinstance(error, ProjectComError):
+            raise
+        raise ProjectComError(
+            f"could not verify Project process wait-handle identity: {pid}"
+        ) from error
+    return kernel32, handle
+
+
+def _wait_process_exit(
+    pid: int,
+    timeout: float = 10.0,
+    *,
+    kernel32: Any | None = None,
+    process_handle: Any | None = None,
+) -> bool:
+    """Confirm process exit from a waitable kernel handle, or fail closed.
+
+    An image-path query can fail for reasons other than process exit (including
+    access or transient query failures), so it must never stand in for an exit
+    signal. If the handle cannot be opened or waited, cleanup remains
+    inconclusive and callers retain the mandatory stop condition.
+    """
+
+    owns_handle = process_handle is None
+    kernel32 = kernel32 or _configured_kernel32()
+    handle = process_handle or kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+    if not handle:
+        return False
+    try:
+        timeout_milliseconds = max(0, min(int(timeout * 1000), 0xFFFFFFFE))
+        wait_result = int(kernel32.WaitForSingleObject(handle, timeout_milliseconds))
+        if wait_result in {WAIT_TIMEOUT, WAIT_FAILED}:
+            return False
+        return wait_result == WAIT_OBJECT_0
+    finally:
+        if owns_handle:
+            kernel32.CloseHandle(handle)
 
 
 def _required_get(obj: Any, name: str) -> Any:
@@ -648,6 +717,38 @@ def _required_set(obj: Any, name: str, value: Any) -> None:
         raise RequiredNativePropertyError(
             f"required native property {name} readback mismatch: supplied {value!r}, observed {observed!r}"
         )
+
+
+def _require_duration_minutes(task: Any, expected_minutes: int, *, context: str) -> int:
+    """Read and validate Project's native minute-valued Duration exactly."""
+
+    observed = _required_get(task, "Duration")
+    if (
+        isinstance(observed, bool)
+        or not isinstance(observed, (int, float))
+        or observed != expected_minutes
+    ):
+        raise RequiredNativePropertyError(
+            "required native Duration readback mismatch "
+            f"{context}: expected {expected_minutes} minutes, observed {observed!r}"
+        )
+    return int(observed)
+
+
+def _required_set_duration_minutes(
+    task: Any,
+    supplied: str,
+    expected_minutes: int,
+    *,
+    context: str,
+) -> int:
+    try:
+        task.Duration = supplied
+    except Exception as error:
+        raise RequiredNativePropertyError(
+            f"required native Duration cannot be set {context}: {supplied!r}"
+        ) from error
+    return _require_duration_minutes(task, expected_minutes, context=context)
 
 
 def _optional_get(obj: Any, name: str) -> Any:
@@ -733,7 +834,16 @@ class _ProjectSession:
             self.process, self.executable
         )
         termination_error: str | None = None
+        wait_kernel32: Any | None = None
+        wait_handle: Any | None = None
         if ownership_revalidated:
+            try:
+                wait_kernel32, wait_handle = _open_verified_process_wait_handle(
+                    self.process,
+                    self.executable,
+                )
+            except ProjectComError as error:
+                termination_error = str(error)
             with contextlib.suppress(Exception):
                 self.app.Quit(PJ_DO_NOT_SAVE)
         else:
@@ -741,23 +851,47 @@ class _ProjectSession:
                 "refused Application.Quit because the retained Project process "
                 "identity no longer matched PID/path/creation/HWND/caption"
             )
-        exited = _wait_process_exit(self.pid, 10.0)
+        exited = False
         terminated = False
-        if not exited:
-            try:
-                terminated = terminate_verified_project_process(
+        try:
+            exited = (
+                _wait_process_exit(
                     self.pid,
-                    self.executable,
-                    process_identity=self.process,
+                    10.0,
+                    kernel32=wait_kernel32,
+                    process_handle=wait_handle,
                 )
-            except ProjectComError as error:
-                cleanup_error = str(error)
-                termination_error = (
-                    f"{termination_error}; {cleanup_error}"
-                    if termination_error
-                    else cleanup_error
+                if wait_handle is not None
+                else False
+            )
+            if not exited:
+                try:
+                    terminated = terminate_verified_project_process(
+                        self.pid,
+                        self.executable,
+                        process_identity=self.process,
+                    )
+                except ProjectComError as error:
+                    cleanup_error = str(error)
+                    termination_error = (
+                        f"{termination_error}; {cleanup_error}"
+                        if termination_error
+                        else cleanup_error
+                    )
+                exited = (
+                    _wait_process_exit(
+                        self.pid,
+                        5.0,
+                        kernel32=wait_kernel32,
+                        process_handle=wait_handle,
+                    )
+                    if wait_handle is not None
+                    else False
                 )
-            exited = _wait_process_exit(self.pid, 5.0)
+        finally:
+            if wait_handle is not None:
+                assert wait_kernel32 is not None
+                wait_kernel32.CloseHandle(wait_handle)
         self.closed = True
         self.app = None
         self.pythoncom.CoUninitialize()
@@ -2084,10 +2218,20 @@ def run_calendar_characterisation(
         _required_set(task, "Type", PJ_FIXED_DURATION)
         _required_set(task, "EffortDriven", False)
         _required_set(task, "Calendar", "24 Hours")
-        task.Duration = "24h"
+        _required_set_duration_minutes(
+            task,
+            "24h",
+            1_440,
+            context="after CAL-24X7 assignment",
+        )
         with _stage(stage_callback, "calendar_calculation", pid=session.pid):
             if session.app.CalculateProject() is False:
                 raise ProjectComError("calendar CalculateProject returned False")
+        _require_duration_minutes(
+            task,
+            1_440,
+            context="after CAL-24X7 calculation",
+        )
         before_dates = _capture_project(session.app, project, session=session)
         with _stage(stage_callback, "calendar_save", pid=session.pid):
             _save_mpp(session.app, authored_mpp)

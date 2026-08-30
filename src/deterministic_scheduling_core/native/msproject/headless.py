@@ -506,6 +506,7 @@ def freeze_native_observation(
         raise ObservationFreezeError(
             "worker automation identities disagree with prelaunch hashes"
         )
+    _validate_case_xml_bindings(observation, expected_artifacts)
     observation_path = workspace.path / "native-observation.json"
     observation_sha = durable_write_canonical_json(observation_path, observation)
     manifest = build_artifact_manifest(
@@ -601,6 +602,13 @@ def verify_observation_freeze(workspace: CaseWorkspace) -> FreezeVerification:
             raise ObservationFreezeError(
                 "native observation MPP/XML paths disagree with its manifest"
             )
+        _validate_case_xml_bindings(
+            observation,
+            {
+                role: workspace.path / CASE_ARTIFACT_FILENAMES[role]
+                for role in CASE_NATIVE_ARTIFACT_ROLES
+            },
+        )
     source_binding = observation.get("source_projection_sha256")
     worker_automation = observation.get("automation_source_hashes")
     if strong_manifest or source_binding is not None:
@@ -962,6 +970,38 @@ def parse_project_xml_observation(path: Path) -> dict[str, Any]:
         "resources": resources,
         "assignments": assignments,
     }
+
+
+def _validate_case_xml_bindings(
+    observation: Mapping[str, Any], artifacts: Mapping[str, Path]
+) -> None:
+    """Bind inline XML observations to the exact Project-authored XML bytes."""
+
+    bindings = (
+        ("initial_xml", "initial_xml_observation"),
+        ("reopened_xml", "reopened_xml_observation"),
+    )
+    for role, field in bindings:
+        inline = observation.get(field)
+        if not isinstance(inline, Mapping):
+            raise ObservationFreezeError(
+                f"native observation lacks the required {field} object"
+            )
+        path = artifacts.get(role)
+        if not isinstance(path, Path):
+            raise ObservationFreezeError(
+                f"native observation lacks the exact {role} artifact"
+            )
+        try:
+            parsed = parse_project_xml_observation(path)
+        except (DurableEvidenceError, XmlObservationError, OSError) as error:
+            raise ObservationFreezeError(
+                f"native observation {role} artifact cannot be reparsed"
+            ) from error
+        if dict(inline) != parsed:
+            raise ObservationFreezeError(
+                f"native observation {field} disagrees with the exact {role} bytes"
+            )
 
 
 def validated_cal24x7_calendar(xml_observation: Mapping[str, Any]) -> dict[str, Any]:

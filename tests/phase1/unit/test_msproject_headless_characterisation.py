@@ -174,15 +174,33 @@ def _freeze_artifacts(
     observation: dict,
     payload: bytes = b"artifact",
 ) -> dict[str, Path]:
+    xml_payload = b"""<?xml version="1.0" encoding="UTF-8"?>
+<Project xmlns="urn:headless-freeze-test"><SaveVersion>14</SaveVersion>
+<StartDate>2026-01-05T08:00:00</StartDate><FinishDate>2026-01-05T15:00:00</FinishDate>
+<CalendarUID>3</CalendarUID><Tasks>
+<Task><UID>1</UID><ID>1</ID><Name>A</Name><Start>2026-01-05T08:00:00</Start><Finish>2026-01-05T12:00:00</Finish></Task>
+<Task><UID>2</UID><ID>2</ID><Name>B</Name><Start>2026-01-05T12:00:00</Start><Finish>2026-01-05T15:00:00</Finish>
+<PredecessorLink><PredecessorUID>1</PredecessorUID><Type>1</Type><LinkLag>0</LinkLag><LagFormat>5</LagFormat></PredecessorLink></Task>
+</Tasks></Project>"""
     artifacts: dict[str, Path] = {}
     for role, filename in sorted(headless.CASE_ARTIFACT_FILENAMES.items()):
         path = case_path / filename
-        path.write_bytes(payload + b":" + role.encode("ascii"))
+        path.write_bytes(
+            xml_payload
+            if role in {"initial_xml", "reopened_xml"}
+            else payload + b":" + role.encode("ascii")
+        )
         artifacts[role] = path
     observation["artifacts"] = {
         role: str(artifacts[role])
         for role in sorted(headless.CASE_NATIVE_ARTIFACT_ROLES)
     }
+    observation["initial_xml_observation"] = (
+        headless.parse_project_xml_observation(artifacts["initial_xml"])
+    )
+    observation["reopened_xml_observation"] = (
+        headless.parse_project_xml_observation(artifacts["reopened_xml"])
+    )
     return artifacts
 
 
@@ -406,6 +424,28 @@ class EvidenceBoundaryTests(unittest.TestCase):
                 headless.create_run_workspace(Path(temporary), "run-1")
             with self.assertRaises(headless.DurableEvidenceError):
                 headless.create_case_workspace(run, "SEM-REL-001")
+
+    def test_inline_xml_must_match_exact_bytes_before_observation_freeze(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            run = headless.create_run_workspace(Path(temporary), "xml-byte-binding")
+            case = headless.create_case_workspace(run, "SEM-REL-001")
+            observation = _observation("SEM-REL-001")
+            shared = _provenance_for(run, "SEM-REL-001", observation)
+            artifacts = _freeze_artifacts(case.path, observation)
+            observation["initial_xml_observation"]["save_version"] = "tampered"
+
+            with self.assertRaisesRegex(
+                headless.ObservationFreezeError,
+                "initial_xml_observation disagrees with the exact initial_xml bytes",
+            ):
+                headless.freeze_native_observation(
+                    case,
+                    observation,
+                    artifacts,
+                    shared_hashes=shared,
+                )
+
+            self.assertFalse((case.path / "native-observation.json").exists())
 
     def test_oracle_reader_cannot_run_before_all_observations_freeze(self) -> None:
         calls: list[str] = []
@@ -654,6 +694,16 @@ class EvidenceBoundaryTests(unittest.TestCase):
             str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
         )
         first = _valid_xml_observation()
+        first["project"]["start"] = "2026-01-05T08:00:00"
+        first["project"]["finish"] = "2026-01-06T08:00:00"
+        first["tasks"] = [
+            {
+                "name": "CAL-24X7-characterisation",
+                "start": "2026-01-05T08:00:00",
+                "finish": "2026-01-06T08:00:00",
+                "duration": "PT24H0M0S",
+            }
+        ]
         second = json.loads(json.dumps(first))
         bound_first = json.loads(json.dumps(first))
         bound_second = json.loads(json.dumps(second))
@@ -668,6 +718,7 @@ class EvidenceBoundaryTests(unittest.TestCase):
                     "name": "CAL-24X7-characterisation",
                     "start": "2026-01-05T08:00:00+08:00",
                     "finish": "2026-01-06T08:00:00+08:00",
+                    "duration_minutes": 1_440,
                 }
             ],
         }
@@ -1290,6 +1341,98 @@ class ParentOwnershipEvidenceTests(unittest.TestCase):
                     )
             terminate.assert_called_once_with(42, expected, process_identity=identity)
 
+    def test_visible_empty_title_window_stops_watchdog_and_is_retained(self) -> None:
+        runner = runpy.run_path(
+            str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
+        )
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+        identity = _owned_process_identity(executable_path=str(expected))
+        visible_untitled_window = {
+            "handle": 9_999,
+            "title": "",
+            "class_name": "UntitledNativeDialog",
+            "visible": True,
+            "enabled": True,
+        }
+
+        class RunningProcess:
+            def __init__(self) -> None:
+                self.return_code: int | None = None
+
+            def poll(self) -> int | None:
+                return self.return_code
+
+            def terminate(self) -> None:
+                self.return_code = 0
+
+            def kill(self) -> None:
+                self.return_code = -9
+
+            def wait(self, timeout: int | None = None) -> int:
+                return 0 if self.return_code is None else self.return_code
+
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary) / "case"
+            log_path = workspace / "case-com-log.jsonl"
+
+            def popen(*_args: object, **_kwargs: object) -> RunningProcess:
+                log_path.write_text(
+                    json.dumps({"phase": "process_identified", "details": identity})
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return RunningProcess()
+
+            process_list_calls = 0
+
+            def list_processes() -> list[dict[str, object]]:
+                nonlocal process_list_calls
+                process_list_calls += 1
+                return [] if process_list_calls == 1 else [identity]
+
+            terminate = Mock(return_value=True)
+            with (
+                patch.object(
+                    runner["headless_com"],
+                    "registered_project_executable",
+                    return_value=expected,
+                ),
+                patch.object(
+                    runner["headless_com"],
+                    "list_winproj_processes",
+                    side_effect=list_processes,
+                ),
+                patch.object(
+                    runner["headless_com"],
+                    "windows_for_pid",
+                    return_value=[visible_untitled_window],
+                ),
+                patch.object(
+                    runner["headless_com"],
+                    "terminate_verified_project_process",
+                    terminate,
+                ),
+                patch.object(runner["subprocess"], "Popen", side_effect=popen),
+                self.assertRaisesRegex(
+                    runner["SupervisionError"],
+                    "unexpected_visible_window_or_dialog",
+                ),
+            ):
+                runner["run_supervised_worker"](
+                    operation="case",
+                    repository_root=ROOT,
+                    run_id="test",
+                    workspace=workspace,
+                    result_path=workspace / "result.json",
+                    case_id="SEM-REL-001",
+                )
+
+            stop = json.loads((workspace / "case-watchdog-stop.json").read_text())
+            self.assertEqual("unexpected_visible_window_or_dialog", stop["condition"])
+            self.assertEqual("", stop["project_windows"][0]["title"])
+            self.assertTrue(stop["project_windows"][0]["visible"])
+            terminate.assert_called_once_with(42, expected, process_identity=identity)
+
     def test_success_and_failure_process_leaks_use_full_identity_cleanup(self) -> None:
         runner = runpy.run_path(
             str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
@@ -1446,21 +1589,74 @@ class ComFailClosedTests(unittest.TestCase):
         self.assertEqual(2, assignment["source_lag_hours"])
         self.assertEqual(-120, assignment["native_lag_readback_minutes"])
 
-    def test_project_session_always_quits_and_terminates_only_owned_process(self) -> None:
+    def test_calendar_duration_requires_exact_native_minute_readback(self) -> None:
+        task = FakeTask("CAL-24X7-characterisation", 1)
+        self.assertEqual(
+            1_440,
+            headless_com._required_set_duration_minutes(
+                task,
+                "24h",
+                1_440,
+                context="after CAL-24X7 assignment",
+            ),
+        )
+        task._duration = 1_439
+        with self.assertRaisesRegex(
+            headless_com.RequiredNativePropertyError,
+            "expected 1440 minutes, observed 1439",
+        ):
+            headless_com._require_duration_minutes(
+                task,
+                1_440,
+                context="after CAL-24X7 calculation",
+            )
+
+    def test_immediate_clean_exit_uses_handle_acquired_before_quit(self) -> None:
+        events: list[str] = []
         app = Mock()
+        app.Quit.side_effect = lambda *_args: events.append("quit")
         pythoncom = Mock()
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+        identity = _owned_process_identity(executable_path=str(expected))
         session = headless_com._ProjectSession(
             app,
             pythoncom,
-            {"pid": 42, "executable_path": "C:/Program Files/Microsoft Office/WINPROJ.EXE"},
-            Path("C:/Program Files/Microsoft Office/WINPROJ.EXE"),
+            identity,
+            expected,
         )
+        kernel32 = Mock()
+        handle = object()
+        kernel32.OpenProcess.side_effect = lambda *_args: (
+            events.append("wait_handle_opened") or handle
+        )
+        kernel32.WaitForSingleObject.return_value = headless_com.WAIT_OBJECT_0
         with (
             patch.object(headless_com, "_owned_process_identity_matches", return_value=True),
-            patch.object(headless_com, "_wait_process_exit", return_value=True),
+            patch.object(headless_com, "_configured_kernel32", return_value=kernel32),
+            patch.object(
+                headless_com,
+                "_query_process_path_from_handle",
+                return_value=str(expected),
+            ),
+            patch.object(
+                headless_com,
+                "_query_process_creation_time_from_handle",
+                return_value=identity["creation_time_100ns"],
+            ),
+            patch.object(headless_com, "terminate_verified_project_process") as terminate,
         ):
             result = session.quit()
+        self.assertEqual(["wait_handle_opened", "quit"], events)
         app.Quit.assert_called_once_with(0)
+        kernel32.OpenProcess.assert_called_once_with(
+            headless_com.SYNCHRONIZE
+            | headless_com.PROCESS_QUERY_LIMITED_INFORMATION,
+            False,
+            42,
+        )
+        kernel32.WaitForSingleObject.assert_called_once_with(handle, 10_000)
+        kernel32.CloseHandle.assert_called_once_with(handle)
+        terminate.assert_not_called()
         pythoncom.CoUninitialize.assert_called_once()
         self.assertTrue(result["exited"])
 
@@ -1482,6 +1678,10 @@ class ComFailClosedTests(unittest.TestCase):
             [headless_com.wintypes.HANDLE],
             configured_kernel32.CloseHandle.argtypes,
         )
+        self.assertEqual(
+            [headless_com.wintypes.HANDLE, headless_com.wintypes.DWORD],
+            configured_kernel32.WaitForSingleObject.argtypes,
+        )
         self.assertIs(
             configured_kernel32.CreateToolhelp32Snapshot.restype,
             headless_com.wintypes.HANDLE,
@@ -1493,6 +1693,92 @@ class ComFailClosedTests(unittest.TestCase):
         self.assertEqual(
             [headless_com.wintypes.HWND],
             configured_user32.GetWindowTextLengthW.argtypes,
+        )
+
+    def test_process_exit_requires_kernel_wait_signal_not_path_query_failure(self) -> None:
+        for wait_result, expected_exited in (
+            (headless_com.WAIT_OBJECT_0, True),
+            (headless_com.WAIT_TIMEOUT, False),
+            (headless_com.WAIT_FAILED, False),
+            (99, False),
+        ):
+            with self.subTest(wait_result=wait_result):
+                kernel32 = Mock()
+                handle = object()
+                kernel32.OpenProcess.return_value = handle
+                kernel32.WaitForSingleObject.return_value = wait_result
+                with (
+                    patch.object(
+                        headless_com,
+                        "_configured_kernel32",
+                        return_value=kernel32,
+                    ),
+                    patch.object(
+                        headless_com,
+                        "_query_process_path",
+                        side_effect=AssertionError(
+                            "image-path failure must not stand in for process exit"
+                        ),
+                    ),
+                ):
+                    self.assertIs(
+                        expected_exited,
+                        headless_com._wait_process_exit(42, timeout=0.25),
+                    )
+                kernel32.OpenProcess.assert_called_once_with(
+                    headless_com.SYNCHRONIZE,
+                    False,
+                    42,
+                )
+                kernel32.WaitForSingleObject.assert_called_once_with(handle, 250)
+                kernel32.CloseHandle.assert_called_once_with(handle)
+
+    def test_process_exit_handle_open_failure_is_inconclusive(self) -> None:
+        kernel32 = Mock()
+        kernel32.OpenProcess.return_value = None
+        with patch.object(
+            headless_com,
+            "_configured_kernel32",
+            return_value=kernel32,
+        ):
+            self.assertFalse(headless_com._wait_process_exit(42, timeout=0.25))
+        kernel32.WaitForSingleObject.assert_not_called()
+        kernel32.CloseHandle.assert_not_called()
+
+    def test_wait_handle_query_failure_attempts_cleanup_and_is_a_stop(self) -> None:
+        app = Mock()
+        pythoncom = Mock()
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+        identity = _owned_process_identity(executable_path=str(expected))
+        session = headless_com._ProjectSession(app, pythoncom, identity, expected)
+        terminate = Mock(return_value=False)
+        with (
+            patch.object(
+                headless_com,
+                "_owned_process_identity_matches",
+                return_value=True,
+            ),
+            patch.object(
+                headless_com,
+                "_open_verified_process_wait_handle",
+                side_effect=headless_com.ProjectComError(
+                    "wait-handle identity query failed"
+                ),
+            ),
+            patch.object(
+                headless_com,
+                "terminate_verified_project_process",
+                terminate,
+            ),
+        ):
+            result = session.quit()
+        app.Quit.assert_called_once_with(0)
+        terminate.assert_called_once_with(42, expected, process_identity=identity)
+        self.assertFalse(result["exited"])
+        self.assertIn("wait-handle identity query failed", result["termination_error"])
+        self.assertEqual(
+            "project_process_did_not_exit",
+            headless_com._process_cleanup_stop_conditions([result])[0]["condition"],
         )
 
     def test_new_project_process_requires_system_svchost_parent_origin(self) -> None:
@@ -1736,15 +2022,23 @@ class ComFailClosedTests(unittest.TestCase):
         required = set(headless_com.OWNED_PROCESS_IDENTITY_FIELDS)
         for details in authoritative.values():
             self.assertTrue(required.issubset(details), details)
+        wait_kernel32 = Mock()
+        wait_handle = object()
         with (
             patch.object(
                 headless_com,
                 "_owned_process_identity_matches",
                 return_value=True,
             ),
+            patch.object(
+                headless_com,
+                "_open_verified_process_wait_handle",
+                return_value=(wait_kernel32, wait_handle),
+            ),
             patch.object(headless_com, "_wait_process_exit", return_value=True),
         ):
             session.quit()
+        wait_kernel32.CloseHandle.assert_called_once_with(wait_handle)
 
     def test_termination_requires_full_current_ownership_identity(self) -> None:
         with self.assertRaisesRegex(headless_com.ProjectComError, "full ownership identity"):
