@@ -76,6 +76,7 @@ DEFAULT_TIMEOUTS = {
 NATIVE_WORKER_OPERATIONS = frozenset({"environment", "preflight", "case", "calendar"})
 COMPARISON_TIMEOUT_SECONDS = 60
 MAX_COMPARATOR_SOURCE_BYTES = 1024 * 1024
+MAX_IMPORTED_AUTOMATION_SOURCE_BYTES = 1024 * 1024
 MAX_COMPARISON_RESULT_BYTES = 4 * 1024 * 1024
 MAX_COMPARISON_JOURNAL_BYTES = 1024 * 1024
 MAX_NATIVE_RESULT_BYTES = 4 * 1024 * 1024
@@ -144,6 +145,80 @@ SEALED_REFERENCE_RELATIVE_DIRECTORY = (
     "sealed-expected-normalized"
 )
 ORACLE_PROVENANCE_SCHEMA = "headless-msproject-oracle-provenance-v0.1"
+
+_IMPORTED_AUTOMATION_SOURCE_MODULES = {
+    "canonical_json": canonical_json_module,
+    "freeze": native_freeze,
+}
+_IMPORTED_AUTOMATION_SOURCE_RELATIVE_PATHS = {
+    "canonical_json": (
+        "src/deterministic_scheduling_core/provenance/canonical_json.py"
+    ),
+    "freeze": "src/deterministic_scheduling_core/native/msproject/freeze.py",
+}
+_IMPORTED_AUTOMATION_SOURCE_LEXICAL_PATHS: dict[str, Path] = {}
+_IMPORTED_AUTOMATION_SOURCE_PATHS: dict[str, Path] = {}
+_IMPORTED_AUTOMATION_SOURCE_BYTES: dict[str, bytes] = {}
+_IMPORTED_AUTOMATION_SOURCE_SHA256: dict[str, str] = {}
+
+
+def _dependency_path_component_is_link(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    is_junction = getattr(path, "is_junction", None)
+    if is_junction is not None and is_junction():
+        return True
+    if os.name == "nt":
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        attributes = getattr(path.lstat(), "st_file_attributes", 0)
+        return bool(reparse_flag and attributes & reparse_flag)
+    return False
+
+
+def _reject_dependency_link_components(path: Path, *, label: str) -> None:
+    lexical_path = path.absolute()
+    if any(
+        _dependency_path_component_is_link(component)
+        for component in (lexical_path, *lexical_path.parents)
+    ):
+        raise OSError(
+            f"{label} path must not contain symbolic links, junctions, or "
+            "reparse points"
+        )
+
+
+try:
+    for _source_role, _source_module in _IMPORTED_AUTOMATION_SOURCE_MODULES.items():
+        _source_file = getattr(_source_module, "__file__", None)
+        if not isinstance(_source_file, str):
+            raise OSError(f"{_source_role} module has no source path")
+        _source_lexical_path = Path(_source_file).absolute()
+        _reject_dependency_link_components(
+            _source_lexical_path,
+            label=f"imported parent automation source {_source_role}",
+        )
+        _source_path = _source_lexical_path.resolve(strict=True)
+        _source_snapshot = read_regular_file_snapshot(
+            _source_path,
+            label=f"imported parent automation source {_source_role}",
+            max_bytes=MAX_IMPORTED_AUTOMATION_SOURCE_BYTES,
+        )
+        _reject_dependency_link_components(
+            _source_lexical_path,
+            label=f"imported parent automation source {_source_role}",
+        )
+        _IMPORTED_AUTOMATION_SOURCE_LEXICAL_PATHS[
+            _source_role
+        ] = _source_lexical_path
+        _IMPORTED_AUTOMATION_SOURCE_PATHS[_source_role] = _source_path
+        _IMPORTED_AUTOMATION_SOURCE_BYTES[_source_role] = _source_snapshot.data
+        _IMPORTED_AUTOMATION_SOURCE_SHA256[_source_role] = (
+            _source_snapshot.sha256
+        )
+except (OSError, NativeEvidenceError) as error:
+    raise ImportError(
+        "parent automation source identities cannot be captured at import"
+    ) from error
 
 
 class SupervisionError(RuntimeError):
@@ -632,6 +707,9 @@ def run_supervised_worker(
         raise SupervisionError(
             f"refusing non-native operation in COM worker: {operation!r}"
         )
+    imported_dependencies_before = _imported_automation_source_hashes(
+        repository_root
+    )
     workspace.mkdir(parents=True, exist_ok=True)
     state_path = workspace / f"{operation}-stage-state.json"
     log_path = workspace / f"{operation}-com-log.jsonl"
@@ -1033,6 +1111,13 @@ def run_supervised_worker(
         raise SupervisionError(
             "native worker terminal journal digest does not authenticate the stable result snapshot"
         )
+    if (
+        _imported_automation_source_hashes(repository_root)
+        != imported_dependencies_before
+    ):
+        raise SupervisionError(
+            "parent automation source identities changed during native supervision"
+        )
     _write_result_sidecar(result_path, result_sha256=result_snapshot.sha256)
     return result
 
@@ -1047,6 +1132,9 @@ def run_comparison_worker(
 ) -> dict[str, Any]:
     """Run the oracle-capable comparator separately with no COM imports or invocation."""
 
+    imported_dependencies_before = _imported_automation_source_hashes(
+        repository_root
+    )
     workspace.mkdir(parents=True, exist_ok=True)
     state_path = workspace / "comparison-stage-state.json"
     log_path = workspace / "comparison-log.jsonl"
@@ -1182,8 +1270,91 @@ def run_comparison_worker(
         raise SupervisionError(
             "comparison result oracle source provenance differs from the prelaunch snapshots"
         )
+    if (
+        _imported_automation_source_hashes(repository_root)
+        != imported_dependencies_before
+    ):
+        raise SupervisionError(
+            "parent automation source identities changed during comparison"
+        )
     _write_result_sidecar(result_path, result_sha256=result_snapshot.sha256)
     return result
+
+
+def _imported_automation_source_hashes(
+    repository_root: Path | None = None,
+) -> dict[str, str]:
+    """Revalidate parent-executed dependencies against import-time bytes."""
+
+    hashes: dict[str, str] = {}
+    for source_role, source_module in _IMPORTED_AUTOMATION_SOURCE_MODULES.items():
+        imported_lexical_path = _IMPORTED_AUTOMATION_SOURCE_LEXICAL_PATHS[
+            source_role
+        ]
+        imported_path = _IMPORTED_AUTOMATION_SOURCE_PATHS[source_role]
+        relative_path = _IMPORTED_AUTOMATION_SOURCE_RELATIVE_PATHS[source_role]
+        repository_path = (
+            repository_root / relative_path
+            if repository_root is not None
+            else imported_path
+        )
+        current_module_file = getattr(source_module, "__file__", None)
+        try:
+            if not isinstance(current_module_file, str):
+                raise SupervisionError(
+                    f"executed {source_role} automation module has no source path"
+                )
+            current_lexical_path = Path(current_module_file).absolute()
+            _reject_dependency_link_components(
+                current_lexical_path,
+                label=f"executed {source_role} automation module",
+            )
+            _reject_dependency_link_components(
+                repository_path,
+                label=f"checked-out {source_role} automation source",
+            )
+            if (
+                current_lexical_path != imported_lexical_path
+                or current_lexical_path.resolve(strict=True) != imported_path
+                or (
+                    repository_root is not None
+                    and repository_path.resolve(strict=True) != imported_path
+                )
+            ):
+                raise SupervisionError(
+                    f"executed {source_role} automation module is not the "
+                    "captured checked-out source"
+                )
+            current = read_regular_file_snapshot(
+                repository_path,
+                label=f"current parent automation source {source_role}",
+                max_bytes=MAX_IMPORTED_AUTOMATION_SOURCE_BYTES,
+            )
+            _reject_dependency_link_components(
+                current_lexical_path,
+                label=f"executed {source_role} automation module",
+            )
+            _reject_dependency_link_components(
+                repository_path,
+                label=f"checked-out {source_role} automation source",
+            )
+        except (OSError, NativeEvidenceError) as error:
+            raise SupervisionError(
+                f"{source_role} automation source cannot be read as a stable "
+                "bounded snapshot"
+            ) from error
+        if (
+            current.sha256 != _IMPORTED_AUTOMATION_SOURCE_SHA256[source_role]
+            or current.data != _IMPORTED_AUTOMATION_SOURCE_BYTES[source_role]
+        ):
+            raise SupervisionError(
+                f"{source_role} automation source changed after its import-time "
+                "identity was captured"
+            )
+        hashes[f"{source_role}_sha256"] = (
+            _IMPORTED_AUTOMATION_SOURCE_SHA256[source_role]
+        )
+    return hashes
 
 
 def _automation_hashes(repository_root: Path) -> dict[str, str]:
@@ -1197,12 +1368,13 @@ def _automation_hashes(repository_root: Path) -> dict[str, str]:
                 type("Missing", (), {"__file__": repository_root / "src/deterministic_scheduling_core/native/msproject/headless_worker.py"}),
             ).__file__
         ).resolve(),
-        "canonical_json_sha256": Path(canonical_json_module.__file__).resolve(),
-        "freeze_sha256": Path(native_freeze.__file__).resolve(),
     }
     if not paths["headless_worker_sha256"].is_file():
         paths["headless_worker_sha256"] = repository_root / "src/deterministic_scheduling_core/native/msproject/headless_worker.py"
-    return {role: sha256_file(path) for role, path in paths.items()}
+    return {
+        **{role: sha256_file(path) for role, path in paths.items()},
+        **_imported_automation_source_hashes(repository_root),
+    }
 
 
 def _result_sidecar_path(path: Path) -> Path:
@@ -1790,18 +1962,176 @@ def _reopen_result(observation: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+MAX_RAW_INVENTORY_ARTIFACT_BYTES = 64 * 1024 * 1024
+MAX_RUN_COMPLETION_BYTES = 4 * 1024 * 1024
+MAX_RAW_HASH_INVENTORY_BYTES = 16 * 1024 * 1024
+MAX_TERMINAL_SIDECAR_BYTES = 65
+
+
+def _is_no_follow_link_component(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    is_junction = getattr(path, "is_junction", None)
+    if is_junction is not None and is_junction():
+        return True
+    if os.name == "nt":
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        attributes = getattr(path.lstat(), "st_file_attributes", 0)
+        return bool(reparse_flag and attributes & reparse_flag)
+    return False
+
+
+def _require_no_follow_path(path: Path, *, label: str) -> None:
+    absolute = path.absolute()
+    try:
+        if any(
+            _is_no_follow_link_component(component)
+            for component in (absolute, *absolute.parents)
+        ):
+            raise SupervisionError(
+                f"{label} path must not contain symbolic links or junctions"
+            )
+    except OSError as error:
+        raise SupervisionError(f"{label} path could not be inspected") from error
+
+
+def _terminal_snapshot(
+    path: Path, *, label: str, max_bytes: int
+) -> RegularFileSnapshot:
+    _require_no_follow_path(path, label=label)
+    try:
+        snapshot = read_regular_file_snapshot(
+            path,
+            label=label,
+            max_bytes=max_bytes,
+        )
+    except (OSError, NativeEvidenceError) as error:
+        raise SupervisionError(
+            f"{label} is not a stable bounded regular-file snapshot"
+        ) from error
+    _require_no_follow_path(path, label=label)
+    return snapshot
+
+
+def _terminal_json_snapshot(
+    path: Path, *, label: str, max_bytes: int
+) -> tuple[dict[str, Any], RegularFileSnapshot]:
+    snapshot = _terminal_snapshot(path, label=label, max_bytes=max_bytes)
+    return _parse_canonical_json_object(snapshot.data, label=label), snapshot
+
+
+def _write_or_reuse_terminal_bytes(
+    path: Path,
+    data: bytes,
+    *,
+    label: str,
+    max_bytes: int,
+) -> str:
+    """Create immutable terminal bytes or verify an exact interrupted-run copy."""
+
+    if len(data) > max_bytes:
+        raise SupervisionError(f"{label} exceeds its {max_bytes}-byte limit")
+    if not os.path.lexists(path):
+        try:
+            headless.durable_write_bytes(path, data)
+        except headless.DurableEvidenceError as error:
+            # Preserve O_EXCL.  A concurrent creator is acceptable only when
+            # its completed immutable bytes are exactly the ones requested.
+            if not os.path.lexists(path):
+                raise SupervisionError(f"{label} could not be created") from error
+    snapshot = _terminal_snapshot(path, label=label, max_bytes=max_bytes)
+    if snapshot.data != data:
+        raise SupervisionError(
+            f"retained {label} differs from the exact terminal bytes"
+        )
+    return snapshot.sha256
+
+
+def _write_or_reuse_terminal_json(
+    path: Path,
+    value: Mapping[str, Any],
+    *,
+    label: str,
+    max_bytes: int,
+) -> str:
+    try:
+        data = canonical_bytes(value) + b"\n"
+    except (TypeError, ValueError) as error:
+        raise SupervisionError(f"{label} is outside canonical JSON") from error
+    return _write_or_reuse_terminal_bytes(
+        path,
+        data,
+        label=label,
+        max_bytes=max_bytes,
+    )
+
+
 def _raw_hash_inventory(run_path: Path) -> list[dict[str, Any]]:
     excluded = {"raw-artifact-hashes.json", "raw-artifact-hashes.sha256"}
-    entries = []
-    for path in sorted(run_path.rglob("*"), key=lambda item: item.as_posix()):
-        if path.is_file() and path.name not in excluded:
-            entries.append(
-                {
-                    "relative_path": path.relative_to(run_path).as_posix(),
-                    "byte_size": path.stat().st_size,
-                    "sha256": sha256_file(path),
-                }
+    entries: list[dict[str, Any]] = []
+    _require_no_follow_path(run_path, label="raw artifact tree")
+
+    def walk_error(error: OSError) -> None:
+        raise error
+
+    try:
+        candidates: list[Path] = []
+        for directory_text, directory_names, filenames in os.walk(
+            run_path,
+            topdown=True,
+            onerror=walk_error,
+            followlinks=False,
+        ):
+            directory = Path(directory_text)
+            _require_no_follow_path(directory, label="raw inventory directory")
+            directory_names.sort()
+            for name in directory_names:
+                child = directory / name
+                _require_no_follow_path(
+                    child,
+                    label="raw inventory directory",
+                )
+                metadata = child.lstat()
+                if not stat.S_ISDIR(metadata.st_mode):
+                    raise SupervisionError(
+                        f"raw inventory directory is not a regular directory: {child}"
+                    )
+            candidates.extend(directory / name for name in sorted(filenames))
+        candidates.sort(key=lambda item: item.as_posix())
+    except OSError as error:
+        raise SupervisionError("raw artifact tree could not be enumerated") from error
+    for path in candidates:
+        relative_path = path.relative_to(run_path).as_posix()
+        if relative_path in excluded:
+            continue
+        _require_no_follow_path(path, label="raw inventory artifact")
+        try:
+            metadata = path.lstat()
+        except OSError as error:
+            raise SupervisionError(
+                f"raw inventory artifact changed during enumeration: {path}"
+            ) from error
+        if not stat.S_ISREG(metadata.st_mode):
+            raise SupervisionError(
+                f"raw inventory artifact must be a regular non-link file: {path}"
             )
+        try:
+            snapshot = _terminal_snapshot(
+                path,
+                label=f"raw inventory artifact {relative_path}",
+                max_bytes=MAX_RAW_INVENTORY_ARTIFACT_BYTES,
+            )
+        except SupervisionError as error:
+            raise SupervisionError(
+                f"raw inventory artifact is not a stable bounded snapshot: {relative_path}"
+            ) from error
+        entries.append(
+            {
+                "relative_path": relative_path,
+                "byte_size": snapshot.byte_size,
+                "sha256": snapshot.sha256,
+            }
+        )
     return entries
 
 
@@ -2009,7 +2339,21 @@ def _validate_calendar_result(
     if not all(isinstance(capture, Mapping) for capture in captures):
         raise SupervisionError("CAL-24X7 result lacks retained task-date or artifact evidence")
     projections = [_calendar_schedule_projection(capture) for capture in captures]
-    if any(projection is None for projection in projections) or not (
+    if any(projection is None for projection in projections):
+        raise SupervisionError(
+            "CAL-24X7 task dates changed across XML reopen or explicit recalculation"
+        )
+    expected_origin = _exact_wall_clock(
+        headless.ORIGIN, require_perth_offset=True
+    )
+    if expected_origin is None or any(
+        projection["project"]["start"] != expected_origin
+        for projection in projections
+    ):
+        raise SupervisionError(
+            "CAL-24X7 COM project start differs from the frozen origin"
+        )
+    if not (
         projections[0] == projections[1] == projections[2]
     ):
         raise SupervisionError(
@@ -2019,9 +2363,19 @@ def _validate_calendar_result(
         _calendar_xml_schedule_projection(parsed_first),
         _calendar_xml_schedule_projection(parsed_second),
     ]
+    if any(projection is None for projection in xml_projections):
+        raise SupervisionError(
+            "CAL-24X7 exact XML/COM project or task wall clocks disagree"
+        )
+    if any(
+        projection["project"]["start"] != expected_origin
+        for projection in xml_projections
+    ):
+        raise SupervisionError(
+            "CAL-24X7 XML project start differs from the frozen origin"
+        )
     if (
-        any(projection is None for projection in xml_projections)
-        or xml_projections[0] != projections[0]
+        xml_projections[0] != projections[0]
         or xml_projections[1] != projections[2]
     ):
         raise SupervisionError(
@@ -2295,10 +2649,260 @@ def _verify_cached_comparison_against_current_oracle(
         )
 
 
+def _run_relative_artifact(
+    run: headless.RunWorkspace,
+    relative_text: Any,
+    *,
+    label: str,
+    filename: str,
+) -> Path:
+    if (
+        not isinstance(relative_text, str)
+        or not relative_text
+        or "\\" in relative_text
+    ):
+        raise SupervisionError(f"retained completion has an unsafe {label} path")
+    relative = Path(relative_text)
+    if (
+        relative.is_absolute()
+        or relative.drive
+        or ".." in relative.parts
+        or relative.name != filename
+    ):
+        raise SupervisionError(f"retained completion has an unsafe {label} path")
+    return run.path.joinpath(*relative.parts)
+
+
+def _bound_cached_result(
+    path: Path,
+    *,
+    label: str,
+    max_bytes: int,
+) -> dict[str, Any]:
+    value, snapshot = _terminal_json_snapshot(
+        path,
+        label=label,
+        max_bytes=max_bytes,
+    )
+    sidecar = _terminal_snapshot(
+        _result_sidecar_path(path),
+        label=f"{label} sidecar",
+        max_bytes=MAX_TERMINAL_SIDECAR_BYTES,
+    )
+    if sidecar.data != f"{snapshot.sha256}\n".encode("ascii"):
+        raise SupervisionError(f"retained {label} sidecar digest mismatch")
+    return value
+
+
+def _run_completion_body(
+    run: headless.RunWorkspace,
+    *,
+    comparison_path: Path,
+    calendar_path: Path,
+    comparison: Mapping[str, Any],
+    reopen_results: list[dict[str, Any]],
+    calendar: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema_version": "headless-msproject-run-completion-v0.1",
+        "characterisation_label": TRACK_ID,
+        "run_id": run.run_id,
+        "environment_path": "environment.json",
+        "preflight_path": "preflight/preflight.json",
+        "comparison_path": comparison_path.relative_to(run.path).as_posix(),
+        "calendar_characterisation_path": calendar_path.relative_to(
+            run.path
+        ).as_posix(),
+        "cases_attempted": list(CASE_IDS),
+        "cases_completed": list(CASE_IDS),
+        "comparison": comparison,
+        "reopen_results": reopen_results,
+        "calendar_characterisation": calendar,
+        "claim_boundary": {
+            "manual_native_semantic_parity_track_executed": False,
+            "saved_file_reopen_recalculate_stability_track_executed": False,
+            "adapter_interchange_round_trip_track_executed": False,
+            "track_c_preparation_blocked_unchanged": True,
+            "full_microsoft_project_compatibility_claim": False,
+            "optimizer_involved": False,
+        },
+    }
+
+
+def _completion_with_retained_timestamp(
+    completion_path: Path,
+    body: Mapping[str, Any],
+) -> dict[str, Any]:
+    retained, snapshot = _terminal_json_snapshot(
+        completion_path,
+        label="run completion",
+        max_bytes=MAX_RUN_COMPLETION_BYTES,
+    )
+    completed_at = retained.get("completed_at")
+    try:
+        parsed = datetime.fromisoformat(completed_at)
+    except (TypeError, ValueError) as error:
+        raise SupervisionError(
+            "retained run completion has an invalid completion timestamp"
+        ) from error
+    if (
+        not isinstance(completed_at, str)
+        or parsed.utcoffset() != timedelta(hours=8)
+        or completed_at != parsed.isoformat(timespec="microseconds")
+    ):
+        raise SupervisionError(
+            "retained run completion has an invalid completion timestamp"
+        )
+    expected = {**body, "completed_at": completed_at}
+    if snapshot.data != canonical_bytes(expected) + b"\n":
+        raise SupervisionError(
+            "retained run completion differs from exact frozen run evidence"
+        )
+    return retained
+
+
+def _create_or_reuse_run_completion(
+    run: headless.RunWorkspace,
+    body: Mapping[str, Any],
+) -> dict[str, Any]:
+    completion_path = run.path / "run-completion.json"
+    if os.path.lexists(completion_path):
+        return _completion_with_retained_timestamp(completion_path, body)
+    completion = {**body, "completed_at": _now()}
+    try:
+        _write_or_reuse_terminal_json(
+            completion_path,
+            completion,
+            label="run completion",
+            max_bytes=MAX_RUN_COMPLETION_BYTES,
+        )
+    except SupervisionError:
+        if os.path.lexists(completion_path):
+            return _completion_with_retained_timestamp(completion_path, body)
+        raise
+    return completion
+
+
+def _recover_existing_run_completion(
+    run: headless.RunWorkspace,
+    observations: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    completion_path = run.path / "run-completion.json"
+    retained, _snapshot = _terminal_json_snapshot(
+        completion_path,
+        label="run completion",
+        max_bytes=MAX_RUN_COMPLETION_BYTES,
+    )
+    comparison_path = _run_relative_artifact(
+        run,
+        retained.get("comparison_path"),
+        label="comparison",
+        filename="comparison.json",
+    )
+    calendar_path = _run_relative_artifact(
+        run,
+        retained.get("calendar_characterisation_path"),
+        label="calendar characterisation",
+        filename="calendar-characterisation.json",
+    )
+    comparison = _bound_cached_result(
+        comparison_path,
+        label="retained comparison",
+        max_bytes=MAX_COMPARISON_RESULT_BYTES,
+    )
+    _validate_comparison_result(comparison, run_id=run.run_id)
+    calendar = _bound_cached_result(
+        calendar_path,
+        label="retained CAL-24X7 result",
+        max_bytes=MAX_NATIVE_RESULT_BYTES,
+    )
+    calendar_artifacts = _validate_calendar_result(
+        calendar,
+        workspace=calendar_path.parent,
+    )
+    _verify_result_artifact_manifest(
+        calendar_path,
+        workspace=calendar_path.parent,
+        artifacts=calendar_artifacts,
+    )
+    reopen_results = [
+        _reopen_result(observations[case_id]) for case_id in CASE_IDS
+    ]
+    body = _run_completion_body(
+        run,
+        comparison_path=comparison_path,
+        calendar_path=calendar_path,
+        comparison=comparison,
+        reopen_results=reopen_results,
+        calendar=calendar,
+    )
+    return _completion_with_retained_timestamp(completion_path, body)
+
+
+def _terminalize_run_outputs(
+    run: headless.RunWorkspace,
+    completion: Mapping[str, Any],
+) -> dict[str, Any]:
+    completion_path = run.path / "run-completion.json"
+    completion_sha = _write_or_reuse_terminal_json(
+        completion_path,
+        completion,
+        label="run completion",
+        max_bytes=MAX_RUN_COMPLETION_BYTES,
+    )
+    inventory = _raw_hash_inventory(run.path)
+    completion_entries = [
+        item
+        for item in inventory
+        if item.get("relative_path") == "run-completion.json"
+    ]
+    expected_completion_bytes = canonical_bytes(completion) + b"\n"
+    if completion_entries != [
+        {
+            "relative_path": "run-completion.json",
+            "byte_size": len(expected_completion_bytes),
+            "sha256": completion_sha,
+        }
+    ]:
+        raise SupervisionError(
+            "raw inventory did not bind the exact retained run completion"
+        )
+    inventory_path = run.path / "raw-artifact-hashes.json"
+    inventory_sha = _write_or_reuse_terminal_json(
+        inventory_path,
+        {
+            "schema_version": "headless-msproject-raw-artifact-hashes-v0.1",
+            "run_id": run.run_id,
+            "artifacts": inventory,
+        },
+        label="raw artifact hash inventory",
+        max_bytes=MAX_RAW_HASH_INVENTORY_BYTES,
+    )
+    _write_or_reuse_terminal_bytes(
+        run.path / "raw-artifact-hashes.sha256",
+        f"{inventory_sha}\n".encode("ascii"),
+        label="raw artifact hash inventory sidecar",
+        max_bytes=MAX_TERMINAL_SIDECAR_BYTES,
+    )
+    comparison = completion["comparison"]
+    return {
+        "run_id": run.run_id,
+        "raw_evidence_directory": str(run.path),
+        "completion_path": str(completion_path),
+        "raw_hash_inventory_path": str(inventory_path),
+        "raw_hash_inventory_sha256": inventory_sha,
+        "case_statuses": {
+            item["case_id"]: item["status"] for item in comparison["cases"]
+        },
+    }
+
+
 def _complete_run(
     run: headless.RunWorkspace,
     environment: Mapping[str, Any],
     observations: Mapping[str, Mapping[str, Any]],
+    *,
+    require_retained_completion: bool = False,
 ) -> dict[str, Any]:
     if set(observations) != set(CASE_IDS):
         missing = sorted(set(CASE_IDS) - set(observations))
@@ -2310,6 +2914,21 @@ def _complete_run(
     # the twelve-case freeze gate while any case retains a native stop.
     _reject_run_stop_conditions(observations, resumed=True)
     freeze_index_path = run.path / "observation-freeze-index.json"
+    completion_path = run.path / "run-completion.json"
+    completion_exists = os.path.lexists(completion_path)
+    if require_retained_completion and not completion_exists:
+        raise SupervisionError(
+            "retained run completion disappeared before terminalization recovery"
+        )
+    if completion_exists:
+        # A terminalization retry must not create a new comparator/calendar
+        # attempt: that would change the raw artifact set after a retained
+        # inventory was written.  Verify the immutable completed document
+        # against every retained input, then create or reuse only the missing
+        # terminal inventory outputs.
+        verify_run_freeze_gate(run, write_index=False)
+        completion = _recover_existing_run_completion(run, observations)
+        return _terminalize_run_outputs(run, completion)
     verify_run_freeze_gate(run, write_index=not freeze_index_path.exists())
     existing_calendar = _existing_calendar_result(run.path)
     if existing_calendar is None:
@@ -2369,52 +2988,16 @@ def _complete_run(
     _verify_result_sidecar(comparison_path)
     _validate_comparison_result(comparison, run_id=run.run_id)
     reopen_results = [_reopen_result(observations[case_id]) for case_id in CASE_IDS]
-    completion = {
-        "schema_version": "headless-msproject-run-completion-v0.1",
-        "characterisation_label": TRACK_ID,
-        "run_id": run.run_id,
-        "completed_at": _now(),
-        "environment_path": "environment.json",
-        "preflight_path": "preflight/preflight.json",
-        "comparison_path": comparison_path.relative_to(run.path).as_posix(),
-        "calendar_characterisation_path": calendar_path.relative_to(run.path).as_posix(),
-        "cases_attempted": list(CASE_IDS),
-        "cases_completed": list(CASE_IDS),
-        "comparison": comparison,
-        "reopen_results": reopen_results,
-        "calendar_characterisation": calendar,
-        "claim_boundary": {
-            "manual_native_semantic_parity_track_executed": False,
-            "saved_file_reopen_recalculate_stability_track_executed": False,
-            "adapter_interchange_round_trip_track_executed": False,
-            "track_c_preparation_blocked_unchanged": True,
-            "full_microsoft_project_compatibility_claim": False,
-            "optimizer_involved": False,
-        },
-    }
-    completion_path = run.path / "run-completion.json"
-    durable_write_canonical_json(completion_path, completion)
-    inventory = _raw_hash_inventory(run.path)
-    inventory_path = run.path / "raw-artifact-hashes.json"
-    inventory_sha = durable_write_canonical_json(
-        inventory_path,
-        {
-            "schema_version": "headless-msproject-raw-artifact-hashes-v0.1",
-            "run_id": run.run_id,
-            "artifacts": inventory,
-        },
+    body = _run_completion_body(
+        run,
+        comparison_path=comparison_path,
+        calendar_path=calendar_path,
+        comparison=comparison,
+        reopen_results=reopen_results,
+        calendar=calendar,
     )
-    headless.durable_write_bytes(
-        run.path / "raw-artifact-hashes.sha256", f"{inventory_sha}\n".encode("ascii")
-    )
-    return {
-        "run_id": run.run_id,
-        "raw_evidence_directory": str(run.path),
-        "completion_path": str(completion_path),
-        "raw_hash_inventory_path": str(inventory_path),
-        "raw_hash_inventory_sha256": inventory_sha,
-        "case_statuses": {item["case_id"]: item["status"] for item in comparison["cases"]},
-    }
+    completion = _create_or_reuse_run_completion(run, body)
+    return _terminalize_run_outputs(run, completion)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -2436,10 +3019,17 @@ def main(arguments: list[str] | None = None) -> int:
         raise SystemExit("--resume requires --run-id")
     try:
         run = create_run_workspace(repository_root, run_id, resume=args.resume)
+        selected = list(CASE_IDS) if args.all_relationship_cases else [args.case]
+        retained_completion = args.resume and os.path.lexists(
+            run.path / "run-completion.json"
+        )
+        if retained_completion and not args.all_relationship_cases:
+            raise SupervisionError(
+                "a retained completed run supports only all-case terminalization recovery"
+            )
         environment, _preflight = _ensure_environment_and_preflight(
             run, resume_existing=args.resume
         )
-        selected = list(CASE_IDS) if args.all_relationship_cases else [args.case]
         observations: dict[str, Mapping[str, Any]] = (
             _resume_existing_cases(
                 run,
@@ -2451,16 +3041,30 @@ def main(arguments: list[str] | None = None) -> int:
             if args.resume
             else {}
         )
-        for case_id in selected:
-            observations[case_id] = _run_one_case(
-                run, case_id, environment, resume_existing=args.resume
+        if retained_completion:
+            missing = [case_id for case_id in CASE_IDS if case_id not in observations]
+            if missing:
+                raise ObservationFreezeError(
+                    "retained run completion requires all frozen observations; "
+                    f"missing={missing}"
+                )
+            result = _complete_run(
+                run,
+                environment,
+                observations,
+                require_retained_completion=True,
             )
-        if args.all_relationship_cases:
+        else:
+            for case_id in selected:
+                observations[case_id] = _run_one_case(
+                    run, case_id, environment, resume_existing=args.resume
+                )
+        if args.all_relationship_cases and not retained_completion:
             missing = [case_id for case_id in CASE_IDS if case_id not in observations]
             if missing:
                 raise ObservationFreezeError(f"all-case run is missing observations: {missing}")
             result = _complete_run(run, environment, observations)
-        else:
+        elif not args.all_relationship_cases:
             result = {
                 "run_id": run.run_id,
                 "raw_evidence_directory": str(run.path),

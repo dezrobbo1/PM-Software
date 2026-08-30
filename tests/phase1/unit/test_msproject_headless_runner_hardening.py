@@ -722,7 +722,7 @@ class RunnerHardeningTests(unittest.TestCase):
                 "parse_project_xml_observation",
                 return_value=shifted_xml,
             ), self.assertRaisesRegex(
-                runner["SupervisionError"], "exact XML/COM"
+                runner["SupervisionError"], "XML project start.*frozen origin"
             ):
                 runner["_validate_calendar_result"](
                     shifted, workspace=workspace
@@ -1333,6 +1333,558 @@ class RunnerHardeningTests(unittest.TestCase):
                 )
 
 
+class TerminalizationRecoveryTests(unittest.TestCase):
+    @staticmethod
+    def _completion() -> dict:
+        return {
+            "schema_version": "headless-msproject-run-completion-v0.1",
+            "characterisation_label": headless.TRACK_ID,
+            "run_id": "run",
+            "completed_at": "2026-08-31T12:00:00.000000+08:00",
+            "comparison": _comparison(),
+        }
+
+    def test_raw_inventory_uses_one_snapshot_for_size_and_digest(self) -> None:
+        runner = _runner()
+        with tempfile.TemporaryDirectory() as temporary:
+            run_path = Path(temporary) / "run"
+            run_path.mkdir()
+            artifact = run_path / "artifact.bin"
+            original = b"one authenticated snapshot"
+            replacement = b"later replacement with different bytes"
+            artifact.write_bytes(original)
+            stable_reader = runner["read_regular_file_snapshot"]
+
+            def replace_after_snapshot(*args, **kwargs):
+                snapshot = stable_reader(*args, **kwargs)
+                artifact.write_bytes(replacement)
+                return snapshot
+
+            reader = Mock(side_effect=replace_after_snapshot)
+            with patch.dict(
+                runner["_raw_hash_inventory"].__globals__,
+                {"read_regular_file_snapshot": reader},
+            ):
+                inventory = runner["_raw_hash_inventory"](run_path)
+
+            self.assertEqual(
+                [
+                    {
+                        "relative_path": "artifact.bin",
+                        "byte_size": len(original),
+                        "sha256": hashlib.sha256(original).hexdigest(),
+                    }
+                ],
+                inventory,
+            )
+            self.assertEqual(replacement, artifact.read_bytes())
+            reader.assert_called_once_with(
+                artifact,
+                label="raw inventory artifact artifact.bin",
+                max_bytes=runner["MAX_RAW_INVENTORY_ARTIFACT_BYTES"],
+            )
+
+    def test_raw_inventory_rejects_artifact_mutation_or_replacement(self) -> None:
+        runner = _runner()
+        stable_reader = runner["read_regular_file_snapshot"]
+        for mode in ("mutation", "replacement"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+                run_path = Path(temporary) / "run"
+                run_path.mkdir()
+                artifact = run_path / "artifact.bin"
+                artifact.write_bytes(b"evidence")
+
+                def synthetic_stat(metadata, **changes):
+                    fields = {
+                        "st_mode": metadata.st_mode,
+                        "st_dev": metadata.st_dev,
+                        "st_ino": metadata.st_ino,
+                        "st_size": metadata.st_size,
+                        "st_mtime_ns": metadata.st_mtime_ns,
+                    }
+                    fields.update(changes)
+                    return type("SyntheticArtifactStat", (), fields)()
+
+                def race_snapshot(*args, **kwargs):
+                    before = artifact.stat()
+                    if mode == "mutation":
+                        after = synthetic_stat(
+                            before,
+                            st_mtime_ns=before.st_mtime_ns + 1,
+                        )
+                        with patch.object(
+                            freeze.os,
+                            "fstat",
+                            side_effect=(before, after),
+                        ):
+                            return stable_reader(*args, **kwargs)
+
+                    replacement = synthetic_stat(
+                        before,
+                        st_ino=before.st_ino + 1,
+                    )
+                    real_stat = freeze.os.stat
+
+                    def replaced_identity(candidate, *stat_args, **stat_kwargs):
+                        if (
+                            candidate == artifact
+                            and stat_kwargs.get("follow_symlinks") is False
+                        ):
+                            return replacement
+                        return real_stat(candidate, *stat_args, **stat_kwargs)
+
+                    with patch.object(
+                        freeze, "_require_regular_file"
+                    ), patch.object(
+                        freeze.os,
+                        "stat",
+                        side_effect=replaced_identity,
+                    ):
+                        return stable_reader(*args, **kwargs)
+
+                reader = Mock(side_effect=race_snapshot)
+                with patch.dict(
+                    runner["_raw_hash_inventory"].__globals__,
+                    {"read_regular_file_snapshot": reader},
+                ), self.assertRaisesRegex(
+                    runner["SupervisionError"],
+                    "not a stable bounded snapshot",
+                ):
+                    runner["_raw_hash_inventory"](run_path)
+                reader.assert_called_once_with(
+                    artifact,
+                    label="raw inventory artifact artifact.bin",
+                    max_bytes=runner["MAX_RAW_INVENTORY_ARTIFACT_BYTES"],
+                )
+
+    def test_raw_inventory_rejects_oversize_before_hashing(self) -> None:
+        runner = _runner()
+        with tempfile.TemporaryDirectory() as temporary:
+            run_path = Path(temporary) / "run"
+            run_path.mkdir()
+            artifact = run_path / "oversized.bin"
+            artifact.write_bytes(b"12345")
+            with patch.dict(
+                runner["_raw_hash_inventory"].__globals__,
+                {"MAX_RAW_INVENTORY_ARTIFACT_BYTES": 4},
+            ), patch.object(
+                freeze.hashlib, "sha256"
+            ) as digester, self.assertRaisesRegex(
+                runner["SupervisionError"],
+                "not a stable bounded snapshot",
+            ):
+                runner["_raw_hash_inventory"](run_path)
+            digester.assert_not_called()
+
+    def test_terminal_snapshot_rejects_link_or_junction_before_reader(self) -> None:
+        runner = _runner()
+        component = Mock()
+        component.is_symlink.return_value = False
+        component.is_junction.return_value = True
+        self.assertTrue(runner["_is_no_follow_link_component"](component))
+
+        reader = Mock()
+        link_check = Mock(return_value=True)
+        with patch.dict(
+            runner["_terminal_snapshot"].__globals__,
+            {
+                "_is_no_follow_link_component": link_check,
+                "read_regular_file_snapshot": reader,
+            },
+        ), self.assertRaisesRegex(
+            runner["SupervisionError"],
+            "symbolic links or junctions",
+        ):
+            runner["_terminal_snapshot"](
+                Path("C:/synthetic/run-completion.json"),
+                label="run completion",
+                max_bytes=runner["MAX_RUN_COMPLETION_BYTES"],
+            )
+        reader.assert_not_called()
+
+    def test_raw_inventory_rejects_junction_directory_before_descent(self) -> None:
+        runner = _runner()
+        reader = Mock()
+        with tempfile.TemporaryDirectory() as temporary:
+            run_path = Path(temporary) / "run"
+            run_path.mkdir()
+
+            def is_link(component: Path) -> bool:
+                return component.name == "junction"
+
+            with patch.dict(
+                runner["_raw_hash_inventory"].__globals__,
+                {
+                    "_is_no_follow_link_component": is_link,
+                    "read_regular_file_snapshot": reader,
+                },
+            ), patch.object(
+                runner["os"],
+                "walk",
+                return_value=iter([(str(run_path), ["junction"], [])]),
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"],
+                "symbolic links or junctions",
+            ):
+                runner["_raw_hash_inventory"](run_path)
+
+        reader.assert_not_called()
+
+    def test_raw_inventory_excludes_only_root_terminal_outputs(self) -> None:
+        runner = _runner()
+        with tempfile.TemporaryDirectory() as temporary:
+            run_path = Path(temporary) / "run"
+            nested = run_path / "cases" / "SEM-REL-001"
+            nested.mkdir(parents=True)
+            (run_path / "raw-artifact-hashes.json").write_bytes(b"root inventory")
+            (run_path / "raw-artifact-hashes.sha256").write_bytes(b"root sidecar")
+            (nested / "raw-artifact-hashes.json").write_bytes(b"nested inventory")
+            (nested / "raw-artifact-hashes.sha256").write_bytes(b"nested sidecar")
+
+            inventory = runner["_raw_hash_inventory"](run_path)
+
+        self.assertEqual(
+            {
+                "cases/SEM-REL-001/raw-artifact-hashes.json",
+                "cases/SEM-REL-001/raw-artifact-hashes.sha256",
+            },
+            {entry["relative_path"] for entry in inventory},
+        )
+
+    def test_terminalization_recovers_completion_only_and_missing_sidecar(
+        self,
+    ) -> None:
+        runner = _runner()
+        with tempfile.TemporaryDirectory() as temporary:
+            run_path = Path(temporary) / "run"
+            run_path.mkdir()
+            run = Mock(path=run_path, run_id="run")
+            completion = self._completion()
+            completion_path = run_path / "run-completion.json"
+            headless.durable_write_canonical_json(completion_path, completion)
+            completion_bytes = completion_path.read_bytes()
+            completion_mtime = completion_path.stat().st_mtime_ns
+
+            first = runner["_terminalize_run_outputs"](run, completion)
+            inventory_path = run_path / "raw-artifact-hashes.json"
+            sidecar_path = run_path / "raw-artifact-hashes.sha256"
+            inventory_bytes = inventory_path.read_bytes()
+            inventory_mtime = inventory_path.stat().st_mtime_ns
+            self.assertTrue(sidecar_path.is_file())
+
+            sidecar_path.unlink()
+            second = runner["_terminalize_run_outputs"](run, completion)
+            sidecar_bytes = sidecar_path.read_bytes()
+            sidecar_mtime = sidecar_path.stat().st_mtime_ns
+            third = runner["_terminalize_run_outputs"](run, completion)
+
+            self.assertEqual(first, second)
+            self.assertEqual(second, third)
+            self.assertEqual(completion_bytes, completion_path.read_bytes())
+            self.assertEqual(completion_mtime, completion_path.stat().st_mtime_ns)
+            self.assertEqual(inventory_bytes, inventory_path.read_bytes())
+            self.assertEqual(inventory_mtime, inventory_path.stat().st_mtime_ns)
+            self.assertEqual(sidecar_bytes, sidecar_path.read_bytes())
+            self.assertEqual(sidecar_mtime, sidecar_path.stat().st_mtime_ns)
+            self.assertEqual(
+                f"{second['raw_hash_inventory_sha256']}\n",
+                sidecar_path.read_text(encoding="ascii"),
+            )
+
+    def test_existing_terminal_bytes_must_match_without_overwrite(self) -> None:
+        runner = _runner()
+        with tempfile.TemporaryDirectory() as temporary:
+            run_path = Path(temporary) / "run"
+            run_path.mkdir()
+            run = Mock(path=run_path, run_id="run")
+            completion = self._completion()
+            headless.durable_write_canonical_json(
+                run_path / "run-completion.json", completion
+            )
+            inventory_path = run_path / "raw-artifact-hashes.json"
+            retained = headless.canonical_bytes({"unexpected": True}) + b"\n"
+            inventory_path.write_bytes(retained)
+
+            with self.assertRaisesRegex(
+                runner["SupervisionError"],
+                "differs from the exact terminal bytes",
+            ):
+                runner["_terminalize_run_outputs"](run, completion)
+
+            self.assertEqual(retained, inventory_path.read_bytes())
+            self.assertFalse(
+                (run_path / "raw-artifact-hashes.sha256").exists()
+            )
+
+    def test_retained_completion_reuses_exact_original_timestamp_and_bytes(
+        self,
+    ) -> None:
+        runner = _runner()
+        body = {"schema_version": "synthetic-terminal-body-v0.1", "value": 1}
+        retained = {
+            **body,
+            "completed_at": "2026-08-31T12:00:00.000000+08:00",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "run-completion.json"
+            headless.durable_write_canonical_json(path, retained)
+            original_bytes = path.read_bytes()
+            original_mtime = path.stat().st_mtime_ns
+
+            observed = runner["_completion_with_retained_timestamp"](
+                path, body
+            )
+            self.assertEqual(retained, observed)
+            self.assertEqual(original_bytes, path.read_bytes())
+            self.assertEqual(original_mtime, path.stat().st_mtime_ns)
+
+            with self.assertRaisesRegex(
+                runner["SupervisionError"],
+                "differs from exact frozen run evidence",
+            ):
+                runner["_completion_with_retained_timestamp"](
+                    path,
+                    {**body, "value": 2},
+                )
+
+            type_alias_path = Path(temporary) / "type-alias-completion.json"
+            headless.durable_write_canonical_json(
+                type_alias_path,
+                {
+                    **body,
+                    "value": True,
+                    "completed_at": "2026-08-31T12:00:00.000000+08:00",
+                },
+            )
+            with self.assertRaisesRegex(
+                runner["SupervisionError"],
+                "differs from exact frozen run evidence",
+            ):
+                runner["_completion_with_retained_timestamp"](
+                    type_alias_path,
+                    body,
+                )
+
+    def test_recovery_binds_completion_to_retained_results_and_observations(
+        self,
+    ) -> None:
+        runner = _runner()
+        comparison = _comparison()
+        calendar = {"synthetic": "retained-calendar"}
+        observations = {
+            case_id: {"case_id": case_id}
+            for case_id in headless.CASE_IDS
+        }
+        reopen_results = [
+            {"case_id": case_id} for case_id in headless.CASE_IDS
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            run_path = Path(temporary) / "run"
+            run_path.mkdir()
+            run = Mock(path=run_path, run_id="run")
+            comparison_path = run_path / "comparison.json"
+            calendar_path = (
+                run_path
+                / "calendar-characterisation"
+                / "calendar-characterisation.json"
+            )
+            comparison_sha = headless.durable_write_canonical_json(
+                comparison_path, comparison
+            )
+            headless.durable_write_bytes(
+                runner["_result_sidecar_path"](comparison_path),
+                f"{comparison_sha}\n".encode("ascii"),
+            )
+            calendar_sha = headless.durable_write_canonical_json(
+                calendar_path, calendar
+            )
+            headless.durable_write_bytes(
+                runner["_result_sidecar_path"](calendar_path),
+                f"{calendar_sha}\n".encode("ascii"),
+            )
+            body = runner["_run_completion_body"](
+                run,
+                comparison_path=comparison_path,
+                calendar_path=calendar_path,
+                comparison=comparison,
+                reopen_results=reopen_results,
+                calendar=calendar,
+            )
+            completion = {
+                **body,
+                "completed_at": "2026-08-31T12:00:00.000000+08:00",
+            }
+            headless.durable_write_canonical_json(
+                run_path / "run-completion.json", completion
+            )
+            calendar_validator = Mock(return_value={})
+            manifest_validator = Mock()
+
+            with patch.dict(
+                runner["_recover_existing_run_completion"].__globals__,
+                {
+                    "_validate_calendar_result": calendar_validator,
+                    "_verify_result_artifact_manifest": manifest_validator,
+                    "_reopen_result": lambda observation: {
+                        "case_id": observation["case_id"]
+                    },
+                },
+            ):
+                recovered = runner["_recover_existing_run_completion"](
+                    run, observations
+                )
+
+        self.assertEqual(completion, recovered)
+        calendar_validator.assert_called_once_with(
+            calendar,
+            workspace=calendar_path.parent,
+        )
+        manifest_validator.assert_called_once_with(
+            calendar_path,
+            workspace=calendar_path.parent,
+            artifacts={},
+        )
+
+    def test_complete_run_recovers_terminal_outputs_before_new_workers(self) -> None:
+        runner = _runner()
+        observations = {
+            case_id: {"case_id": case_id, "stop_conditions": []}
+            for case_id in headless.CASE_IDS
+        }
+        completion = self._completion()
+        result = {"run_id": "run", "recovered": True}
+        freeze_gate = Mock()
+        recover = Mock(return_value=completion)
+        terminalize = Mock(return_value=result)
+        calendar = Mock()
+        worker = Mock()
+        with tempfile.TemporaryDirectory() as temporary:
+            run_path = Path(temporary) / "run"
+            run_path.mkdir()
+            (run_path / "run-completion.json").write_bytes(b"{}\n")
+            run = Mock(path=run_path, run_id="run")
+            with patch.dict(
+                runner["_complete_run"].__globals__,
+                {
+                    "_reject_run_stop_conditions": Mock(),
+                    "verify_run_freeze_gate": freeze_gate,
+                    "_recover_existing_run_completion": recover,
+                    "_terminalize_run_outputs": terminalize,
+                    "_existing_calendar_result": calendar,
+                    "run_supervised_worker": worker,
+                    "run_comparison_worker": worker,
+                },
+            ):
+                observed = runner["_complete_run"](run, {}, observations)
+
+        self.assertEqual(result, observed)
+        freeze_gate.assert_called_once_with(run, write_index=False)
+        recover.assert_called_once_with(run, observations)
+        terminalize.assert_called_once_with(run, completion)
+        calendar.assert_not_called()
+        worker.assert_not_called()
+
+    def test_main_retained_completion_never_launches_missing_or_standalone_case(
+        self,
+    ) -> None:
+        runner = _runner()
+        environment = {"retained": "environment"}
+        full_observations = {
+            case_id: {"case_id": case_id, "stop_conditions": []}
+            for case_id in headless.CASE_IDS
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            run_path = Path(temporary) / "run"
+            run_path.mkdir()
+            (run_path / "run-completion.json").write_bytes(b"{}\n")
+            run = Mock(path=run_path, run_id="run", repository_root=ROOT)
+
+            for mode in ("missing", "complete", "standalone", "removed"):
+                with self.subTest(mode=mode):
+                    run_case = Mock()
+                    native_worker = Mock()
+                    comparison_worker = Mock()
+                    complete_run = (
+                        Mock(wraps=runner["_complete_run"])
+                        if mode == "removed"
+                        else Mock(return_value={"run_id": "run"})
+                    )
+                    ensure = Mock(return_value=(environment, {}))
+                    retained = (
+                        dict(list(full_observations.items())[:-1])
+                        if mode == "missing"
+                        else full_observations
+                    )
+                    if mode == "removed":
+                        def remove_completion(*_args, **_kwargs):
+                            (run_path / "run-completion.json").unlink()
+                            return retained
+
+                        resume = Mock(side_effect=remove_completion)
+                    else:
+                        resume = Mock(return_value=retained)
+                    arguments = [
+                        "--repository-root",
+                        str(ROOT),
+                        "--run-id",
+                        "run",
+                        "--resume",
+                    ]
+                    arguments.extend(
+                        ["--case", "SEM-REL-001"]
+                        if mode == "standalone"
+                        else ["--all-relationship-cases"]
+                    )
+                    with patch.dict(
+                        runner["main"].__globals__,
+                        {
+                            "create_run_workspace": Mock(return_value=run),
+                            "_ensure_environment_and_preflight": ensure,
+                            "_resume_existing_cases": resume,
+                            "_run_one_case": run_case,
+                            "_complete_run": complete_run,
+                            "run_supervised_worker": native_worker,
+                            "run_comparison_worker": comparison_worker,
+                        },
+                    ), patch("builtins.print") as printer:
+                        return_code = runner["main"](arguments)
+
+                    self.assertEqual(0 if mode == "complete" else 1, return_code)
+                    run_case.assert_not_called()
+                    native_worker.assert_not_called()
+                    comparison_worker.assert_not_called()
+                    if mode == "complete":
+                        ensure.assert_called_once_with(run, resume_existing=True)
+                        resume.assert_called_once_with(
+                            run,
+                            environment,
+                            selected_case_id=None,
+                        )
+                        complete_run.assert_called_once_with(
+                            run,
+                            environment,
+                            full_observations,
+                            require_retained_completion=True,
+                        )
+                    elif mode == "removed":
+                        complete_run.assert_called_once_with(
+                            run,
+                            environment,
+                            full_observations,
+                            require_retained_completion=True,
+                        )
+                        emitted = json.loads(printer.call_args.args[0])
+                        self.assertIn(
+                            "disappeared before terminalization recovery",
+                            emitted["error"],
+                        )
+                    else:
+                        complete_run.assert_not_called()
+                    if mode == "standalone":
+                        ensure.assert_not_called()
+                        resume.assert_not_called()
+
+
 class NativeSupervisorReviewRegressionTests(unittest.TestCase):
     def test_native_worker_uses_fresh_cache_and_one_authenticated_snapshot(self) -> None:
         runner = _runner()
@@ -1385,6 +1937,9 @@ class NativeSupervisorReviewRegressionTests(unittest.TestCase):
                     "authenticated native sidecar must not reread the result path"
                 )
             )
+            dependency_guard = Mock(
+                wraps=runner["_imported_automation_source_hashes"]
+            )
             with (
                 patch.object(
                     runner["headless_com"],
@@ -1401,7 +1956,10 @@ class NativeSupervisorReviewRegressionTests(unittest.TestCase):
                 patch.object(runner["time"], "sleep"),
                 patch.dict(
                     runner["run_supervised_worker"].__globals__,
-                    {"sha256_file": late_hash},
+                    {
+                        "sha256_file": late_hash,
+                        "_imported_automation_source_hashes": dependency_guard,
+                    },
                 ),
             ):
                 result = runner["run_supervised_worker"](
@@ -1438,6 +1996,10 @@ class NativeSupervisorReviewRegressionTests(unittest.TestCase):
                 ),
             )
             late_hash.assert_not_called()
+            self.assertEqual(
+                [(ROOT,), (ROOT,)],
+                [item.args for item in dependency_guard.call_args_list],
+            )
 
     def test_native_worker_rejects_preexisting_random_cache_prefix(self) -> None:
         runner = _runner()
@@ -1938,6 +2500,7 @@ class NativeSupervisorReviewRegressionTests(unittest.TestCase):
     ) -> None:
         runner = _runner()
         script = r"""
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -1945,6 +2508,20 @@ sys.path.insert(0, sys.argv[1])
 from deterministic_scheduling_core.native.msproject import headless_worker
 
 hashes = headless_worker._automation_source_hashes(Path(sys.argv[2]))
+original_reader = headless_worker._stable_source_snapshot
+def changed_reader(path, *, label, max_bytes):
+    data, digest = original_reader(path, label=label, max_bytes=max_bytes)
+    if label == "current native-worker canonical_json source":
+        data += b"synthetic-post-import-change"
+        digest = hashlib.sha256(data).hexdigest()
+    return data, digest
+headless_worker._stable_source_snapshot = changed_reader
+try:
+    headless_worker._automation_source_hashes(Path(sys.argv[2]))
+except ValueError as error:
+    mutation_error = str(error)
+else:
+    mutation_error = None
 forbidden = sorted(
     name
     for name in sys.modules
@@ -1961,6 +2538,10 @@ print(json.dumps({
     "canonical_json_loaded": (
         "deterministic_scheduling_core.provenance.canonical_json" in sys.modules
     ),
+    "imported_canonical_json_sha256": (
+        headless_worker._IMPORTED_CANONICAL_JSON_SHA256
+    ),
+    "mutation_error": mutation_error,
 }, sort_keys=True))
 """
         completed = subprocess.run(
@@ -1982,7 +2563,428 @@ print(json.dumps({
         self.assertEqual(expected_roles, set(payload["hashes"]))
         self.assertEqual(runner["_automation_hashes"](ROOT), payload["hashes"])
         self.assertTrue(payload["canonical_json_loaded"])
+        self.assertEqual(
+            payload["hashes"]["canonical_json_sha256"],
+            payload["imported_canonical_json_sha256"],
+        )
+        self.assertIn(
+            "changed after the native worker imported it",
+            payload["mutation_error"],
+        )
         self.assertEqual([], payload["forbidden"])
+
+    def test_native_worker_rechecks_imported_dependency_after_result_write(
+        self,
+    ) -> None:
+        from deterministic_scheduling_core.native.msproject import (
+            headless_worker,
+        )
+
+        stable_hashes = {"canonical_json_sha256": "1" * 64}
+        changed_hashes = {"canonical_json_sha256": "2" * 64}
+        hash_reader = Mock(
+            side_effect=(stable_hashes, stable_hashes, changed_hashes)
+        )
+        journal = Mock()
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary) / "case"
+            result_path = workspace / "result.json"
+            with patch.object(
+                headless_worker,
+                "_automation_source_hashes",
+                hash_reader,
+            ), patch.object(
+                headless_worker,
+                "load_source_only_projection_with_identity",
+                return_value=({}, "a" * 64),
+            ), patch.object(
+                headless_worker,
+                "run_native_case",
+                return_value={
+                    "schema_version": (
+                        "headless-msproject-native-observation-v0.2"
+                    )
+                },
+            ), patch.object(
+                headless_worker, "StageJournal", return_value=journal
+            ), patch("builtins.print"):
+                return_code = headless_worker.main(
+                    [
+                        "--worker",
+                        "case",
+                        "--case",
+                        "SEM-REL-001",
+                        "--repository-root",
+                        str(ROOT),
+                        "--run-id",
+                        "dependency-race",
+                        "--workspace",
+                        str(workspace),
+                        "--result",
+                        str(result_path),
+                        "--state",
+                        str(workspace / "state.json"),
+                        "--log",
+                        str(workspace / "log.jsonl"),
+                    ]
+                )
+
+            self.assertEqual(1, return_code)
+            self.assertEqual(3, hash_reader.call_count)
+            self.assertTrue(result_path.is_file())
+            phases = [call.args[1] for call in journal.call_args_list]
+            self.assertEqual(["start", "error"], phases)
+            self.assertIn(
+                "changed while the native case result was serialized",
+                journal.call_args_list[-1].args[2]["error"],
+            )
+
+    def test_parent_dependency_hashes_are_import_pinned_and_stably_revalidated(
+        self,
+    ) -> None:
+        runner = _runner()
+        reader = Mock(wraps=runner["read_regular_file_snapshot"])
+        with patch.dict(
+            runner["_automation_hashes"].__globals__,
+            {"read_regular_file_snapshot": reader},
+        ):
+            hashes = runner["_automation_hashes"](ROOT)
+        self.assertEqual(
+            runner["_IMPORTED_AUTOMATION_SOURCE_SHA256"]["canonical_json"],
+            hashes["canonical_json_sha256"],
+        )
+        self.assertEqual(
+            runner["_IMPORTED_AUTOMATION_SOURCE_SHA256"]["freeze"],
+            hashes["freeze_sha256"],
+        )
+        self.assertEqual(2, reader.call_count)
+        self.assertTrue(
+            all(
+                call.kwargs["max_bytes"]
+                == runner["MAX_IMPORTED_AUTOMATION_SOURCE_BYTES"]
+                for call in reader.call_args_list
+            )
+        )
+
+        original_reader = runner["read_regular_file_snapshot"]
+        for source_role in ("canonical_json", "freeze"):
+            with self.subTest(source_role=source_role):
+                def changed_snapshot(
+                    path: Path, *, label: str, max_bytes: int | None = None
+                ) -> object:
+                    snapshot = original_reader(
+                        path, label=label, max_bytes=max_bytes
+                    )
+                    if label.endswith(source_role):
+                        changed = snapshot.data + b"synthetic-post-import-change"
+                        return runner["RegularFileSnapshot"](
+                            data=changed,
+                            sha256=hashlib.sha256(changed).hexdigest(),
+                            byte_size=len(changed),
+                            device=snapshot.device,
+                            inode=snapshot.inode,
+                            resolved_path=snapshot.resolved_path,
+                        )
+                    return snapshot
+
+                with patch.dict(
+                    runner["_automation_hashes"].__globals__,
+                    {"read_regular_file_snapshot": changed_snapshot},
+                ), self.assertRaisesRegex(
+                    runner["SupervisionError"], "changed after its import-time"
+                ):
+                    runner["_automation_hashes"](ROOT)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            replacement = Path(temporary) / "canonical_json.py"
+            replacement.write_text("# different module path\n", encoding="utf-8")
+            with patch.object(
+                runner["canonical_json_module"], "__file__", str(replacement)
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "not the captured checked-out source"
+            ):
+                runner["_automation_hashes"](ROOT)
+
+    def test_supervision_rejects_alternate_checkout_before_launch(self) -> None:
+        runner = _runner()
+        with tempfile.TemporaryDirectory() as temporary:
+            alternate_root = Path(temporary) / "alternate-checkout"
+            canonical_copy = alternate_root.joinpath(
+                *runner["_IMPORTED_AUTOMATION_SOURCE_RELATIVE_PATHS"][
+                    "canonical_json"
+                ].split("/")
+            )
+            canonical_copy.parent.mkdir(parents=True)
+            canonical_copy.write_bytes(
+                runner["_IMPORTED_AUTOMATION_SOURCE_BYTES"]["canonical_json"]
+            )
+            for entrypoint, keyword_arguments in (
+                (
+                    runner["run_supervised_worker"],
+                    {
+                        "operation": "case",
+                        "repository_root": alternate_root,
+                        "run_id": "run",
+                        "workspace": alternate_root / "native-worker",
+                        "result_path": alternate_root
+                        / "native-worker"
+                        / "result.json",
+                        "case_id": "SEM-REL-001",
+                    },
+                ),
+                (
+                    runner["run_comparison_worker"],
+                    {
+                        "repository_root": alternate_root,
+                        "run_id": "run",
+                        "workspace": alternate_root / "comparison-worker",
+                        "result_path": alternate_root
+                        / "comparison-worker"
+                        / "result.json",
+                    },
+                ),
+            ):
+                with self.subTest(entrypoint=entrypoint.__name__):
+                    launcher = Mock()
+                    with patch.object(
+                        runner["subprocess"], "Popen", launcher
+                    ), self.assertRaisesRegex(
+                        runner["SupervisionError"],
+                        "not the captured checked-out source",
+                    ):
+                        entrypoint(**keyword_arguments)
+                    launcher.assert_not_called()
+
+    def test_dependency_paths_reject_windows_junction_and_reparse_components(
+        self,
+    ) -> None:
+        from deterministic_scheduling_core.native.msproject import (
+            headless_worker,
+        )
+
+        runner = _runner()
+        modern_junction = Mock()
+        modern_junction.is_symlink.return_value = False
+        modern_junction.is_junction.return_value = True
+        self.assertTrue(
+            runner["_dependency_path_component_is_link"](modern_junction)
+        )
+        self.assertTrue(
+            headless_worker._source_path_component_is_link(modern_junction)
+        )
+
+        class LegacyWindowsJunction:
+            @staticmethod
+            def is_symlink() -> bool:
+                return False
+
+            @staticmethod
+            def lstat() -> object:
+                return type(
+                    "SyntheticReparseStat",
+                    (),
+                    {"st_file_attributes": 0x400},
+                )()
+
+        with patch.object(runner["os"], "name", "nt"), patch.object(
+            runner["stat"],
+            "FILE_ATTRIBUTE_REPARSE_POINT",
+            0x400,
+            create=True,
+        ):
+            self.assertTrue(
+                runner["_dependency_path_component_is_link"](
+                    LegacyWindowsJunction()
+                )
+            )
+        with patch.object(headless_worker.os, "name", "nt"), patch.object(
+            headless_worker.stat,
+            "FILE_ATTRIBUTE_REPARSE_POINT",
+            0x400,
+            create=True,
+        ):
+            self.assertTrue(
+                headless_worker._source_path_component_is_link(
+                    LegacyWindowsJunction()
+                )
+            )
+
+        parent_link_check = Mock(
+            side_effect=(
+                None,
+                None,
+                OSError("synthetic retained post-read junction"),
+            )
+        )
+        parent_reader = Mock(wraps=runner["read_regular_file_snapshot"])
+        with patch.dict(
+            runner["_imported_automation_source_hashes"].__globals__,
+            {
+                "_reject_dependency_link_components": parent_link_check,
+                "read_regular_file_snapshot": parent_reader,
+            },
+        ), self.assertRaisesRegex(
+            runner["SupervisionError"], "stable bounded snapshot"
+        ):
+            runner["_imported_automation_source_hashes"](ROOT)
+        self.assertEqual(3, parent_link_check.call_count)
+        self.assertEqual(1, parent_reader.call_count)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "source.py"
+            source.write_bytes(b"VALUE = 1\n")
+            worker_link_check = Mock(
+                side_effect=(
+                    None,
+                    ValueError("synthetic retained post-read junction"),
+                )
+            )
+            with patch.object(
+                headless_worker,
+                "_reject_source_link_components",
+                worker_link_check,
+            ), self.assertRaisesRegex(
+                ValueError, "post-read junction"
+            ):
+                headless_worker._stable_source_snapshot(
+                    source,
+                    label="synthetic source",
+                    max_bytes=1024,
+                )
+            self.assertEqual(2, worker_link_check.call_count)
+
+    def test_calendar_every_com_and_xml_start_must_equal_frozen_origin(
+        self,
+    ) -> None:
+        runner = _runner()
+
+        def com_capture(start: str, finish: str) -> dict:
+            return {
+                "project": {"start": start, "finish": finish},
+                "tasks": [
+                    {
+                        "name": "CAL-24X7-characterisation",
+                        "start": start,
+                        "finish": finish,
+                        "duration_minutes": 1_440,
+                    }
+                ],
+            }
+
+        def xml_capture(start: str, finish: str) -> dict:
+            return {
+                "project": {"start": start, "finish": finish},
+                "tasks": [
+                    {
+                        "name": "CAL-24X7-characterisation",
+                        "start": start,
+                        "finish": finish,
+                        "duration": "PT24H0M0S",
+                    }
+                ],
+            }
+
+        origin_com = com_capture(
+            "2026-01-05T08:00:00+08:00",
+            "2026-01-06T08:00:00+08:00",
+        )
+        shifted_com = com_capture(
+            "2026-01-05T09:00:00+08:00",
+            "2026-01-06T09:00:00+08:00",
+        )
+        origin_xml = xml_capture(
+            "2026-01-05T08:00:00", "2026-01-06T08:00:00"
+        )
+        shifted_xml = xml_capture(
+            "2026-01-05T09:00:00", "2026-01-06T09:00:00"
+        )
+        com_keys = (
+            "task_dates_before_xml_reopen",
+            "task_dates_after_xml_open",
+            "task_dates_after_xml_recalculate",
+        )
+        xml_keys = ("project_authored_xml", "reexported_xml")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            artifacts = _artifact_files(
+                workspace, set(runner["CALENDAR_ARTIFACT_ROLES"])
+            )
+            baseline = {
+                "schema_version": (
+                    "headless-msproject-cal24x7-characterisation-v0.1"
+                ),
+                "characterisation_label": headless.TRACK_ID,
+                "automatic_track_c_unblock": False,
+                "calendar_representation_stable": True,
+                "project_authored_xml": origin_xml,
+                "reexported_xml": origin_xml,
+                "calendar_representation_before": {"uid": "3"},
+                "calendar_representation_after": {"uid": "3"},
+                "process_sessions": [
+                    {
+                        "pid": 1,
+                        "exited": True,
+                        "forced_termination": False,
+                        "ownership_revalidated_before_quit": True,
+                        "termination_error": None,
+                    }
+                ],
+                **{key: origin_com for key in com_keys},
+                "artifacts": artifacts,
+                "xml_reopen_method": (
+                    "Application.OpenXML(exact_exported_utf8_text)"
+                ),
+                "xml_reopen_source_sha256": headless.sha256_file(
+                    Path(artifacts["authored_xml"])
+                ),
+            }
+
+            def validate(candidate: dict) -> None:
+                def parsed(path: Path) -> dict:
+                    if path == Path(artifacts["authored_xml"]).resolve():
+                        return candidate["project_authored_xml"]
+                    return candidate["reexported_xml"]
+
+                with patch.object(
+                    runner["headless"],
+                    "validated_cal24x7_calendar",
+                    return_value={"uid": "3"},
+                ), patch.object(
+                    runner["headless"],
+                    "parse_project_xml_observation",
+                    side_effect=parsed,
+                ):
+                    runner["_validate_calendar_result"](
+                        candidate, workspace=workspace
+                    )
+
+            validate(json.loads(json.dumps(baseline)))
+            for capture_key in com_keys:
+                candidate = json.loads(json.dumps(baseline))
+                candidate[capture_key] = shifted_com
+                with self.subTest(capture=capture_key), self.assertRaisesRegex(
+                    runner["SupervisionError"], "COM project start.*frozen origin"
+                ):
+                    validate(candidate)
+
+            for capture_key in xml_keys:
+                candidate = json.loads(json.dumps(baseline))
+                candidate[capture_key] = shifted_xml
+                with self.subTest(capture=capture_key), self.assertRaisesRegex(
+                    runner["SupervisionError"], "XML project start.*frozen origin"
+                ):
+                    validate(candidate)
+
+            stable_shift = json.loads(json.dumps(baseline))
+            for capture_key in com_keys:
+                stable_shift[capture_key] = shifted_com
+            for capture_key in xml_keys:
+                stable_shift[capture_key] = shifted_xml
+            with self.assertRaisesRegex(
+                runner["SupervisionError"], "project start.*frozen origin"
+            ):
+                validate(stable_shift)
 
     def test_legacy_v01_gate_and_v02_provenance_roles_are_schema_scoped(
         self,

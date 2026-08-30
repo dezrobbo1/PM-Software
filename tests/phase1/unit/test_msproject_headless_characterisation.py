@@ -24,6 +24,25 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 def _write_synthetic_oracle_sources(root: Path, runner: dict) -> dict[str, str]:
+    # Comparator supervision normally requires its repository root to be the
+    # checkout that supplied the already imported parent dependencies.  These
+    # unit tests intentionally use an isolated synthetic oracle tree, so keep
+    # that unrelated guard bound to the real checkout while exercising the
+    # synthetic comparator-source protocol below.
+    imported_dependency_guard = runner[
+        "run_comparison_worker"
+    ].__globals__["_imported_automation_source_hashes"]
+
+    def synthetic_dependency_guard(
+        repository_root: Path | None = None,
+    ) -> dict[str, str]:
+        return imported_dependency_guard(
+            ROOT if repository_root == root else repository_root
+        )
+
+    runner["run_comparison_worker"].__globals__[
+        "_imported_automation_source_hashes"
+    ] = synthetic_dependency_guard
     digests: dict[str, str] = {}
     for source_role, spec in runner["ORACLE_SOURCE_SPECS"].items():
         source_path = root / spec["relative_path"]
@@ -1876,6 +1895,36 @@ class ParentOwnershipEvidenceTests(unittest.TestCase):
             )
             self.assertEqual([], runner["_identified_processes_from_log"](log_path))
 
+    def test_unbound_startup_cleanup_is_never_destructive_authority(self) -> None:
+        runner = runpy.run_path(
+            str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
+        )
+        identity = _owned_process_identity(executable_path="C:/WINPROJ.EXE")
+        with tempfile.TemporaryDirectory() as temporary:
+            log_path = Path(temporary) / "worker-events.jsonl"
+            log_path.write_text(
+                json.dumps(
+                    {
+                        "phase": "startup_exception_cleanup",
+                        "details": {
+                            "cleanup": {
+                                "process_identity": None,
+                                "unconfirmed_candidate_process": identity,
+                                "cleanup_authority": (
+                                    "exact_dispatched_com_object_only"
+                                ),
+                            },
+                            "stop_conditions": [
+                                {"condition": "project_process_did_not_exit"}
+                            ],
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertEqual([], runner["_identified_processes_from_log"](log_path))
+
     def test_com_worker_rejects_compare_before_project_lookup(self) -> None:
         runner = runpy.run_path(
             str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
@@ -2072,13 +2121,21 @@ class ParentOwnershipEvidenceTests(unittest.TestCase):
                     "authenticated comparison sidecar must not reread the result path"
                 )
             )
+            dependency_guard = Mock(
+                wraps=runner["run_comparison_worker"].__globals__[
+                    "_imported_automation_source_hashes"
+                ]
+            )
             with patch.object(
                 runner["secrets"], "token_hex", return_value=cache_token
             ), patch.object(
                 runner["subprocess"], "Popen", side_effect=popen
             ), patch.dict(
                 runner["run_comparison_worker"].__globals__,
-                {"sha256_file": late_path_hash},
+                {
+                    "sha256_file": late_path_hash,
+                    "_imported_automation_source_hashes": dependency_guard,
+                },
             ):
                 result = runner["run_comparison_worker"](
                     repository_root=root,
@@ -2117,6 +2174,10 @@ class ParentOwnershipEvidenceTests(unittest.TestCase):
                 ),
             )
             late_path_hash.assert_not_called()
+            self.assertEqual(
+                [(root,), (root,)],
+                [item.args for item in dependency_guard.call_args_list],
+            )
             self.assertNotIn(
                 "deterministic_scheduling_core.native.msproject.headless_worker",
                 commands[0],
@@ -3174,30 +3235,289 @@ class ComFailClosedTests(unittest.TestCase):
         pythoncom.CoInitialize.assert_not_called()
         client.DispatchEx.assert_not_called()
 
-    def test_unproven_com_object_is_never_quit(self) -> None:
+    def test_dispatch_success_caption_bind_failure_cleans_exact_object_only(
+        self,
+    ) -> None:
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+        candidate = _owned_process_identity(executable_path=str(expected))
+        candidate.pop("ownership_caption")
+        candidate.pop("ownership_hwnd")
         pythoncom = Mock()
         app = Mock()
         app.Visible = False
         client = Mock()
         client.DispatchEx.return_value = app
+        events: list[tuple[str, dict]] = []
+        kernel32 = Mock()
+        wait_handle = object()
+        process_inventory = Mock(side_effect=[[], []])
+        destructive_cleanup = Mock()
+
+        def callback(_stage: str, phase: str, details: dict) -> None:
+            events.append((phase, details))
+
         with (
+            patch.dict(
+                headless_com.os.environ,
+                {"SystemRoot": "C:/Windows"},
+                clear=False,
+            ),
             patch.object(headless_com, "_load_pywin32", return_value=(pythoncom, Mock(), client)),
             patch.object(
                 headless_com,
                 "registered_project_executable",
-                return_value=Path("C:/Program Files/Microsoft Office/WINPROJ.EXE"),
+                return_value=expected,
             ),
-            patch.object(headless_com, "list_winproj_processes", return_value=[]),
+            patch.object(
+                headless_com,
+                "list_winproj_processes",
+                process_inventory,
+            ),
             patch.object(
                 headless_com,
                 "_find_new_project_process",
-                side_effect=headless_com.ProjectComError("no owned process"),
+                return_value=candidate,
+            ),
+            patch.object(headless_com, "windows_for_pid", return_value=[]),
+            patch.object(
+                headless_com,
+                "_bind_process_to_caption",
+                side_effect=headless_com.ProjectComError("caption bind failed"),
+            ),
+            patch.object(
+                headless_com,
+                "_open_verified_process_wait_handle",
+                return_value=(kernel32, wait_handle),
+            ) as open_wait,
+            patch.object(
+                headless_com,
+                "_wait_process_exit",
+                return_value=True,
+            ) as wait_exit,
+            patch.object(
+                headless_com,
+                "terminate_verified_project_process",
+                destructive_cleanup,
             ),
         ):
-            with self.assertRaisesRegex(headless_com.ProjectComError, "no owned process"):
-                headless_com._open_application(None)
-        app.Quit.assert_not_called()
+            with self.assertRaisesRegex(
+                headless_com.ProjectComError, "caption bind failed"
+            ):
+                headless_com._open_application(callback)
+
+        app.Quit.assert_called_once_with(headless_com.PJ_DO_NOT_SAVE)
+        open_wait.assert_called_once_with(candidate, expected)
+        wait_exit.assert_called_once_with(
+            42,
+            10.0,
+            kernel32=kernel32,
+            process_handle=wait_handle,
+        )
+        kernel32.CloseHandle.assert_called_once_with(wait_handle)
+        destructive_cleanup.assert_not_called()
         pythoncom.CoUninitialize.assert_called_once()
+        phases = [phase for phase, _details in events]
+        self.assertNotIn("ownership_caption_set", phases)
+        self.assertNotIn("process_identified", phases)
+        cleanup = next(
+            details
+            for phase, details in events
+            if phase == "startup_exception_cleanup"
+        )
+        self.assertEqual(
+            "exact_dispatched_com_object_only",
+            cleanup["cleanup"]["cleanup_authority"],
+        )
+        self.assertTrue(cleanup["cleanup"]["quit_succeeded"])
+        self.assertTrue(cleanup["cleanup"]["exited"])
+        self.assertFalse(cleanup["cleanup"]["pid_termination_attempted"])
+        self.assertIsNone(cleanup["cleanup"]["process_identity"])
+        self.assertEqual(
+            "project_process_ownership_not_revalidated",
+            cleanup["stop_conditions"][0]["condition"],
+        )
+
+    def test_unbound_dispatch_cleanup_failure_remains_an_explicit_stop(
+        self,
+    ) -> None:
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+        candidate = _owned_process_identity(executable_path=str(expected))
+        candidate.pop("ownership_caption")
+        candidate.pop("ownership_hwnd")
+        pythoncom = Mock()
+        app = Mock()
+        app.Visible = False
+        app.Quit.side_effect = RuntimeError("exact-object quit failed")
+        client = Mock()
+        client.DispatchEx.return_value = app
+        events: list[tuple[str, dict]] = []
+        kernel32 = Mock()
+        wait_handle = object()
+        process_inventory = Mock(side_effect=[[], [candidate]])
+        destructive_cleanup = Mock()
+
+        def callback(_stage: str, phase: str, details: dict) -> None:
+            events.append((phase, details))
+
+        with (
+            patch.dict(
+                headless_com.os.environ,
+                {"SystemRoot": "C:/Windows"},
+                clear=False,
+            ),
+            patch.object(
+                headless_com,
+                "_load_pywin32",
+                return_value=(pythoncom, Mock(), client),
+            ),
+            patch.object(
+                headless_com,
+                "registered_project_executable",
+                return_value=expected,
+            ),
+            patch.object(
+                headless_com,
+                "list_winproj_processes",
+                process_inventory,
+            ),
+            patch.object(
+                headless_com,
+                "_find_new_project_process",
+                return_value=candidate,
+            ),
+            patch.object(headless_com, "windows_for_pid", return_value=[]),
+            patch.object(
+                headless_com,
+                "_bind_process_to_caption",
+                side_effect=headless_com.ProjectComError("caption bind failed"),
+            ),
+            patch.object(
+                headless_com,
+                "_open_verified_process_wait_handle",
+                return_value=(kernel32, wait_handle),
+            ),
+            patch.object(headless_com, "_wait_process_exit", return_value=False),
+            patch.object(
+                headless_com,
+                "terminate_verified_project_process",
+                destructive_cleanup,
+            ),
+            self.assertRaisesRegex(
+                headless_com.ProjectComError, "caption bind failed"
+            ) as raised,
+        ):
+            headless_com._open_application(callback)
+
+        app.Quit.assert_called_once_with(headless_com.PJ_DO_NOT_SAVE)
+        destructive_cleanup.assert_not_called()
+        kernel32.CloseHandle.assert_called_once_with(wait_handle)
+        pythoncom.CoUninitialize.assert_called_once()
+        cleanup = next(
+            details
+            for phase, details in events
+            if phase == "startup_exception_cleanup"
+        )
+        self.assertFalse(cleanup["cleanup"]["quit_succeeded"])
+        self.assertFalse(cleanup["cleanup"]["exited"])
+        self.assertIn(
+            "exact dispatched COM object Quit failed",
+            cleanup["cleanup"]["termination_error"],
+        )
+        self.assertEqual(
+            "project_process_did_not_exit",
+            cleanup["stop_conditions"][0]["condition"],
+        )
+        self.assertTrue(
+            any(
+                "startup cleanup stop conditions" in note
+                for note in getattr(raised.exception, "__notes__", [])
+            )
+        )
+
+    def test_unbound_cleanup_never_targets_a_concurrent_user_process(self) -> None:
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+        unrelated_process = {
+            "pid": 77,
+            "executable_path": str(expected),
+            "creation_time_100ns": 9_999,
+        }
+        pythoncom = Mock()
+        dispatched_app = Mock()
+        dispatched_app.Visible = False
+        unrelated_app = Mock()
+        client = Mock()
+        client.DispatchEx.return_value = dispatched_app
+        client.Dispatch.return_value = unrelated_app
+        events: list[tuple[str, dict]] = []
+        process_inventory = Mock(side_effect=[[], [unrelated_process]])
+        destructive_cleanup = Mock()
+        open_wait = Mock()
+
+        def callback(_stage: str, phase: str, details: dict) -> None:
+            events.append((phase, details))
+
+        with (
+            patch.object(
+                headless_com,
+                "_load_pywin32",
+                return_value=(pythoncom, Mock(), client),
+            ),
+            patch.object(
+                headless_com,
+                "registered_project_executable",
+                return_value=expected,
+            ),
+            patch.object(
+                headless_com,
+                "list_winproj_processes",
+                process_inventory,
+            ),
+            patch.object(
+                headless_com,
+                "_find_new_project_process",
+                side_effect=headless_com.ProjectComError(
+                    "concurrent Project process prevented binding"
+                ),
+            ),
+            patch.object(
+                headless_com,
+                "_open_verified_process_wait_handle",
+                open_wait,
+            ),
+            patch.object(
+                headless_com,
+                "terminate_verified_project_process",
+                destructive_cleanup,
+            ),
+            self.assertRaisesRegex(
+                headless_com.ProjectComError,
+                "concurrent Project process prevented binding",
+            ),
+        ):
+            headless_com._open_application(callback)
+
+        dispatched_app.Quit.assert_called_once_with(headless_com.PJ_DO_NOT_SAVE)
+        client.DispatchEx.assert_called_once_with(headless_com.PROG_ID)
+        client.Dispatch.assert_not_called()
+        unrelated_app.Quit.assert_not_called()
+        open_wait.assert_not_called()
+        destructive_cleanup.assert_not_called()
+        pythoncom.CoUninitialize.assert_called_once()
+        phases = [phase for phase, _details in events]
+        self.assertNotIn("ownership_caption_set", phases)
+        self.assertNotIn("process_identified", phases)
+        cleanup = next(
+            details
+            for phase, details in events
+            if phase == "startup_exception_cleanup"
+        )
+        self.assertFalse(cleanup["cleanup"]["exited"])
+        self.assertEqual([unrelated_process], cleanup["cleanup"]["remaining_project_processes"])
+        self.assertFalse(cleanup["cleanup"]["pid_termination_attempted"])
+        self.assertEqual(
+            "project_process_did_not_exit",
+            cleanup["stop_conditions"][0]["condition"],
+        )
 
     def test_owned_startup_failure_uses_session_cleanup_and_journals_stop(self) -> None:
         expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")

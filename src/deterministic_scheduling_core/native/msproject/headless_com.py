@@ -907,6 +907,160 @@ class _ProjectSession:
         }
 
 
+def _cleanup_unbound_dispatched_application(
+    app: Any,
+    executable: Path,
+    *,
+    preexisting_processes: list[Mapping[str, Any]],
+    candidate_process: Mapping[str, Any] | None,
+    timeout: float = 10.0,
+) -> dict[str, Any]:
+    """Attempt non-destructive cleanup before caption ownership is proven.
+
+    ``DispatchEx`` gives this worker authority over the returned COM object, but
+    not over an arbitrary WINPROJ PID.  A provisional activation candidate may
+    therefore supply only a wait handle used to confirm exit.  It must never
+    authorize PID termination, and it remains non-authoritative for parent
+    cleanup because no caption/HWND binding was completed.
+    """
+
+    candidate = dict(candidate_process) if candidate_process is not None else None
+    candidate_pid = candidate.get("pid") if candidate is not None else None
+    cleanup_errors: list[str] = []
+    wait_kernel32: Any | None = None
+    wait_handle: Any | None = None
+    wait_identity_verified = False
+    quit_attempted = False
+    quit_succeeded = False
+    exited = False
+
+    if preexisting_processes:
+        cleanup_errors.append(
+            "refused exact-object startup cleanup because Microsoft Project "
+            "processes predated DispatchEx"
+        )
+    else:
+        if candidate is not None:
+            try:
+                if candidate.get("ownership_origin_verified") is not True or not (
+                    _valid_activation_parent(
+                        child_pid=candidate.get("pid"),
+                        child_creation_time_100ns=candidate.get(
+                            "creation_time_100ns"
+                        ),
+                        parent_pid=candidate.get("activation_parent_pid"),
+                        parent_executable_path=candidate.get(
+                            "activation_parent_executable_path"
+                        ),
+                        parent_creation_time_100ns=candidate.get(
+                            "activation_parent_creation_time_100ns"
+                        ),
+                    )
+                ):
+                    raise ProjectComError(
+                        "unbound startup candidate lacks verified activation origin"
+                    )
+                retained_path = candidate.get("executable_path")
+                if not isinstance(retained_path, str) or Path(retained_path).resolve(
+                    strict=False
+                ) != executable.resolve(strict=False):
+                    raise ProjectComError(
+                        "unbound startup candidate executable identity changed"
+                    )
+                wait_kernel32, wait_handle = _open_verified_process_wait_handle(
+                    candidate,
+                    executable,
+                )
+                wait_identity_verified = True
+            except Exception as error:
+                cleanup_errors.append(
+                    "could not acquire a non-destructive wait handle for the "
+                    "unbound startup candidate: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        # This is deliberately the only mutating cleanup action available
+        # before caption ownership is proven.  Do not close projects, enumerate
+        # another COM object, or terminate any PID from this path.
+        quit_attempted = True
+        try:
+            app.Quit(PJ_DO_NOT_SAVE)
+            quit_succeeded = True
+        except Exception as error:
+            cleanup_errors.append(
+                "exact dispatched COM object Quit failed: "
+                f"{type(error).__name__}: {error}"
+            )
+
+        if wait_handle is not None and candidate_pid is not None:
+            try:
+                exited = _wait_process_exit(
+                    int(candidate_pid),
+                    timeout,
+                    kernel32=wait_kernel32,
+                    process_handle=wait_handle,
+                )
+                if not exited:
+                    cleanup_errors.append(
+                        "unbound startup candidate exit was not confirmed by its "
+                        "verified wait handle"
+                    )
+            except Exception as error:
+                cleanup_errors.append(
+                    "unbound startup candidate exit wait failed: "
+                    f"{type(error).__name__}: {error}"
+                )
+            finally:
+                assert wait_kernel32 is not None
+                try:
+                    if not wait_kernel32.CloseHandle(wait_handle):
+                        cleanup_errors.append(
+                            "unbound startup candidate wait handle could not be closed"
+                        )
+                except Exception as error:
+                    cleanup_errors.append(
+                        "unbound startup candidate wait-handle close failed: "
+                        f"{type(error).__name__}: {error}"
+                    )
+        else:
+            cleanup_errors.append(
+                "no verified waitable process identity was available; exact-object "
+                "cleanup exit remains inconclusive"
+            )
+
+    remaining_processes: list[dict[str, Any]] | None
+    try:
+        remaining_processes = [dict(item) for item in list_winproj_processes()]
+    except Exception as error:
+        remaining_processes = None
+        cleanup_errors.append(
+            "post-cleanup Microsoft Project inventory failed: "
+            f"{type(error).__name__}: {error}"
+        )
+    if remaining_processes:
+        cleanup_errors.append(
+            "Microsoft Project processes remain after exact-object cleanup and "
+            "were not touched: "
+            f"{[item.get('pid') for item in remaining_processes]}"
+        )
+
+    return {
+        "pid": candidate_pid,
+        "exited": exited,
+        "forced_termination": False,
+        "termination_error": "; ".join(cleanup_errors) or None,
+        "ownership_revalidated_before_quit": False,
+        "process_identity": None,
+        "unconfirmed_candidate_process": candidate,
+        "cleanup_authority": "exact_dispatched_com_object_only",
+        "quit_attempted": quit_attempted,
+        "quit_succeeded": quit_succeeded,
+        "wait_identity_verified": wait_identity_verified,
+        "pid_termination_attempted": False,
+        "remaining_project_processes": remaining_processes,
+    }
+
+
 def _open_application(callback: StageCallback | None, *, stage_name: str = "project_startup") -> _ProjectSession:
     pythoncom, _win32api, client = _load_pywin32()
     executable = registered_project_executable()
@@ -983,6 +1137,7 @@ def _open_application(callback: StageCallback | None, *, stage_name: str = "proj
     except Exception as startup_error:
         cleanup_session: _ProjectSession | None = None
         try:
+            cleanup_result: dict[str, Any] | None = None
             if app is not None and ownership_confirmed and process is not None:
                 cleanup_session = _ProjectSession(
                     app,
@@ -1009,9 +1164,53 @@ def _open_application(callback: StageCallback | None, *, stage_name: str = "proj
                         "process_identity": dict(process),
                     }
                     startup_error.add_note(cleanup_result["termination_error"])
+            elif app is not None:
+                try:
+                    cleanup_result = _cleanup_unbound_dispatched_application(
+                        app,
+                        executable,
+                        preexisting_processes=before_processes,
+                        candidate_process=process,
+                    )
+                except Exception as cleanup_error:
+                    # Cleanup is evidence collection for an already-failed
+                    # startup.  It must not replace that causal exception or
+                    # accidentally turn an unbound PID into cleanup authority.
+                    cleanup_result = {
+                        "pid": process.get("pid") if process is not None else None,
+                        "exited": False,
+                        "forced_termination": False,
+                        "termination_error": (
+                            "exact-object unbound startup cleanup raised "
+                            f"{type(cleanup_error).__name__}: {cleanup_error}"
+                        ),
+                        "ownership_revalidated_before_quit": False,
+                        "process_identity": None,
+                        "unconfirmed_candidate_process": (
+                            dict(process) if process is not None else None
+                        ),
+                        "cleanup_authority": "exact_dispatched_com_object_only",
+                        "quit_attempted": None,
+                        "quit_succeeded": False,
+                        "wait_identity_verified": False,
+                        "pid_termination_attempted": False,
+                        "remaining_project_processes": None,
+                    }
+                    startup_error.add_note(cleanup_result["termination_error"])
+                finally:
+                    # Release the exact DispatchEx proxy while its COM apartment
+                    # is still initialized. Apartment teardown below remains
+                    # single-owner and is never performed by the helper.
+                    app = None
+            if cleanup_result is not None:
                 cleanup_stop_conditions = _process_cleanup_stop_conditions(
                     [cleanup_result]
                 )
+                if cleanup_stop_conditions:
+                    startup_error.add_note(
+                        "startup cleanup stop conditions: "
+                        f"{cleanup_stop_conditions!r}"
+                    )
                 _emit(
                     callback,
                     stage_name,
