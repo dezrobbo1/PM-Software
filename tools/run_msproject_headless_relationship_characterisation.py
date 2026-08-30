@@ -18,6 +18,7 @@ from typing import Any, Mapping
 from deterministic_scheduling_core.native.msproject import headless, headless_com
 from deterministic_scheduling_core.native.msproject.freeze import (
     NativeEvidenceError,
+    RegularFileSnapshot,
     read_regular_file_snapshot,
 )
 from deterministic_scheduling_core.native.msproject.headless import (
@@ -68,6 +69,8 @@ DEFAULT_TIMEOUTS = {
 NATIVE_WORKER_OPERATIONS = frozenset({"environment", "preflight", "case", "calendar"})
 COMPARISON_TIMEOUT_SECONDS = 60
 MAX_COMPARATOR_SOURCE_BYTES = 1024 * 1024
+MAX_COMPARISON_RESULT_BYTES = 4 * 1024 * 1024
+MAX_COMPARISON_JOURNAL_BYTES = 1024 * 1024
 PREFLIGHT_REQUIRED_OPERATIONS = frozenset(
     {
         "create_blank_project",
@@ -101,6 +104,32 @@ COMPARATOR_MODULE = "deterministic_scheduling_core.native.msproject.headless_com
 COMPARATOR_SOURCE_RELATIVE_PATH = (
     "src/deterministic_scheduling_core/native/msproject/headless_compare.py"
 )
+ORACLE_SOURCE_SPECS = {
+    "comparator": {
+        "module": COMPARATOR_MODULE,
+        "relative_path": COMPARATOR_SOURCE_RELATIVE_PATH,
+    },
+    "pilot": {
+        "module": "deterministic_scheduling_core.native.msproject.pilot",
+        "relative_path": "src/deterministic_scheduling_core/native/msproject/pilot.py",
+    },
+    "headless": {
+        "module": "deterministic_scheduling_core.native.msproject.headless",
+        "relative_path": "src/deterministic_scheduling_core/native/msproject/headless.py",
+    },
+    "freeze": {
+        "module": "deterministic_scheduling_core.native.msproject.freeze",
+        "relative_path": "src/deterministic_scheduling_core/native/msproject/freeze.py",
+    },
+    "canonical_json": {
+        "module": "deterministic_scheduling_core.provenance.canonical_json",
+        "relative_path": "src/deterministic_scheduling_core/provenance/canonical_json.py",
+    },
+    "msproject_package": {
+        "module": "deterministic_scheduling_core.native.msproject",
+        "relative_path": "src/deterministic_scheduling_core/native/msproject/__init__.py",
+    },
+}
 SEALED_REFERENCE_RELATIVE_DIRECTORY = (
     "native-validation/pilot-kits/microsoft-project-relationship-v0.1/"
     "sealed-expected-normalized"
@@ -148,6 +177,123 @@ def _safe_state(path: Path) -> dict[str, Any] | None:
         return _read_json(path)
     except (FileNotFoundError, json.JSONDecodeError, OSError, SupervisionError):
         return None
+
+
+def _parse_canonical_json_object(data: bytes, *, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(data.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise SupervisionError(f"{label} is not valid UTF-8 JSON") from error
+    if not isinstance(value, dict):
+        raise SupervisionError(f"{label} must be a JSON object")
+    try:
+        canonical = canonical_bytes(value) + b"\n"
+    except (TypeError, ValueError, UnicodeError) as error:
+        raise SupervisionError(f"{label} is outside canonical JSON") from error
+    if data != canonical:
+        raise SupervisionError(f"{label} is not exact canonical JSON")
+    return value
+
+
+def _read_canonical_json_object_snapshot(
+    path: Path, *, label: str, max_bytes: int
+) -> tuple[dict[str, Any], RegularFileSnapshot]:
+    try:
+        snapshot = read_regular_file_snapshot(
+            path, label=label, max_bytes=max_bytes
+        )
+    except NativeEvidenceError as error:
+        raise SupervisionError(
+            f"{label} is missing, unsafe, replaced, or exceeds its byte limit"
+        ) from error
+    return _parse_canonical_json_object(snapshot.data, label=label), snapshot
+
+
+def _validate_comparison_journal_event(
+    event: Mapping[str, Any],
+    *,
+    expected_sequence: int,
+    expected_worker_pid: int,
+) -> None:
+    if (
+        set(event) != {"sequence", "worker_pid", "stage", "phase", "details"}
+        or type(event.get("sequence")) is not int
+        or event.get("sequence") != expected_sequence
+        or type(event.get("worker_pid")) is not int
+        or event.get("worker_pid") != expected_worker_pid
+        or event.get("stage") != "comparison"
+        or not isinstance(event.get("phase"), str)
+        or type(event.get("details")) is not dict
+    ):
+        raise SupervisionError(
+            "comparison journal event identity or schema is malformed"
+        )
+
+
+def _read_comparison_terminal_digest(
+    *,
+    state_path: Path,
+    log_path: Path,
+    run_id: str,
+    worker_pid: int,
+) -> str:
+    state, state_snapshot = _read_canonical_json_object_snapshot(
+        state_path,
+        label="comparison terminal state",
+        max_bytes=MAX_COMPARISON_JOURNAL_BYTES,
+    )
+    try:
+        log_snapshot = read_regular_file_snapshot(
+            log_path,
+            label="comparison append-only journal",
+            max_bytes=MAX_COMPARISON_JOURNAL_BYTES,
+        )
+    except NativeEvidenceError as error:
+        raise SupervisionError(
+            "comparison append-only journal is missing, unsafe, replaced, or exceeds its byte limit"
+        ) from error
+    if not log_snapshot.data or not log_snapshot.data.endswith(b"\n"):
+        raise SupervisionError("comparison append-only journal is malformed")
+    event_lines = log_snapshot.data.splitlines(keepends=True)
+    events = [
+        _parse_canonical_json_object(
+            line, label=f"comparison journal event {sequence}"
+        )
+        for sequence, line in enumerate(event_lines, start=1)
+    ]
+    for sequence, event in enumerate(events, start=1):
+        _validate_comparison_journal_event(
+            event,
+            expected_sequence=sequence,
+            expected_worker_pid=worker_pid,
+        )
+    first = events[0]
+    if first["phase"] != "start" or first["details"] != {"run_id": run_id}:
+        raise SupervisionError("comparison journal start event is malformed")
+    if any(event["phase"] in {"complete", "error"} for event in events[:-1]):
+        raise SupervisionError(
+            "comparison journal contains an earlier conflicting terminal event"
+        )
+    terminal = events[-1]
+    _validate_comparison_journal_event(
+        state,
+        expected_sequence=len(events),
+        expected_worker_pid=worker_pid,
+    )
+    if state_snapshot.data != event_lines[-1]:
+        raise SupervisionError(
+            "comparison state disagrees with the append-only journal terminal event"
+        )
+    terminal_details = terminal["details"]
+    if (
+        terminal["phase"] != "complete"
+        or set(terminal_details) != {"result_sha256"}
+        or not _is_sha256(terminal_details.get("result_sha256"))
+    ):
+        raise SupervisionError(
+            "comparison journal lacks one well-formed terminal complete event"
+        )
+    return str(terminal_details["result_sha256"])
 
 
 def _identified_processes_from_log(log_path: Path) -> list[dict[str, Any]]:
@@ -708,10 +854,18 @@ def run_comparison_worker(
     log_path = workspace / "comparison-log.jsonl"
     stdout_path = workspace / "comparison-worker-stdout.log"
     stderr_path = workspace / "comparison-worker-stderr.log"
+    result_sidecar_path = _result_sidecar_path(result_path)
     pycache_prefix = workspace / (
         f"comparison-import-pycache-{secrets.token_hex(16)}"
     )
-    for path in (state_path, log_path, stdout_path, stderr_path, result_path):
+    for path in (
+        state_path,
+        log_path,
+        stdout_path,
+        stderr_path,
+        result_path,
+        result_sidecar_path,
+    ):
         if path.exists():
             raise SupervisionError(f"refusing to overwrite comparison evidence: {path}")
     if pycache_prefix.exists():
@@ -720,17 +874,26 @@ def run_comparison_worker(
         )
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
     with stdout_path.open("xb") as stdout, stderr_path.open("xb") as stderr:
-        comparator_source_path = repository_root / COMPARATOR_SOURCE_RELATIVE_PATH
+        source_snapshots = {}
         try:
-            comparator_snapshot = read_regular_file_snapshot(
-                comparator_source_path,
-                label="prelaunch comparator source",
-                max_bytes=MAX_COMPARATOR_SOURCE_BYTES,
-            )
-        except NativeEvidenceError as error:
+            for source_role, spec in ORACLE_SOURCE_SPECS.items():
+                source_snapshots[source_role] = read_regular_file_snapshot(
+                    repository_root / spec["relative_path"],
+                    label=f"prelaunch oracle source {source_role}",
+                    max_bytes=MAX_COMPARATOR_SOURCE_BYTES,
+                )
+        except (OSError, NativeEvidenceError) as error:
             raise SupervisionError(
-                "comparator source could not be captured before launch"
+                "oracle source bundle could not be captured before launch"
             ) from error
+        expected_source_bundle_json = json.dumps(
+            {
+                source_role: snapshot.sha256
+                for source_role, snapshot in source_snapshots.items()
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         command = [
             sys.executable,
             "-B",
@@ -742,8 +905,8 @@ def run_comparison_worker(
             str(repository_root),
             "--run-id",
             run_id,
-            "--expected-comparator-sha256",
-            comparator_snapshot.sha256,
+            "--expected-source-bundle-json",
+            expected_source_bundle_json,
             "--result",
             str(result_path),
             "--state",
@@ -782,20 +945,46 @@ def run_comparison_worker(
         raise SupervisionError(
             f"comparison worker failed ({return_code}): {message}"
         )
-    if not result_path.is_file():
-        raise SupervisionError("comparison worker did not write its result")
-    result = _read_json(result_path)
+    result, result_snapshot = _read_canonical_json_object_snapshot(
+        result_path,
+        label="comparison result",
+        max_bytes=MAX_COMPARISON_RESULT_BYTES,
+    )
+    terminal_digest = _read_comparison_terminal_digest(
+        state_path=state_path,
+        log_path=log_path,
+        run_id=run_id,
+        worker_pid=process.pid,
+    )
+    if result_snapshot.sha256 != terminal_digest:
+        raise SupervisionError(
+            "comparison terminal journal digest does not authenticate the stable result snapshot"
+        )
     provenance = result.get("oracle_provenance")
-    comparator = (
-        provenance.get("comparator") if isinstance(provenance, Mapping) else None
+    source_bundle = (
+        provenance.get("source_bundle")
+        if isinstance(provenance, Mapping)
+        else None
     )
     if (
-        not isinstance(comparator, Mapping)
-        or comparator.get("sha256") != comparator_snapshot.sha256
+        not isinstance(source_bundle, Mapping)
+        or set(source_bundle) != set(ORACLE_SOURCE_SPECS)
+        or any(
+            not isinstance(source_bundle.get(source_role), Mapping)
+            or set(source_bundle[source_role])
+            != {"module", "relative_path", "sha256"}
+            or source_bundle[source_role].get("module") != spec["module"]
+            or source_bundle[source_role].get("relative_path")
+            != spec["relative_path"]
+            or source_bundle[source_role].get("sha256")
+            != source_snapshots[source_role].sha256
+            for source_role, spec in ORACLE_SOURCE_SPECS.items()
+        )
     ):
         raise SupervisionError(
-            "comparison result comparator provenance differs from the prelaunch snapshot"
+            "comparison result oracle source provenance differs from the prelaunch snapshots"
         )
+    _write_result_sidecar(result_path, result_sha256=result_snapshot.sha256)
     return result
 
 
@@ -829,9 +1018,14 @@ def _is_sha256(value: Any) -> bool:
     )
 
 
-def _write_result_sidecar(path: Path) -> None:
+def _write_result_sidecar(
+    path: Path, *, result_sha256: str | None = None
+) -> None:
+    digest = sha256_file(path) if result_sha256 is None else result_sha256
+    if not _is_sha256(digest):
+        raise SupervisionError(f"result digest is malformed: {path}")
     headless.durable_write_bytes(
-        _result_sidecar_path(path), f"{sha256_file(path)}\n".encode("ascii")
+        _result_sidecar_path(path), f"{digest}\n".encode("ascii")
     )
 
 
@@ -1639,8 +1833,10 @@ def _validate_comparison_result(
             "comparison did not return twelve unique cases in canonical order"
         )
     provenance = comparison.get("oracle_provenance")
-    comparator = (
-        provenance.get("comparator") if isinstance(provenance, Mapping) else None
+    source_bundle = (
+        provenance.get("source_bundle")
+        if isinstance(provenance, Mapping)
+        else None
     )
     references = (
         provenance.get("sealed_references")
@@ -1653,18 +1849,23 @@ def _validate_comparison_result(
     ]
     if (
         not isinstance(provenance, Mapping)
-        or set(provenance) != {"schema_version", "comparator", "sealed_references"}
+        or set(provenance) != {"schema_version", "source_bundle", "sealed_references"}
         or provenance.get("schema_version") != ORACLE_PROVENANCE_SCHEMA
-        or not isinstance(comparator, Mapping)
-        or set(comparator) != {"module", "relative_path", "sha256"}
-        or comparator.get("module") != COMPARATOR_MODULE
-        or comparator.get("relative_path") != COMPARATOR_SOURCE_RELATIVE_PATH
-        or not _is_sha256(comparator.get("sha256"))
+        or not isinstance(source_bundle, Mapping)
+        or set(source_bundle) != set(ORACLE_SOURCE_SPECS)
+        or any(
+            not isinstance(source_bundle.get(source_role), Mapping)
+            or set(source_bundle[source_role]) != {"module", "relative_path", "sha256"}
+            or source_bundle[source_role].get("module") != spec["module"]
+            or source_bundle[source_role].get("relative_path") != spec["relative_path"]
+            or not _is_sha256(source_bundle[source_role].get("sha256"))
+            for source_role, spec in ORACLE_SOURCE_SPECS.items()
+        )
         or not isinstance(references, list)
         or len(references) != len(CASE_IDS)
     ):
         raise SupervisionError(
-            "comparison lacks exact comparator and sealed-reference provenance"
+            "comparison lacks exact oracle-source and sealed-reference provenance"
         )
     for case_id, relative_path, reference in zip(
         CASE_IDS, expected_reference_paths, references, strict=True
@@ -1860,8 +2061,8 @@ def _verify_cached_comparison_against_current_oracle(
         workspace=verification_workspace,
         result_path=verification_path,
     )
+    _verify_result_sidecar(verification_path)
     _validate_comparison_result(current, run_id=run.run_id)
-    _write_result_sidecar(verification_path)
     try:
         current_bytes = canonical_bytes(current)
         cached_bytes = canonical_bytes(cached)
@@ -1947,9 +2148,8 @@ def _complete_run(
             workspace=comparison_workspace,
             result_path=comparison_path,
         )
+    _verify_result_sidecar(comparison_path)
     _validate_comparison_result(comparison, run_id=run.run_id)
-    if not _result_sidecar_path(comparison_path).exists():
-        _write_result_sidecar(comparison_path)
     reopen_results = [_reopen_result(observations[case_id]) for case_id in CASE_IDS]
     completion = {
         "schema_version": "headless-msproject-run-completion-v0.1",

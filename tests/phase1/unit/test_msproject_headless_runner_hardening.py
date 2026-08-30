@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from deterministic_scheduling_core.native.msproject import (
+    freeze,
     headless,
     headless_compare,
     pilot,
@@ -76,10 +77,15 @@ def _comparison() -> dict:
         "manual_native_semantic_parity_status_emitted": False,
         "oracle_provenance": {
             "schema_version": "headless-msproject-oracle-provenance-v0.1",
-            "comparator": {
-                "module": "deterministic_scheduling_core.native.msproject.headless_compare",
-                "relative_path": "src/deterministic_scheduling_core/native/msproject/headless_compare.py",
-                "sha256": "a" * 64,
+            "source_bundle": {
+                source_role: {
+                    "module": spec["module"],
+                    "relative_path": spec["relative_path"],
+                    "sha256": f"{index:064x}",
+                }
+                for index, (source_role, spec) in enumerate(
+                    headless_compare.ORACLE_SOURCE_SPECS.items(), start=1
+                )
             },
             "sealed_references": [
                 {
@@ -374,7 +380,11 @@ class RunnerHardeningTests(unittest.TestCase):
 
         def emit_current(*, result_path: Path, **_kwargs: object) -> dict:
             result_path.parent.mkdir(parents=True, exist_ok=True)
-            headless.durable_write_canonical_json(result_path, current)
+            digest = headless.durable_write_canonical_json(result_path, current)
+            headless.durable_write_bytes(
+                runner["_result_sidecar_path"](result_path),
+                f"{digest}\n".encode("ascii"),
+            )
             return current
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -438,6 +448,10 @@ class RunnerHardeningTests(unittest.TestCase):
                 result_path.write_text(
                     json.dumps(current, sort_keys=True) + "\n", encoding="utf-8"
                 )
+                headless.durable_write_bytes(
+                    runner["_result_sidecar_path"](result_path),
+                    f"{headless.sha256_file(result_path)}\n".encode("ascii"),
+                )
                 return current
 
             with patch.dict(
@@ -481,7 +495,7 @@ class RunnerHardeningTests(unittest.TestCase):
                 ].__globals__,
                 {"run_comparison_worker": comparator},
             ), self.assertRaisesRegex(
-                runner["SupervisionError"], "lacks exact comparator"
+                runner["SupervisionError"], "lacks exact oracle-source"
             ):
                 runner["_verify_cached_comparison_against_current_oracle"](
                     run, missing
@@ -766,13 +780,15 @@ class RunnerHardeningTests(unittest.TestCase):
                         + "\n",
                         encoding="utf-8",
                     )
-                    digest = Mock(
+                    fixture_binding = Mock(
                         side_effect=AssertionError(
-                            "invalid sealed identity reached provenance hashing"
+                            "invalid sealed identity reached fixture binding"
                         )
                     )
                     with patch.object(
-                        headless_compare.hashlib, "sha256", digest
+                        headless_compare,
+                        "_bound_fixture_identity",
+                        fixture_binding,
                     ), patch.object(
                         headless_compare,
                         "FIXTURE_RAW_SHA256_BY_CASE_ID",
@@ -783,7 +799,72 @@ class RunnerHardeningTests(unittest.TestCase):
                         headless_compare._default_expected_snapshot(
                             root, "SEM-REL-001"
                         )
-                    digest.assert_not_called()
+                    fixture_binding.assert_not_called()
+
+    def test_sealed_snapshot_is_bounded_before_json_parse(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sealed_path = root.joinpath(
+                *headless_compare.SEALED_DIRECTORY.parts,
+                "SEM-REL-001.json",
+            )
+            sealed_path.parent.mkdir(parents=True)
+            sealed_path.write_bytes(
+                b" " * (headless_compare.MAX_ORACLE_JSON_BYTES + 1)
+            )
+            with self.assertRaisesRegex(
+                headless.ObservationFreezeError,
+                "stable bounded regular-file snapshot",
+            ):
+                headless_compare._default_expected_snapshot(
+                    root, "SEM-REL-001"
+                )
+
+    def test_sealed_snapshot_rejects_duplicate_json_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sealed_path = root.joinpath(
+                *headless_compare.SEALED_DIRECTORY.parts,
+                "SEM-REL-001.json",
+            )
+            sealed_path.parent.mkdir(parents=True)
+            sealed_path.write_bytes(b'{"case_id":"one","case_id":"two"}\n')
+            with self.assertRaisesRegex(
+                headless.ObservationFreezeError,
+                "strict UTF-8 JSON",
+            ):
+                headless_compare._default_expected_snapshot(
+                    root, "SEM-REL-001"
+                )
+
+    def test_sealed_snapshot_classifies_path_replacement_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sealed_path = root.joinpath(
+                *headless_compare.SEALED_DIRECTORY.parts,
+                "SEM-REL-001.json",
+            )
+            stable_reader = Mock(
+                side_effect=freeze.NativeEvidenceError(
+                    "sealed path was replaced while it was read"
+                )
+            )
+            with patch.object(
+                headless_compare,
+                "read_regular_file_snapshot",
+                stable_reader,
+            ), self.assertRaisesRegex(
+                headless.ObservationFreezeError,
+                "stable bounded regular-file snapshot",
+            ):
+                headless_compare._default_expected_snapshot(
+                    root, "SEM-REL-001"
+                )
+            stable_reader.assert_called_once_with(
+                sealed_path,
+                label="sealed normalized expectation",
+                max_bytes=headless_compare.MAX_ORACLE_JSON_BYTES,
+            )
 
     def test_bound_fixture_projection_uses_one_exact_snapshot(self) -> None:
         sealed, _fixture, fixture_bytes, fixture_digest = (
@@ -818,7 +899,13 @@ class RunnerHardeningTests(unittest.TestCase):
                 headless_compare._default_expected_snapshot(
                     root, "SEM-REL-001"
                 )
-            reader.assert_called_once_with(
+            self.assertEqual(2, reader.call_count)
+            reader.assert_any_call(
+                sealed_path,
+                label="sealed normalized expectation",
+                max_bytes=headless_compare.MAX_ORACLE_JSON_BYTES,
+            )
+            reader.assert_any_call(
                 fixture_path,
                 label="bound full fixture SEM-REL-001",
                 max_bytes=headless_compare.MAX_ORACLE_JSON_BYTES,
@@ -881,52 +968,111 @@ class RunnerHardeningTests(unittest.TestCase):
                             root, "SEM-REL-001"
                         )
 
-    def test_comparator_source_mutation_after_import_is_rejected(self) -> None:
-        imported_bytes = b"synthetic imported comparator source\n"
-        imported_sha256 = hashlib.sha256(imported_bytes).hexdigest()
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            source_path = root.joinpath(*headless_compare.COMPARATOR_SOURCE.parts)
-            source_path.parent.mkdir(parents=True)
-            source_path.write_bytes(imported_bytes)
-            with patch.object(
-                headless_compare,
-                "_IMPORTED_COMPARATOR_SOURCE_PATH",
-                source_path.resolve(),
-            ), patch.object(
-                headless_compare,
-                "_IMPORTED_COMPARATOR_SOURCE_BYTES",
-                imported_bytes,
-            ), patch.object(
-                headless_compare,
-                "_IMPORTED_COMPARATOR_SOURCE_SHA256",
-                imported_sha256,
+    def test_oracle_source_mutation_after_import_is_rejected(self) -> None:
+        for source_role in headless_compare.ORACLE_SOURCE_SPECS:
+            with (
+                self.subTest(source_role=source_role),
+                tempfile.TemporaryDirectory() as temporary,
             ):
-                identity = headless_compare._comparator_source_identity(
-                    root, require_repository_source=True
-                )
-                self.assertEqual(imported_sha256, identity["sha256"])
-
-                source_path.write_bytes(b"synthetic mutated comparator source\n")
-                with self.assertRaisesRegex(
-                    headless.ObservationFreezeError, "changed after.*import-time"
+                imported_bytes = f"synthetic imported {source_role} source\n".encode()
+                imported_sha256 = hashlib.sha256(imported_bytes).hexdigest()
+                root = Path(temporary)
+                relative_path = headless_compare.ORACLE_SOURCE_SPECS[source_role][
+                    "relative_path"
+                ]
+                source_path = root / relative_path
+                source_path.parent.mkdir(parents=True)
+                source_path.write_bytes(imported_bytes)
+                with patch.dict(
+                    headless_compare._IMPORTED_ORACLE_SOURCE_PATHS,
+                    {source_role: source_path.resolve()},
+                ), patch.dict(
+                    headless_compare._IMPORTED_ORACLE_SOURCE_BYTES,
+                    {source_role: imported_bytes},
+                ), patch.dict(
+                    headless_compare._IMPORTED_ORACLE_SOURCE_SHA256,
+                    {source_role: imported_sha256},
                 ):
-                    headless_compare._comparator_source_identity(
-                        root, require_repository_source=True
+                    identity = headless_compare._oracle_source_identity(
+                        root,
+                        source_role,
+                        require_repository_source=True,
                     )
+                    self.assertEqual(imported_sha256, identity["sha256"])
 
-    def test_imported_comparator_must_match_parent_prelaunch_digest(self) -> None:
-        imported_sha256 = "a" * 64
-        with patch.object(
-            headless_compare,
-            "_IMPORTED_COMPARATOR_SOURCE_SHA256",
-            imported_sha256,
+                    source_path.write_bytes(
+                        f"synthetic mutated {source_role} source\n".encode()
+                    )
+                    with self.assertRaisesRegex(
+                        headless.ObservationFreezeError,
+                        "changed after.*import-time",
+                    ):
+                        headless_compare._oracle_source_identity(
+                            root,
+                            source_role,
+                            require_repository_source=True,
+                        )
+
+    def test_parent_and_child_oracle_source_specs_match_exactly(self) -> None:
+        runner = _runner()
+        self.assertEqual(
+            headless_compare.ORACLE_SOURCE_SPECS,
+            runner["ORACLE_SOURCE_SPECS"],
+        )
+        self.assertEqual(
+            {
+                "comparator",
+                "pilot",
+                "headless",
+                "freeze",
+                "canonical_json",
+                "msproject_package",
+            },
+            set(headless_compare.ORACLE_SOURCE_SPECS),
+        )
+        self.assertTrue(
+            all(
+                spec["relative_path"].endswith(".py")
+                for spec in headless_compare.ORACLE_SOURCE_SPECS.values()
+            )
+        )
+
+    def test_regular_file_snapshot_forces_binary_descriptor(self) -> None:
+        payload = b"line-one\r\nline-two\r\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "windows-crlf-source.py"
+            path.write_bytes(payload)
+            original_open = freeze.os.open
+            observed_flags: list[int] = []
+
+            def open_binary(target: Path, flags: int, *args: object) -> int:
+                observed_flags.append(flags)
+                return original_open(target, flags, *args)
+
+            with patch.object(freeze.os, "open", side_effect=open_binary):
+                snapshot = freeze.read_regular_file_snapshot(
+                    path,
+                    label="CRLF source",
+                    max_bytes=1024,
+                )
+            self.assertEqual(payload, snapshot.data)
+            self.assertEqual(len(payload), snapshot.byte_size)
+            self.assertEqual(1, len(observed_flags))
+            binary_flag = getattr(freeze.os, "O_BINARY", 0)
+            if binary_flag:
+                self.assertEqual(binary_flag, observed_flags[0] & binary_flag)
+
+    def test_imported_sources_must_match_parent_prelaunch_bundle(self) -> None:
+        imported = dict(headless_compare._IMPORTED_ORACLE_SOURCE_SHA256)
+        expected_json = json.dumps(imported, sort_keys=True, separators=(",", ":"))
+        headless_compare._require_parent_source_bundle(expected_json)
+        imported["pilot"] = "b" * 64
+        with self.assertRaisesRegex(
+            headless.ObservationFreezeError, "parent prelaunch snapshots"
         ):
-            headless_compare._require_parent_comparator_identity(imported_sha256)
-            with self.assertRaisesRegex(
-                headless.ObservationFreezeError, "parent prelaunch snapshot"
-            ):
-                headless_compare._require_parent_comparator_identity("b" * 64)
+            headless_compare._require_parent_source_bundle(
+                json.dumps(imported, sort_keys=True, separators=(",", ":"))
+            )
 
     def test_worker_result_contradiction_fails_before_freeze(self) -> None:
         helpers = runpy.run_path(str(LEGACY_TEST))

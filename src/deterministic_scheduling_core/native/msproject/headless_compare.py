@@ -15,8 +15,14 @@ from pathlib import Path, PurePosixPath
 import sys
 from typing import Any, Callable, Mapping
 
+from deterministic_scheduling_core.provenance import (
+    canonical_json as canonical_json_module,
+)
 from deterministic_scheduling_core.provenance.canonical_json import canonical_bytes
 
+from . import freeze as freeze_module
+from . import headless as headless_module
+from . import pilot as pilot_module
 from .freeze import (
     NativeEvidenceError,
     read_regular_file_snapshot,
@@ -57,6 +63,32 @@ COMPARATOR_MODULE = (
 COMPARATOR_SOURCE = PurePosixPath(
     "src/deterministic_scheduling_core/native/msproject/headless_compare.py"
 )
+ORACLE_SOURCE_SPECS = {
+    "comparator": {
+        "module": COMPARATOR_MODULE,
+        "relative_path": COMPARATOR_SOURCE.as_posix(),
+    },
+    "pilot": {
+        "module": "deterministic_scheduling_core.native.msproject.pilot",
+        "relative_path": "src/deterministic_scheduling_core/native/msproject/pilot.py",
+    },
+    "headless": {
+        "module": "deterministic_scheduling_core.native.msproject.headless",
+        "relative_path": "src/deterministic_scheduling_core/native/msproject/headless.py",
+    },
+    "freeze": {
+        "module": "deterministic_scheduling_core.native.msproject.freeze",
+        "relative_path": "src/deterministic_scheduling_core/native/msproject/freeze.py",
+    },
+    "canonical_json": {
+        "module": "deterministic_scheduling_core.provenance.canonical_json",
+        "relative_path": "src/deterministic_scheduling_core/provenance/canonical_json.py",
+    },
+    "msproject_package": {
+        "module": "deterministic_scheduling_core.native.msproject",
+        "relative_path": "src/deterministic_scheduling_core/native/msproject/__init__.py",
+    },
+}
 MAX_ORACLE_JSON_BYTES = 1024 * 1024
 MAX_COMPARATOR_SOURCE_BYTES = 1024 * 1024
 ORACLE_PROVENANCE_SCHEMA = "headless-msproject-oracle-provenance-v0.1"
@@ -117,17 +149,33 @@ _SEALED_CLAIM_BOUNDARY = {
     ),
 }
 
+_ORACLE_SOURCE_MODULES = {
+    "comparator": sys.modules[__name__],
+    "pilot": pilot_module,
+    "headless": headless_module,
+    "freeze": freeze_module,
+    "canonical_json": canonical_json_module,
+    "msproject_package": sys.modules[__package__],
+}
+_IMPORTED_ORACLE_SOURCE_PATHS: dict[str, Path] = {}
+_IMPORTED_ORACLE_SOURCE_BYTES: dict[str, bytes] = {}
+_IMPORTED_ORACLE_SOURCE_SHA256: dict[str, str] = {}
 try:
-    _IMPORTED_COMPARATOR_SOURCE_PATH = Path(__file__).resolve(strict=True)
-    _imported_comparator_source_snapshot = read_regular_file_snapshot(
-        _IMPORTED_COMPARATOR_SOURCE_PATH,
-        label="imported comparison source",
-        max_bytes=MAX_COMPARATOR_SOURCE_BYTES,
-    )
+    for _source_role, _source_module in _ORACLE_SOURCE_MODULES.items():
+        _source_file = getattr(_source_module, "__file__", None)
+        if not isinstance(_source_file, str):
+            raise OSError(f"{_source_role} module has no source path")
+        _source_path = Path(_source_file).resolve(strict=True)
+        _source_snapshot = read_regular_file_snapshot(
+            _source_path,
+            label=f"imported oracle source {_source_role}",
+            max_bytes=MAX_COMPARATOR_SOURCE_BYTES,
+        )
+        _IMPORTED_ORACLE_SOURCE_PATHS[_source_role] = _source_path
+        _IMPORTED_ORACLE_SOURCE_BYTES[_source_role] = _source_snapshot.data
+        _IMPORTED_ORACLE_SOURCE_SHA256[_source_role] = _source_snapshot.sha256
 except (OSError, NativeEvidenceError) as error:
-    raise ImportError("comparison source identity cannot be captured at import") from error
-_IMPORTED_COMPARATOR_SOURCE_BYTES = _imported_comparator_source_snapshot.data
-_IMPORTED_COMPARATOR_SOURCE_SHA256 = _imported_comparator_source_snapshot.sha256
+    raise ImportError("oracle source bundle cannot be captured at import") from error
 
 
 def _exact_json_value(value: Any, expected: Any) -> bool:
@@ -302,7 +350,7 @@ def _bound_fixture_identity(
                 "bound full fixture digest does not match the known case identity"
             )
         fixture = _parse_fixture_json(snapshot.data, case_id=case_id)
-    except NativeEvidenceError as error:
+    except (OSError, NativeEvidenceError) as error:
         raise ObservationFreezeError(
             "bound full fixture is not a stable bounded regular-file snapshot"
         ) from error
@@ -416,17 +464,24 @@ def _default_expected_snapshot(
 
     relative_path = SEALED_DIRECTORY / f"{case_id}.json"
     path = repository_root.joinpath(*relative_path.parts)
-    _regular_file(path, label="sealed normalized expectation")
     try:
-        expected_bytes = path.read_bytes()
-        if len(expected_bytes) > 1024 * 1024:
-            raise ObservationFreezeError(
-                "sealed normalized expectation exceeds the bounded 1 MiB limit"
-            )
-        value = json.loads(expected_bytes.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        snapshot = read_regular_file_snapshot(
+            path,
+            label="sealed normalized expectation",
+            max_bytes=MAX_ORACLE_JSON_BYTES,
+        )
+    except (OSError, NativeEvidenceError) as error:
         raise ObservationFreezeError(
-            "sealed normalized expectation is not valid UTF-8 JSON"
+            "sealed normalized expectation is not a stable bounded regular-file snapshot"
+        ) from error
+    try:
+        value = json.loads(
+            snapshot.data.decode("utf-8"),
+            object_pairs_hook=_strict_json_object,
+        )
+    except (UnicodeError, json.JSONDecodeError, _DuplicateJsonKeyError) as error:
+        raise ObservationFreezeError(
+            "sealed normalized expectation is not strict UTF-8 JSON"
         ) from error
     if not isinstance(value, dict):
         raise ObservationFreezeError(
@@ -440,56 +495,72 @@ def _default_expected_snapshot(
     return value, {
         "case_id": case_id,
         "relative_path": relative_path.as_posix(),
-        "sha256": hashlib.sha256(expected_bytes).hexdigest(),
+        "sha256": snapshot.sha256,
         "source_kind": "sealed_reference_byte_snapshot",
         "bound_fixture": fixture_identity,
     }
 
 
-def _comparator_source_identity(
-    repository_root: Path, *, require_repository_source: bool
+def _oracle_source_identity(
+    repository_root: Path,
+    source_role: str,
+    *,
+    require_repository_source: bool,
 ) -> dict[str, str]:
-    """Bind provenance to import-time bytes and reject later source mutation."""
+    """Bind one executed oracle module to its import-time source bytes."""
 
-    repository_path = repository_root.joinpath(*COMPARATOR_SOURCE.parts)
+    spec = ORACLE_SOURCE_SPECS[source_role]
+    relative_path = PurePosixPath(spec["relative_path"])
+    repository_path = repository_root.joinpath(*relative_path.parts)
+    imported_path = _IMPORTED_ORACLE_SOURCE_PATHS[source_role]
     if require_repository_source:
         try:
-            if (
-                repository_path.resolve(strict=True)
-                != _IMPORTED_COMPARATOR_SOURCE_PATH
-            ):
+            if repository_path.resolve(strict=True) != imported_path:
                 raise ObservationFreezeError(
-                    "executed comparator is not the checked-out repository source"
+                    f"executed {source_role} oracle module is not the checked-out repository source"
                 )
         except OSError as error:
             raise ObservationFreezeError(
-                "checked-out comparison source cannot be resolved"
+                f"checked-out {source_role} oracle source cannot be resolved"
             ) from error
         path = repository_path
     else:
         # Injected readers are a parser/test seam, never a production cache.
-        path = _IMPORTED_COMPARATOR_SOURCE_PATH
+        path = imported_path
     try:
         current = read_regular_file_snapshot(
             path,
-            label="current comparison source",
+            label=f"current oracle source {source_role}",
             max_bytes=MAX_COMPARATOR_SOURCE_BYTES,
         )
-    except NativeEvidenceError as error:
+    except (OSError, NativeEvidenceError) as error:
         raise ObservationFreezeError(
-            "comparison source cannot be read as a stable bounded snapshot"
+            f"{source_role} oracle source cannot be read as a stable bounded snapshot"
         ) from error
     if (
-        current.sha256 != _IMPORTED_COMPARATOR_SOURCE_SHA256
-        or current.data != _IMPORTED_COMPARATOR_SOURCE_BYTES
+        current.sha256 != _IMPORTED_ORACLE_SOURCE_SHA256[source_role]
+        or current.data != _IMPORTED_ORACLE_SOURCE_BYTES[source_role]
     ):
         raise ObservationFreezeError(
-            "comparison source changed after its import-time identity was captured"
+            f"{source_role} oracle source changed after its import-time identity was captured"
         )
     return {
-        "module": COMPARATOR_MODULE,
-        "relative_path": COMPARATOR_SOURCE.as_posix(),
-        "sha256": _IMPORTED_COMPARATOR_SOURCE_SHA256,
+        "module": spec["module"],
+        "relative_path": spec["relative_path"],
+        "sha256": _IMPORTED_ORACLE_SOURCE_SHA256[source_role],
+    }
+
+
+def _oracle_source_bundle_identity(
+    repository_root: Path, *, require_repository_source: bool
+) -> dict[str, dict[str, str]]:
+    return {
+        source_role: _oracle_source_identity(
+            repository_root,
+            source_role,
+            require_repository_source=require_repository_source,
+        )
+        for source_role in ORACLE_SOURCE_SPECS
     }
 
 
@@ -566,7 +637,7 @@ def compare_frozen_observations(
     # The source identity and sealed snapshots are intentionally acquired only
     # after every frozen native observation has passed stop validation and
     # normalization.  Native construction never imports this module.
-    comparator_identity = _comparator_source_identity(
+    source_bundle_identity = _oracle_source_bundle_identity(
         run.repository_root,
         require_repository_source=expected_reader is _default_expected_reader,
     )
@@ -647,7 +718,7 @@ def compare_frozen_observations(
         "manual_native_semantic_parity_status_emitted": False,
         "oracle_provenance": {
             "schema_version": ORACLE_PROVENANCE_SCHEMA,
-            "comparator": comparator_identity,
+            "source_bundle": source_bundle_identity,
             "sealed_references": reference_identities,
         },
         "cases": cases,
@@ -688,10 +759,28 @@ class _Journal:
             os.replace(temporary, self.state_path)
 
 
-def _require_parent_comparator_identity(expected_sha256: str) -> None:
-    if expected_sha256 != _IMPORTED_COMPARATOR_SOURCE_SHA256:
+def _require_parent_source_bundle(expected_json: str) -> None:
+    try:
+        expected = json.loads(
+            expected_json,
+            object_pairs_hook=_strict_json_object,
+        )
+    except (json.JSONDecodeError, _DuplicateJsonKeyError) as error:
         raise ObservationFreezeError(
-            "imported comparator source differs from the parent prelaunch snapshot"
+            "parent prelaunch oracle source bundle is malformed"
+        ) from error
+    if (
+        not isinstance(expected, dict)
+        or set(expected) != set(ORACLE_SOURCE_SPECS)
+        or any(
+            not isinstance(expected.get(source_role), str)
+            or expected[source_role]
+            != _IMPORTED_ORACLE_SOURCE_SHA256[source_role]
+            for source_role in ORACLE_SOURCE_SPECS
+        )
+    ):
+        raise ObservationFreezeError(
+            "imported oracle source bundle differs from the parent prelaunch snapshots"
         )
 
 
@@ -699,7 +788,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository-root", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--expected-comparator-sha256", required=True)
+    parser.add_argument("--expected-source-bundle-json", required=True)
     parser.add_argument("--result", type=Path, required=True)
     parser.add_argument("--state", type=Path)
     parser.add_argument("--log", type=Path)
@@ -711,7 +800,7 @@ def main(arguments: list[str] | None = None) -> int:
     journal = _Journal(args.state, args.log)
     journal.emit("start", {"run_id": args.run_id})
     try:
-        _require_parent_comparator_identity(args.expected_comparator_sha256)
+        _require_parent_source_bundle(args.expected_source_bundle_json)
         run = create_run_workspace(
             args.repository_root.resolve(), args.run_id, resume=True
         )

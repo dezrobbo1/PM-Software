@@ -222,11 +222,17 @@ def read_regular_file_snapshot(
     Hashes, byte sizes, JSON/XML parsing and later evidence bindings can all be
     derived from this one byte snapshot.  ``O_NOFOLLOW`` protects the final path
     component where the host provides it; the existing component checks and the
-    post-read inode comparison cover the portable fallback.
+    post-read inode comparison cover the portable fallback. ``O_BINARY`` prevents
+    Windows from translating CRLF bytes while the descriptor is read.
     """
 
     _require_regular_file(path, label=label)
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
     try:
         descriptor = os.open(path, flags)
     except OSError as exc:

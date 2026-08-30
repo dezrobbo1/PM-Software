@@ -22,6 +22,75 @@ from deterministic_scheduling_core.native.msproject import (
 ROOT = Path(__file__).resolve().parents[3]
 
 
+def _write_synthetic_oracle_sources(root: Path, runner: dict) -> dict[str, str]:
+    digests: dict[str, str] = {}
+    for source_role, spec in runner["ORACLE_SOURCE_SPECS"].items():
+        source_path = root / spec["relative_path"]
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_bytes(
+            f"synthetic {source_role} oracle source\r\n".encode("ascii")
+        )
+        digests[source_role] = headless.sha256_file(source_path)
+    return digests
+
+
+def _synthetic_source_bundle_provenance(
+    runner: dict, digests: dict[str, str]
+) -> dict[str, dict[str, str]]:
+    return {
+        source_role: {
+            "module": spec["module"],
+            "relative_path": spec["relative_path"],
+            "sha256": digests[source_role],
+        }
+        for source_role, spec in runner["ORACLE_SOURCE_SPECS"].items()
+    }
+
+
+def _comparison_journal_event(
+    *, sequence: int, worker_pid: int, phase: str, details: dict
+) -> dict:
+    return {
+        "sequence": sequence,
+        "worker_pid": worker_pid,
+        "stage": "comparison",
+        "phase": phase,
+        "details": details,
+    }
+
+
+def _write_synthetic_comparison_evidence(
+    *,
+    result_path: Path,
+    state_path: Path,
+    log_path: Path,
+    result: dict,
+    worker_pid: int,
+    run_id: str = "test",
+) -> tuple[str, list[dict]]:
+    result_sha256 = headless.durable_write_canonical_json(result_path, result)
+    events = [
+        _comparison_journal_event(
+            sequence=1,
+            worker_pid=worker_pid,
+            phase="start",
+            details={"run_id": run_id},
+        ),
+        _comparison_journal_event(
+            sequence=2,
+            worker_pid=worker_pid,
+            phase="complete",
+            details={"result_sha256": result_sha256},
+        ),
+    ]
+    headless.durable_write_bytes(
+        log_path,
+        b"".join(headless.canonical_bytes(event) + b"\n" for event in events),
+    )
+    headless.durable_write_canonical_json(state_path, events[-1])
+    return result_sha256, events
+
+
 def _source(case_id: str = "SEM-REL-001") -> dict:
     return headless.load_source_only_projection(ROOT, case_id)
 
@@ -561,12 +630,8 @@ class EvidenceBoundaryTests(unittest.TestCase):
             )
             with patch.object(
                 headless_compare,
-                "_comparator_source_identity",
-                return_value={
-                    "module": headless_compare.COMPARATOR_MODULE,
-                    "relative_path": headless_compare.COMPARATOR_SOURCE.as_posix(),
-                    "sha256": "0" * 64,
-                },
+                "_oracle_source_bundle_identity",
+                return_value={},
             ), patch.object(
                 headless_compare, "_expected_projection", projector
             ), self.assertRaisesRegex(
@@ -587,6 +652,10 @@ class EvidenceBoundaryTests(unittest.TestCase):
             events.append(f"oracle:{case_id}")
             raise headless.ObservationFreezeError("synthetic oracle stop")
 
+        def source_bundle(*_args: object, **_kwargs: object) -> dict:
+            events.append("source-bundle")
+            return {}
+
         with tempfile.TemporaryDirectory() as temporary:
             run = headless.create_run_workspace(Path(temporary), "oracle-order")
             for case_id in headless.CASE_IDS:
@@ -604,12 +673,8 @@ class EvidenceBoundaryTests(unittest.TestCase):
                 headless_compare, "normalize_observation", side_effect=normalize
             ), patch.object(
                 headless_compare,
-                "_comparator_source_identity",
-                return_value={
-                    "module": headless_compare.COMPARATOR_MODULE,
-                    "relative_path": headless_compare.COMPARATOR_SOURCE.as_posix(),
-                    "sha256": "0" * 64,
-                },
+                "_oracle_source_bundle_identity",
+                side_effect=source_bundle,
             ), patch.object(
                 headless_compare,
                 "_default_expected_snapshot",
@@ -620,7 +685,7 @@ class EvidenceBoundaryTests(unittest.TestCase):
                 headless_compare.compare_frozen_observations(run)
         self.assertEqual(
             [f"normalize:{case_id}" for case_id in headless.CASE_IDS]
-            + ["oracle:SEM-REL-001"],
+            + ["source-bundle", "oracle:SEM-REL-001"],
             events,
         )
 
@@ -1371,40 +1436,54 @@ class ParentOwnershipEvidenceTests(unittest.TestCase):
         )
 
         class CompletedProcess:
+            pid = 4_901
+
             def wait(self, timeout: int | None = None) -> int:
                 return 0
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            comparator_source = root / runner[
-                "COMPARATOR_SOURCE_RELATIVE_PATH"
-            ]
-            comparator_source.parent.mkdir(parents=True)
-            comparator_source.write_bytes(b"synthetic comparator source\n")
-            comparator_sha256 = headless.sha256_file(comparator_source)
+            source_digests = _write_synthetic_oracle_sources(root, runner)
+            expected_source_bundle_json = json.dumps(
+                source_digests, sort_keys=True, separators=(",", ":")
+            )
             result_path = root / "comparison.json"
             commands: list[list[str]] = []
+            result_digests: list[str] = []
 
             def popen(command: list[str], **_kwargs: object) -> CompletedProcess:
                 commands.append(command)
-                result_path.write_text(
-                    json.dumps(
-                        {
-                            "status": "ok",
-                            "oracle_provenance": {
-                                "comparator": {"sha256": comparator_sha256}
-                            },
-                        }
-                    )
-                    + "\n",
-                    encoding="utf-8",
+                result_digest, _events = _write_synthetic_comparison_evidence(
+                    result_path=result_path,
+                    state_path=Path(command[command.index("--state") + 1]),
+                    log_path=Path(command[command.index("--log") + 1]),
+                    worker_pid=CompletedProcess.pid,
+                    result={
+                        "status": "ok",
+                        "oracle_provenance": {
+                            "source_bundle": _synthetic_source_bundle_provenance(
+                                runner, source_digests
+                            ),
+                        },
+                    },
                 )
+                result_digests.append(result_digest)
                 return CompletedProcess()
 
             cache_token = "0" * 32
+            late_path_hash = Mock(
+                side_effect=AssertionError(
+                    "authenticated comparison sidecar must not reread the result path"
+                )
+            )
             with patch.object(
                 runner["secrets"], "token_hex", return_value=cache_token
-            ), patch.object(runner["subprocess"], "Popen", side_effect=popen):
+            ), patch.object(
+                runner["subprocess"], "Popen", side_effect=popen
+            ), patch.dict(
+                runner["run_comparison_worker"].__globals__,
+                {"sha256_file": late_path_hash},
+            ):
                 result = runner["run_comparison_worker"](
                     repository_root=root,
                     run_id="test",
@@ -1424,8 +1503,8 @@ class ParentOwnershipEvidenceTests(unittest.TestCase):
                     str(root),
                     "--run-id",
                     "test",
-                    "--expected-comparator-sha256",
-                    comparator_sha256,
+                    "--expected-source-bundle-json",
+                    expected_source_bundle_json,
                     "--result",
                     str(result_path),
                     "--state",
@@ -1435,6 +1514,13 @@ class ParentOwnershipEvidenceTests(unittest.TestCase):
                 ],
                 commands[0],
             )
+            self.assertEqual(
+                f"{result_digests[0]}\n",
+                runner["_result_sidecar_path"](result_path).read_text(
+                    encoding="ascii"
+                ),
+            )
+            late_path_hash.assert_not_called()
             self.assertNotIn(
                 "deterministic_scheduling_core.native.msproject.headless_worker",
                 commands[0],
@@ -1467,61 +1553,265 @@ class ParentOwnershipEvidenceTests(unittest.TestCase):
                 )
             popen.assert_not_called()
 
-    def test_comparison_worker_rejects_unbound_returned_source_digest(self) -> None:
+    def test_comparison_worker_rejects_mutated_pilot_source_digest(self) -> None:
         runner = runpy.run_path(
             str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
         )
 
         class CompletedProcess:
+            pid = 4_902
+
             def wait(self, timeout: int | None = None) -> int:
                 return 0
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            comparator_source = root / runner[
-                "COMPARATOR_SOURCE_RELATIVE_PATH"
+            source_digests = _write_synthetic_oracle_sources(root, runner)
+            pilot_source = root / runner["ORACLE_SOURCE_SPECS"]["pilot"][
+                "relative_path"
             ]
-            comparator_source.parent.mkdir(parents=True)
-            comparator_source.write_bytes(b"synthetic comparator source\n")
             result_path = root / "comparison.json"
 
             def popen(command: list[str], **_kwargs: object) -> CompletedProcess:
-                expected_sha256 = command[
-                    command.index("--expected-comparator-sha256") + 1
-                ]
-                self.assertEqual(
-                    headless.sha256_file(comparator_source), expected_sha256
+                expected_source_bundle = json.loads(
+                    command[command.index("--expected-source-bundle-json") + 1]
                 )
-                comparator_source.write_bytes(
-                    b"synthetic comparator source mutated after launch\n"
+                self.assertEqual(source_digests, expected_source_bundle)
+                pilot_source.write_bytes(
+                    b"synthetic pilot source mutated after launch\r\n"
                 )
-                result_path.write_text(
-                    json.dumps(
-                        {
-                            "oracle_provenance": {
-                                "comparator": {
-                                    "sha256": headless.sha256_file(
-                                        comparator_source
-                                    )
-                                }
-                            }
-                        }
-                    )
-                    + "\n",
-                    encoding="utf-8",
+                returned_digests = dict(source_digests)
+                returned_digests["pilot"] = headless.sha256_file(pilot_source)
+                _write_synthetic_comparison_evidence(
+                    result_path=result_path,
+                    state_path=Path(command[command.index("--state") + 1]),
+                    log_path=Path(command[command.index("--log") + 1]),
+                    worker_pid=CompletedProcess.pid,
+                    result={
+                        "oracle_provenance": {
+                            "source_bundle": _synthetic_source_bundle_provenance(
+                                runner, returned_digests
+                            )
+                        },
+                    },
                 )
                 return CompletedProcess()
 
             with patch.object(
                 runner["subprocess"], "Popen", side_effect=popen
             ), self.assertRaisesRegex(
-                runner["SupervisionError"], "differs from the prelaunch snapshot"
+                runner["SupervisionError"], "differs from the prelaunch snapshots"
             ):
                 runner["run_comparison_worker"](
                     repository_root=root,
                     run_id="test",
                     workspace=root / "worker",
                     result_path=result_path,
+                )
+
+    def test_comparison_worker_rejects_post_exit_result_replacement(self) -> None:
+        runner = runpy.run_path(
+            str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
+        )
+
+        class CompletedProcess:
+            pid = 4_903
+
+            def __init__(self, after_wait: object):
+                self.after_wait = after_wait
+
+            def wait(self, timeout: int | None = None) -> int:
+                self.after_wait()
+                return 0
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_digests = _write_synthetic_oracle_sources(root, runner)
+            result_path = root / "comparison.json"
+            source_bundle = _synthetic_source_bundle_provenance(
+                runner, source_digests
+            )
+
+            def popen(command: list[str], **_kwargs: object) -> CompletedProcess:
+                _write_synthetic_comparison_evidence(
+                    result_path=result_path,
+                    state_path=Path(command[command.index("--state") + 1]),
+                    log_path=Path(command[command.index("--log") + 1]),
+                    worker_pid=CompletedProcess.pid,
+                    result={
+                        "status": "child-result",
+                        "oracle_provenance": {"source_bundle": source_bundle},
+                    },
+                )
+
+                def replace_after_exit() -> None:
+                    result_path.write_bytes(
+                        headless.canonical_bytes(
+                            {
+                                "status": "post-exit-replacement",
+                                "oracle_provenance": {
+                                    "source_bundle": source_bundle
+                                },
+                            }
+                        )
+                        + b"\n"
+                    )
+
+                return CompletedProcess(replace_after_exit)
+
+            with patch.object(
+                runner["subprocess"], "Popen", side_effect=popen
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "does not authenticate"
+            ):
+                runner["run_comparison_worker"](
+                    repository_root=root,
+                    run_id="test",
+                    workspace=root / "worker",
+                    result_path=result_path,
+                )
+            self.assertFalse(runner["_result_sidecar_path"](result_path).exists())
+
+    def test_comparison_worker_rejects_post_exit_state_log_disagreement(self) -> None:
+        runner = runpy.run_path(
+            str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
+        )
+
+        class CompletedProcess:
+            pid = 4_904
+
+            def __init__(self, after_wait: object):
+                self.after_wait = after_wait
+
+            def wait(self, timeout: int | None = None) -> int:
+                self.after_wait()
+                return 0
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_digests = _write_synthetic_oracle_sources(root, runner)
+            result_path = root / "comparison.json"
+
+            def popen(command: list[str], **_kwargs: object) -> CompletedProcess:
+                state_path = Path(command[command.index("--state") + 1])
+                _digest, events = _write_synthetic_comparison_evidence(
+                    result_path=result_path,
+                    state_path=state_path,
+                    log_path=Path(command[command.index("--log") + 1]),
+                    worker_pid=CompletedProcess.pid,
+                    result={
+                        "oracle_provenance": {
+                            "source_bundle": _synthetic_source_bundle_provenance(
+                                runner, source_digests
+                            )
+                        }
+                    },
+                )
+
+                def replace_state_after_exit() -> None:
+                    replacement = dict(events[-1])
+                    replacement["details"] = {"result_sha256": "f" * 64}
+                    state_path.write_bytes(
+                        headless.canonical_bytes(replacement) + b"\n"
+                    )
+
+                return CompletedProcess(replace_state_after_exit)
+
+            with patch.object(
+                runner["subprocess"], "Popen", side_effect=popen
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "state disagrees"
+            ):
+                runner["run_comparison_worker"](
+                    repository_root=root,
+                    run_id="test",
+                    workspace=root / "worker",
+                    result_path=result_path,
+                )
+            self.assertFalse(runner["_result_sidecar_path"](result_path).exists())
+
+    def test_comparison_worker_rejects_conflicting_or_misidentified_log(self) -> None:
+        runner = runpy.run_path(
+            str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
+        )
+        cases = (
+            ("prior_terminal", "earlier conflicting"),
+            ("pid_mismatch", "identity or schema"),
+            ("sequence_mismatch", "identity or schema"),
+        )
+        for mode, message in cases:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source_digests = _write_synthetic_oracle_sources(root, runner)
+                result_path = root / "comparison.json"
+                worker_pid = 4_905
+
+                class CompletedProcess:
+                    pid = worker_pid
+
+                    def __init__(self, after_wait: object):
+                        self.after_wait = after_wait
+
+                    def wait(self, timeout: int | None = None) -> int:
+                        self.after_wait()
+                        return 0
+
+                def popen(
+                    command: list[str], **_kwargs: object
+                ) -> CompletedProcess:
+                    state_path = Path(command[command.index("--state") + 1])
+                    log_path = Path(command[command.index("--log") + 1])
+                    result_digest, events = _write_synthetic_comparison_evidence(
+                        result_path=result_path,
+                        state_path=state_path,
+                        log_path=log_path,
+                        worker_pid=worker_pid,
+                        result={
+                            "oracle_provenance": {
+                                "source_bundle": _synthetic_source_bundle_provenance(
+                                    runner, source_digests
+                                )
+                            }
+                        },
+                    )
+
+                    def replace_log_after_exit() -> None:
+                        terminal = dict(events[-1])
+                        if mode == "prior_terminal":
+                            terminal["sequence"] = 3
+                            replacement_events = [*events, terminal]
+                        elif mode == "pid_mismatch":
+                            terminal["worker_pid"] = worker_pid + 1
+                            replacement_events = [events[0], terminal]
+                        else:
+                            terminal["sequence"] = 3
+                            replacement_events = [events[0], terminal]
+                        terminal["details"] = {
+                            "result_sha256": result_digest
+                        }
+                        log_path.write_bytes(
+                            b"".join(
+                                headless.canonical_bytes(event) + b"\n"
+                                for event in replacement_events
+                            )
+                        )
+                        state_path.write_bytes(
+                            headless.canonical_bytes(terminal) + b"\n"
+                        )
+
+                    return CompletedProcess(replace_log_after_exit)
+
+                with patch.object(
+                    runner["subprocess"], "Popen", side_effect=popen
+                ), self.assertRaisesRegex(runner["SupervisionError"], message):
+                    runner["run_comparison_worker"](
+                        repository_root=root,
+                        run_id="test",
+                        workspace=root / "worker",
+                        result_path=result_path,
+                    )
+                self.assertFalse(
+                    runner["_result_sidecar_path"](result_path).exists()
                 )
 
     def test_timeout_cleanup_passes_full_identity(self) -> None:
