@@ -7,7 +7,11 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from deterministic_scheduling_core.native.msproject import headless, headless_compare
+from deterministic_scheduling_core.native.msproject import (
+    headless,
+    headless_compare,
+    pilot,
+)
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -526,35 +530,84 @@ class RunnerHardeningTests(unittest.TestCase):
     def test_sealed_snapshot_rejects_wrong_identity_and_schema_before_provenance(
         self,
     ) -> None:
-        expected = {
-            "document_type": "microsoft_project_sealed_expected_normalized",
-            "schema_version": "microsoft-project-sealed-expected-v0.1",
-            "pilot_id": headless.PILOT_ID,
-            "case_id": "SEM-REL-001",
-            "status": "prepared_not_executed",
-            "source_bindings": {},
-            "seal_control": {},
-            "coordinate_contract": {},
-            "expected_normalized": {
-                "reference_status": "reference_exact",
-                "activity_times": {
-                    "A": {"start": 0, "finish": 4},
-                    "B": {"start": 4, "finish": 7},
-                },
-                "project_finish": 7,
-            },
-            "native_execution_status": "not_executed",
-            "claim_boundary": {},
-        }
-        mutations = {
-            "wrong_case": {"case_id": "SEM-REL-002"},
-            "wrong_schema": {"schema_version": "alternate-v0.1"},
-            "alternate_projection_shape": {
-                "expected_normalized": {
-                    "activities": expected["expected_normalized"]["activity_times"],
+        expected = pilot._sealed_expected(
+            "SEM-REL-001",
+            {
+                "expected": {
+                    "reference_status": "reference_exact",
+                    "activity_times": {
+                        "A": {"start": 0, "finish": 4},
+                        "B": {"start": 4, "finish": 7},
+                    },
                     "project_finish": 7,
                 }
             },
+        )
+
+        def wrong_fixture_case(candidate: dict) -> None:
+            candidate["source_bindings"]["fixture"]["case_id"] = "SEM-REL-002"
+
+        def swapped_fixture(candidate: dict) -> None:
+            fixture = candidate["source_bindings"]["fixture"]
+            fixture["case_id"] = "SEM-REL-002"
+            fixture["path"] = "benchmarks/semantic/cases/sem-rel-002.json"
+            fixture["relative_path"] = fixture["path"]
+            fixture["raw_sha256"] = pilot.FIXTURE_RAW_SHA256_BY_CASE_ID[
+                "SEM-REL-002"
+            ]
+
+        mutations = {
+            "wrong_case": lambda candidate: candidate.update(
+                {"case_id": "SEM-REL-002"}
+            ),
+            "wrong_schema": lambda candidate: candidate.update(
+                {"schema_version": "alternate-v0.1"}
+            ),
+            "preregistration_binding": lambda candidate: candidate[
+                "source_bindings"
+            ]["preregistration"].update({"raw_sha256": "0" * 64}),
+            "comparison_profile_binding": lambda candidate: candidate[
+                "source_bindings"
+            ]["comparison_profile"].update({"profile_id": "alternate-profile"}),
+            "wrong_fixture_case": wrong_fixture_case,
+            "swapped_fixture": swapped_fixture,
+            "extra_source_binding_key": lambda candidate: candidate[
+                "source_bindings"
+            ]["fixture"].update({"extra": "unbound"}),
+            "missing_source_binding_key": lambda candidate: candidate[
+                "source_bindings"
+            ]["fixture"].pop("relative_path"),
+            "seal_control_type_alias": lambda candidate: candidate[
+                "seal_control"
+            ].update(
+                {
+                    "separate_from_operator_and_pre_execution_reviewer_material": 1
+                }
+            ),
+            "coordinate_contract_type_alias": lambda candidate: candidate[
+                "coordinate_contract"
+            ].update({"timestamp_tolerance_seconds": False}),
+            "claim_boundary_type_alias": lambda candidate: candidate[
+                "claim_boundary"
+            ].update({"pilot_case_count": 12.0}),
+            "extra_claim_boundary_key": lambda candidate: candidate[
+                "claim_boundary"
+            ].update({"compatibility_claim_exists": False}),
+            "alternate_projection_shape": lambda candidate: candidate.update(
+                {
+                    "expected_normalized": {
+                        "reference_status": "reference_exact",
+                        "activities": {
+                            "A": {"start": 0, "finish": 4},
+                            "B": {"start": 4, "finish": 7},
+                        },
+                        "project_finish": 7,
+                    }
+                }
+            ),
+            "projection_coordinate_type_alias": lambda candidate: candidate[
+                "expected_normalized"
+            ]["activity_times"]["A"].update({"start": False}),
         }
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -563,10 +616,20 @@ class RunnerHardeningTests(unittest.TestCase):
                 "SEM-REL-001.json",
             )
             path.parent.mkdir(parents=True)
-            for label, change in mutations.items():
+            path.write_text(
+                json.dumps(expected, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+            loaded, identity = headless_compare._default_expected_snapshot(
+                root, "SEM-REL-001"
+            )
+            self.assertEqual(expected, loaded)
+            self.assertEqual("SEM-REL-001", identity["case_id"])
+
+            for label, mutate in mutations.items():
                 with self.subTest(label=label):
                     candidate = json.loads(json.dumps(expected))
-                    candidate.update(change)
+                    mutate(candidate)
                     path.write_text(
                         json.dumps(candidate, sort_keys=True, separators=(",", ":"))
                         + "\n",

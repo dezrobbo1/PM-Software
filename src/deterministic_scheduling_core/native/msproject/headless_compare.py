@@ -30,6 +30,17 @@ from .headless import (
     normalize_observation,
     verify_run_freeze_gate,
 )
+from .pilot import (
+    COMPARISON_PROFILE_ID,
+    FIXTURE_RAW_SHA256_BY_CASE_ID,
+    FULL_PROFILE_CLAIM_ELIGIBLE_CASE_COUNT,
+    PILOT_STATUS,
+    PREREGISTRATION_ID,
+    PREREGISTRATION_PATH,
+    PREREGISTRATION_RAW_SHA256,
+    PROFILE_PATH,
+    PROFILE_RAW_SHA256,
+)
 
 
 SEALED_DIRECTORY = PurePosixPath(
@@ -62,6 +73,156 @@ SEALED_NORMALIZED_REQUIRED_KEYS = frozenset(
     {"reference_status", "activity_times", "project_finish"}
 )
 SEALED_NORMALIZED_OPTIONAL_KEYS = frozenset({"total_float", "free_float"})
+_SEALED_RELEASE_CONTROL = {
+    "separate_from_operator_and_pre_execution_reviewer_material": True,
+    "full_oracle_fixture_binding_is_sealed": True,
+    "operator_access_before_native_evidence_freeze": "prohibited",
+    "release_condition": (
+        "Release only to the controlled comparator after native artifacts, "
+        "normalization, and their hashes are frozen."
+    ),
+}
+_SEALED_COORDINATE_CONTRACT = {
+    "origin": "2026-01-05T08:00:00+08:00",
+    "unit": "hour",
+    "timestamp_tolerance_seconds": 0,
+    "rounding": "forbidden",
+}
+_SEALED_CLAIM_BOUNDARY = {
+    "pilot_is_partial_profile_preparation": True,
+    "pilot_case_count": len(CASE_IDS),
+    "full_profile_claim_eligible_case_count": (
+        FULL_PROFILE_CLAIM_ELIGIBLE_CASE_COUNT
+    ),
+    "full_45_case_gate_satisfied": False,
+    "native_execution_performed": False,
+    "native_semantic_claim": False,
+    "reopen_stability_claim": False,
+    "adapter_execution_performed": False,
+    "adapter_interchange_claim": False,
+    "full_microsoft_project_compatibility_claim": False,
+    "mpp_binary_compatibility_claim": False,
+    "safe_production_round_trip_claim": False,
+    "optimizer_benchmark_performed": False,
+    "optimizer_superiority_claim": False,
+    "boundary_statement": (
+        "Preparation of 12 relationship cases is partial and supplies no native, "
+        "adapter, compatibility, production-round-trip, or optimizer result."
+    ),
+}
+
+
+def _exact_json_value(value: Any, expected: Any) -> bool:
+    """Compare JSON values without Python's bool/integer equality aliases."""
+
+    if type(value) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return set(value) == set(expected) and all(
+            _exact_json_value(value[key], expected[key]) for key in expected
+        )
+    if isinstance(expected, list):
+        return len(value) == len(expected) and all(
+            _exact_json_value(item, expected_item)
+            for item, expected_item in zip(value, expected)
+        )
+    return value == expected
+
+
+def _sealed_source_bindings(case_id: str) -> dict[str, Any]:
+    fixture_path = f"benchmarks/semantic/cases/{case_id.lower()}.json"
+    return {
+        "preregistration": {
+            "id": PREREGISTRATION_ID,
+            "preregistration_id": PREREGISTRATION_ID,
+            "path": PREREGISTRATION_PATH,
+            "relative_path": PREREGISTRATION_PATH,
+            "raw_sha256": PREREGISTRATION_RAW_SHA256,
+        },
+        "comparison_profile": {
+            "id": COMPARISON_PROFILE_ID,
+            "profile_id": COMPARISON_PROFILE_ID,
+            "path": PROFILE_PATH,
+            "relative_path": PROFILE_PATH,
+            "raw_sha256": PROFILE_RAW_SHA256,
+        },
+        "fixture": {
+            "case_id": case_id,
+            "path": fixture_path,
+            "relative_path": fixture_path,
+            "raw_sha256": FIXTURE_RAW_SHA256_BY_CASE_ID[case_id],
+        },
+    }
+
+
+def _valid_expected_normalized(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if (
+        not SEALED_NORMALIZED_REQUIRED_KEYS.issubset(value)
+        or not set(value).issubset(
+            SEALED_NORMALIZED_REQUIRED_KEYS | SEALED_NORMALIZED_OPTIONAL_KEYS
+        )
+        or not isinstance(value["reference_status"], str)
+        or not value["reference_status"]
+    ):
+        return False
+
+    activity_times = value["activity_times"]
+    if not isinstance(activity_times, dict) or set(activity_times) != {"A", "B"}:
+        return False
+    allowed_time_fields = {"start", "remaining_start", "finish"}
+    for coordinates in activity_times.values():
+        if (
+            not isinstance(coordinates, dict)
+            or not {"start", "finish"}.issubset(coordinates)
+            or not set(coordinates).issubset(allowed_time_fields)
+            or any(
+                not isinstance(coordinate, int) or isinstance(coordinate, bool)
+                for coordinate in coordinates.values()
+            )
+        ):
+            return False
+    project_finish = value["project_finish"]
+    if not isinstance(project_finish, int) or isinstance(project_finish, bool):
+        return False
+    for field in SEALED_NORMALIZED_OPTIONAL_KEYS & set(value):
+        floats = value[field]
+        if (
+            not isinstance(floats, dict)
+            or set(floats) != {"A", "B"}
+            or any(
+                not isinstance(coordinate, int) or isinstance(coordinate, bool)
+                for coordinate in floats.values()
+            )
+        ):
+            return False
+    return True
+
+
+def _valid_sealed_envelope(value: Mapping[str, Any], case_id: str) -> bool:
+    if case_id not in FIXTURE_RAW_SHA256_BY_CASE_ID:
+        return False
+    return (
+        set(value) == SEALED_EXPECTED_KEYS
+        and value.get("document_type")
+        == "microsoft_project_sealed_expected_normalized"
+        and value.get("schema_version")
+        == "microsoft-project-sealed-expected-v0.1"
+        and value.get("pilot_id") == PILOT_ID
+        and value.get("case_id") == case_id
+        and value.get("status") == PILOT_STATUS
+        and value.get("native_execution_status") == "not_executed"
+        and _exact_json_value(
+            value.get("source_bindings"), _sealed_source_bindings(case_id)
+        )
+        and _exact_json_value(value.get("seal_control"), _SEALED_RELEASE_CONTROL)
+        and _exact_json_value(
+            value.get("coordinate_contract"), _SEALED_COORDINATE_CONTRACT
+        )
+        and _valid_expected_normalized(value.get("expected_normalized"))
+        and _exact_json_value(value.get("claim_boundary"), _SEALED_CLAIM_BOUNDARY)
+    )
 
 
 def _expected_projection(
@@ -156,23 +317,7 @@ def _default_expected_snapshot(
         raise ObservationFreezeError(
             "sealed normalized expectation must be an object"
         )
-    expected_normalized = value.get("expected_normalized")
-    if (
-        set(value) != SEALED_EXPECTED_KEYS
-        or value.get("document_type")
-        != "microsoft_project_sealed_expected_normalized"
-        or value.get("schema_version")
-        != "microsoft-project-sealed-expected-v0.1"
-        or value.get("pilot_id") != PILOT_ID
-        or value.get("case_id") != case_id
-        or value.get("status") != "prepared_not_executed"
-        or value.get("native_execution_status") != "not_executed"
-        or not isinstance(expected_normalized, Mapping)
-        or not SEALED_NORMALIZED_REQUIRED_KEYS.issubset(expected_normalized)
-        or not set(expected_normalized).issubset(
-            SEALED_NORMALIZED_REQUIRED_KEYS | SEALED_NORMALIZED_OPTIONAL_KEYS
-        )
-    ):
+    if not _valid_sealed_envelope(value, case_id):
         raise ObservationFreezeError(
             "sealed normalized expectation schema or identity does not match the requested case"
         )

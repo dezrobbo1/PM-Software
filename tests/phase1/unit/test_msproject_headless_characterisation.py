@@ -11,8 +11,12 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from deterministic_scheduling_core.native.msproject import headless, headless_com
-from deterministic_scheduling_core.native.msproject import headless_compare
+from deterministic_scheduling_core.native.msproject import (
+    headless,
+    headless_com,
+    headless_compare,
+    pilot,
+)
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -504,6 +508,72 @@ class EvidenceBoundaryTests(unittest.TestCase):
             )
             self.assertEqual(list(headless.CASE_IDS), calls)
             self.assertTrue(all(item["status"] == "characterisation_exact" for item in result["cases"]))
+
+    def test_invalid_default_envelope_fails_before_expected_projection(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            run = headless.create_run_workspace(Path(temporary), "sealed-envelope")
+            for case_id in headless.CASE_IDS:
+                case = headless.create_case_workspace(run, case_id)
+                observation = _observation(case_id)
+                shared = _provenance_for(run, case_id, observation)
+                headless.freeze_native_observation(
+                    case,
+                    observation,
+                    _freeze_artifacts(case.path, observation, case_id.encode()),
+                    shared_hashes=shared,
+                )
+            headless.verify_run_freeze_gate(run, write_index=True)
+
+            expected = pilot._sealed_expected(
+                "SEM-REL-001",
+                {
+                    "expected": {
+                        "reference_status": "reference_exact",
+                        "activity_times": {
+                            "A": {"start": 99, "finish": 103},
+                            "B": {"start": 103, "finish": 106},
+                        },
+                        "project_finish": 106,
+                    }
+                },
+            )
+            fixture = expected["source_bindings"]["fixture"]
+            fixture["case_id"] = "SEM-REL-002"
+            fixture["path"] = "benchmarks/semantic/cases/sem-rel-002.json"
+            fixture["relative_path"] = fixture["path"]
+            fixture["raw_sha256"] = pilot.FIXTURE_RAW_SHA256_BY_CASE_ID[
+                "SEM-REL-002"
+            ]
+            path = run.repository_root.joinpath(
+                *headless_compare.SEALED_DIRECTORY.parts,
+                "SEM-REL-001.json",
+            )
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                json.dumps(expected, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+
+            projector = Mock(
+                side_effect=AssertionError(
+                    "invalid sealed identity reached expected projection"
+                )
+            )
+            with patch.object(
+                headless_compare,
+                "_comparator_source_identity",
+                return_value={
+                    "module": headless_compare.COMPARATOR_MODULE,
+                    "relative_path": headless_compare.COMPARATOR_SOURCE.as_posix(),
+                    "sha256": "0" * 64,
+                },
+            ), patch.object(
+                headless_compare, "_expected_projection", projector
+            ), self.assertRaisesRegex(
+                headless.ObservationFreezeError, "schema or identity"
+            ):
+                headless_compare.compare_frozen_observations(run)
+            projector.assert_not_called()
 
     def test_legacy_forced_session_keeps_oracle_closed_before_first_read(self) -> None:
         calls: list[str] = []
