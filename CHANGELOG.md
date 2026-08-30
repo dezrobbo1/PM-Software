@@ -1,5 +1,14 @@
 # Changelog
 
+## phase1-msproject-headless-characterisation — 2026-08-30
+
+- Added fail-closed, source-only `MSProject.Application` headless automation with per-case fresh processes, bounded watchdogs, native readback, MPP/XML retention, reopen/recalculate capture and an observation-before-oracle freeze gate.
+- Ran all twelve relationship cases with the actual installed Microsoft Project Professional engine; the frozen comparator mechanically produced twelve exact relative-coordinate outputs and reopen/recalculate values were internally stable, but those outputs are provisional because Project-authored XML wall clocks are eight hours earlier than the serialized COM timestamps.
+- Classified all twelve cases as execution-integrity inconclusive for the COM/XML time-semantics defect; three also had worker-attributed forced terminations under the then-current PID/path-delta logic, without retained full ownership proof, and the retained batch improperly continued after the first mandatory-stop condition.
+- Characterised Project's Project-authored 24 Hours XML as seven working day types with `00:00:00` to `00:00:00` intervals, while retaining XML reopen/re-export as inconclusive after an unexpected Import Wizard prompt reported by post-run operator attestation.
+- Recorded procedural-blinding and process-ownership safety defects, stopped further native execution, and hardened process binding to the exact caption-tagged `DispatchEx` object and append-only PID evidence.
+- Preserved the manual, reopen and adapter track statuses, retained Track C as `preparation_blocked`, and made no compatibility, optimiser or P6 claim.
+
 ## phase1-msproject-relationship-pilot-v0.1 — 2026-08-26
 
 - Prepared the twelve-case Microsoft Project relationship pilot without executing Microsoft Project or creating a native result.

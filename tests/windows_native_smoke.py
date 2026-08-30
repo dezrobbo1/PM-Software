@@ -10,6 +10,10 @@ from deterministic_scheduling_core.native.msproject.normalizer import (
     NativeOutputError,
     _write_durable_normalized_observation,
 )
+from deterministic_scheduling_core.native.msproject.headless_com import (
+    ProjectNotInstalledError,
+    registered_project_executable,
+)
 
 
 if os.name != "nt":
@@ -27,6 +31,14 @@ class WindowsNativeDurabilitySmoke(unittest.TestCase):
                 _write_durable_normalized_observation(
                     path, document, label="Windows overwrite smoke"
                 )
+
+    def test_project_registration_detection_is_read_only(self) -> None:
+        try:
+            executable = registered_project_executable()
+        except ProjectNotInstalledError as error:
+            self.skipTest(f"actual Microsoft Project execution is unavailable in CI: {error}")
+        self.assertEqual("WINPROJ.EXE", executable.name.upper())
+        self.assertTrue(executable.is_file())
 
 
 if __name__ == "__main__":

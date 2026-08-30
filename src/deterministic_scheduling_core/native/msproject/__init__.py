@@ -1,79 +1,78 @@
-"""Bounded Microsoft Project pilot evidence tooling.
+"""Microsoft Project pilot evidence and headless-characterisation tooling.
 
-The modules in this package prepare or analyze evidence.  They do not execute
-Microsoft Project and do not establish a compatibility result.
+Legacy pilot APIs are exported lazily. Keeping package import side-effect free is
+part of the headless native worker's capability boundary: starting that worker
+must not eagerly load the oracle-capable pilot or normalizer modules.
 """
 
-from deterministic_scheduling_core.native.msproject.pilot import (
-    CASE_IDS,
-    PILOT_ID,
-    PILOT_STATUS,
-    TRACK_IDS,
-    PilotBindingError,
-    PilotError,
-    PilotSafetyError,
-    PilotVerificationError,
-    prepare_pilot,
-    prepare_pilot_kit,
-    verify_pilot,
-    verify_pilot_kit,
-)
-from deterministic_scheduling_core.native.msproject.freeze import (
-    FrozenNativeInput,
-    NativeEvidenceError,
-    freeze_msproject_native_input,
-    load_canonical_json,
-)
-from deterministic_scheduling_core.native.msproject.normalizer import (
-    MSPDI_NAMESPACE,
-    MSPDI_SAVE_VERSION,
-    NativeAnalysis,
-    NativeOutputError,
-    analyse_msproject_native_output,
-    compare_normalized_output,
-    normalize_mspdi_output,
-    validate_native_run_record,
-)
-from deterministic_scheduling_core.native.msproject.stopped import (
-    NativeAttemptStopError,
-    STOP_CONDITION_IDS,
-    STOP_OUTCOME_CLASSIFICATIONS,
-    STOP_OUTCOME_BY_CONDITION_AND_NATIVE_CALCULATION,
-    STOP_RECORD_REQUIRED_FIELDS,
-    StoppedNativeAttempt,
-    record_msproject_native_attempt_stop,
-)
+from __future__ import annotations
 
-__all__ = [
-    "CASE_IDS",
-    "PILOT_ID",
-    "PILOT_STATUS",
-    "TRACK_IDS",
-    "FrozenNativeInput",
-    "MSPDI_NAMESPACE",
-    "MSPDI_SAVE_VERSION",
-    "NativeAnalysis",
-    "NativeAttemptStopError",
-    "NativeEvidenceError",
-    "NativeOutputError",
-    "PilotBindingError",
-    "PilotError",
-    "PilotSafetyError",
-    "PilotVerificationError",
-    "STOP_CONDITION_IDS",
-    "STOP_OUTCOME_CLASSIFICATIONS",
-    "STOP_OUTCOME_BY_CONDITION_AND_NATIVE_CALCULATION",
-    "STOP_RECORD_REQUIRED_FIELDS",
-    "StoppedNativeAttempt",
-    "prepare_pilot",
-    "prepare_pilot_kit",
-    "freeze_msproject_native_input",
-    "record_msproject_native_attempt_stop",
-    "load_canonical_json",
-    "normalize_mspdi_output",
-    "compare_normalized_output",
-    "analyse_msproject_native_output",
-    "validate_native_run_record",
-    "verify_pilot",
-    "verify_pilot_kit",
-]
+from importlib import import_module
+from typing import Any
+
+
+_EXPORT_GROUPS = {
+    ".pilot": (
+        "CASE_IDS",
+        "PILOT_ID",
+        "PILOT_STATUS",
+        "TRACK_IDS",
+        "PilotBindingError",
+        "PilotError",
+        "PilotSafetyError",
+        "PilotVerificationError",
+        "prepare_pilot",
+        "prepare_pilot_kit",
+        "verify_pilot",
+        "verify_pilot_kit",
+    ),
+    ".freeze": (
+        "FrozenNativeInput",
+        "NativeEvidenceError",
+        "freeze_msproject_native_input",
+        "load_canonical_json",
+    ),
+    ".normalizer": (
+        "MSPDI_NAMESPACE",
+        "MSPDI_SAVE_VERSION",
+        "NativeAnalysis",
+        "NativeOutputError",
+        "analyse_msproject_native_output",
+        "compare_normalized_output",
+        "normalize_mspdi_output",
+        "validate_native_run_record",
+    ),
+    ".stopped": (
+        "NativeAttemptStopError",
+        "STOP_CONDITION_IDS",
+        "STOP_OUTCOME_CLASSIFICATIONS",
+        "STOP_OUTCOME_BY_CONDITION_AND_NATIVE_CALCULATION",
+        "STOP_RECORD_REQUIRED_FIELDS",
+        "StoppedNativeAttempt",
+        "record_msproject_native_attempt_stop",
+    ),
+}
+
+_EXPORTS = {
+    name: (module_name, name)
+    for module_name, names in _EXPORT_GROUPS.items()
+    for name in names
+}
+
+__all__ = [name for names in _EXPORT_GROUPS.values() for name in names]
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve a public legacy API only when a caller actually requests it."""
+
+    target = _EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attribute_name = target
+    value = getattr(import_module(module_name, __name__), attribute_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

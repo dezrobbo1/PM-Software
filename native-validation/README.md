@@ -1,7 +1,8 @@
 # Native validation evidence boundary
 
-The files in this directory preregister future, product-specific native
-experiments. They are not native results and do not establish compatibility.
+The preregistration, profile and pilot-plan files in this directory define
+future product-specific native experiments. Separate characterisation records
+may retain bounded native observations, but none establishes compatibility.
 
 ## Frozen plans and profiles
 
@@ -62,6 +63,25 @@ Any protocol or oracle change requires a new preregistration and profile ID.
 Even a complete profile pass cannot establish full P6 compatibility, full
 Microsoft Project compatibility, MPP binary compatibility, safe production
 round-trip, optimiser superiority, practitioner acceptance or buyer validation.
+
+## Non-claim-eligible headless characterisation
+
+The redacted record under
+`characterisations/microsoft-project-relationship-v0.1/` is a separate
+`headless_native_characterisation`. It records actual Microsoft Project COM
+observations without changing any of the three frozen evidence tracks or the
+pilot's `prepared_not_executed` status. Its raw MPP/XML evidence remains ignored
+under `native-files/`. The raw run retained all twelve source-only relationship
+observations and a post-freeze comparison, but `SEM-REL-005` retained the first
+worker-attributed forced termination and therefore triggered the protocol's
+mandatory batch stop. Cases `SEM-REL-006` through `SEM-REL-012`, CAL-24X7 native
+work and the comparison all followed that trigger and are retained only as
+provisional, execution-integrity-inconclusive characterisation. Independently,
+all twelve cases are inconclusive because Project-authored XML wall clocks are
+eight hours earlier than the serialized COM timestamps. The run also retained
+procedural-blinding, forced-quit, XML-import-dialog and process-ownership defects.
+The exact relative-coordinate comparator outputs are provisional, not a
+compatibility, adapter, reopen-track or optimiser result.
 
 ## Prepared pilot kits
 

@@ -64,6 +64,9 @@ jobs:
       - name: Install repository package without dependency resolution
         shell: pwsh
         run: py -3.12 -m pip install --no-deps --no-build-isolation -e .
+      - name: Exercise fail-closed headless COM orchestration with fakes
+        shell: pwsh
+        run: py -3.12 -m unittest tests.phase1.unit.test_msproject_headless_characterisation tests.phase1.unit.test_msproject_headless_runner_hardening -v
       - name: Exercise the Windows write-through durability boundary
         shell: pwsh
         run: py -3.12 tests/windows_native_smoke.py
