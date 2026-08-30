@@ -19,6 +19,7 @@ from deterministic_scheduling_core.provenance.canonical_json import canonical_by
 
 from .headless import (
     CASE_IDS,
+    PILOT_ID,
     TRACK_ID,
     ObservationFreezeError,
     RunWorkspace,
@@ -42,6 +43,25 @@ COMPARATOR_SOURCE = PurePosixPath(
     "src/deterministic_scheduling_core/native/msproject/headless_compare.py"
 )
 ORACLE_PROVENANCE_SCHEMA = "headless-msproject-oracle-provenance-v0.1"
+SEALED_EXPECTED_KEYS = frozenset(
+    {
+        "document_type",
+        "schema_version",
+        "pilot_id",
+        "case_id",
+        "status",
+        "source_bindings",
+        "seal_control",
+        "coordinate_contract",
+        "expected_normalized",
+        "native_execution_status",
+        "claim_boundary",
+    }
+)
+SEALED_NORMALIZED_REQUIRED_KEYS = frozenset(
+    {"reference_status", "activity_times", "project_finish"}
+)
+SEALED_NORMALIZED_OPTIONAL_KEYS = frozenset({"total_float", "free_float"})
 
 
 def _expected_projection(
@@ -135,6 +155,26 @@ def _default_expected_snapshot(
     if not isinstance(value, dict):
         raise ObservationFreezeError(
             "sealed normalized expectation must be an object"
+        )
+    expected_normalized = value.get("expected_normalized")
+    if (
+        set(value) != SEALED_EXPECTED_KEYS
+        or value.get("document_type")
+        != "microsoft_project_sealed_expected_normalized"
+        or value.get("schema_version")
+        != "microsoft-project-sealed-expected-v0.1"
+        or value.get("pilot_id") != PILOT_ID
+        or value.get("case_id") != case_id
+        or value.get("status") != "prepared_not_executed"
+        or value.get("native_execution_status") != "not_executed"
+        or not isinstance(expected_normalized, Mapping)
+        or not SEALED_NORMALIZED_REQUIRED_KEYS.issubset(expected_normalized)
+        or not set(expected_normalized).issubset(
+            SEALED_NORMALIZED_REQUIRED_KEYS | SEALED_NORMALIZED_OPTIONAL_KEYS
+        )
+    ):
+        raise ObservationFreezeError(
+            "sealed normalized expectation schema or identity does not match the requested case"
         )
     return value, {
         "case_id": case_id,
@@ -271,9 +311,12 @@ def compare_frozen_observations(
                 "source_kind": "injected_mapping_canonical_json",
             }
         reference_identities.append(reference_identity)
-        expected_activities, expected_finish = _expected_projection(
-            expected_value
+        projection_source = (
+            expected_value["expected_normalized"]
+            if expected_reader is _default_expected_reader
+            else expected_value
         )
+        expected_activities, expected_finish = _expected_projection(projection_source)
         fields: list[dict[str, Any]] = []
         for activity_id in sorted(set(expected_activities) | set(native["activities"])):
             for coordinate in ("start", "finish"):

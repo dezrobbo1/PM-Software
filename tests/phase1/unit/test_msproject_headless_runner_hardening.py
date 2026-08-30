@@ -523,6 +523,160 @@ class RunnerHardeningTests(unittest.TestCase):
                     duration_mismatch, workspace=workspace
                 )
 
+    def test_sealed_snapshot_rejects_wrong_identity_and_schema_before_provenance(
+        self,
+    ) -> None:
+        expected = {
+            "document_type": "microsoft_project_sealed_expected_normalized",
+            "schema_version": "microsoft-project-sealed-expected-v0.1",
+            "pilot_id": headless.PILOT_ID,
+            "case_id": "SEM-REL-001",
+            "status": "prepared_not_executed",
+            "source_bindings": {},
+            "seal_control": {},
+            "coordinate_contract": {},
+            "expected_normalized": {
+                "reference_status": "reference_exact",
+                "activity_times": {
+                    "A": {"start": 0, "finish": 4},
+                    "B": {"start": 4, "finish": 7},
+                },
+                "project_finish": 7,
+            },
+            "native_execution_status": "not_executed",
+            "claim_boundary": {},
+        }
+        mutations = {
+            "wrong_case": {"case_id": "SEM-REL-002"},
+            "wrong_schema": {"schema_version": "alternate-v0.1"},
+            "alternate_projection_shape": {
+                "expected_normalized": {
+                    "activities": expected["expected_normalized"]["activity_times"],
+                    "project_finish": 7,
+                }
+            },
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root.joinpath(
+                *headless_compare.SEALED_DIRECTORY.parts,
+                "SEM-REL-001.json",
+            )
+            path.parent.mkdir(parents=True)
+            for label, change in mutations.items():
+                with self.subTest(label=label):
+                    candidate = json.loads(json.dumps(expected))
+                    candidate.update(change)
+                    path.write_text(
+                        json.dumps(candidate, sort_keys=True, separators=(",", ":"))
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                    digest = Mock(
+                        side_effect=AssertionError(
+                            "invalid sealed identity reached provenance hashing"
+                        )
+                    )
+                    with patch.object(
+                        headless_compare.hashlib, "sha256", digest
+                    ), self.assertRaisesRegex(
+                        headless.ObservationFreezeError, "schema or identity"
+                    ):
+                        headless_compare._default_expected_snapshot(
+                            root, "SEM-REL-001"
+                        )
+                    digest.assert_not_called()
+
+    def test_worker_result_contradiction_fails_before_freeze(self) -> None:
+        helpers = runpy.run_path(str(LEGACY_TEST))
+        with tempfile.TemporaryDirectory() as temporary:
+            run = headless.create_run_workspace(Path(temporary), "worker-mismatch")
+            case = headless.create_case_workspace(run, "SEM-REL-001")
+            observation = helpers["_observation"]("SEM-REL-001")
+            shared = helpers["_provenance_for"](
+                run, "SEM-REL-001", observation
+            )
+            artifacts = helpers["_freeze_artifacts"](
+                case.path, observation, b"worker-mismatch"
+            )
+            contradictory = json.loads(json.dumps(observation))
+            contradictory["stop_conditions"] = [{"condition": "stale-worker"}]
+            artifacts["worker_result"].write_bytes(
+                headless.canonical_bytes(contradictory) + b"\n"
+            )
+            with self.assertRaisesRegex(
+                headless.ObservationFreezeError, "exact bytes disagree"
+            ):
+                headless.freeze_native_observation(
+                    case,
+                    observation,
+                    artifacts,
+                    shared_hashes=shared,
+                )
+            self.assertFalse((case.path / "native-observation.json").exists())
+
+    def test_noncanonical_worker_result_resume_keeps_oracle_closed(self) -> None:
+        helpers = runpy.run_path(str(LEGACY_TEST))
+        calls: list[str] = []
+
+        def reader(_root: Path, case_id: str) -> dict:
+            calls.append(case_id)
+            return {
+                "activities": {
+                    "A": {"start": 0, "finish": 4},
+                    "B": {"start": 4, "finish": 7},
+                },
+                "project_finish": 7,
+            }
+
+        with tempfile.TemporaryDirectory() as temporary:
+            run = headless.create_run_workspace(Path(temporary), "worker-resume")
+            for case_id in headless.CASE_IDS:
+                case = headless.create_case_workspace(run, case_id)
+                observation = helpers["_observation"](case_id)
+                shared = helpers["_provenance_for"](
+                    run, case_id, observation
+                )
+                headless.freeze_native_observation(
+                    case,
+                    observation,
+                    helpers["_freeze_artifacts"](
+                        case.path, observation, case_id.encode("ascii")
+                    ),
+                    shared_hashes=shared,
+                )
+
+            last_case = run.path / "cases" / headless.CASE_IDS[-1]
+            worker_path = last_case / "worker-native-result.json"
+            worker_value = json.loads(worker_path.read_text(encoding="utf-8"))
+            worker_path.write_text(
+                json.dumps(worker_value, indent=2) + "\n", encoding="utf-8"
+            )
+            manifest_path = last_case / "case-manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            worker_entry = next(
+                item
+                for item in manifest["artifacts"]
+                if item["role"] == "worker_result"
+            )
+            worker_entry["byte_size"] = worker_path.stat().st_size
+            worker_entry["sha256"] = headless.sha256_file(worker_path)
+            manifest_path.write_text(
+                json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+            (last_case / "case-manifest.sha256").write_text(
+                f"{headless.sha256_file(manifest_path)}\n", encoding="ascii"
+            )
+
+            with self.assertRaisesRegex(
+                headless.ObservationFreezeError, "oracle gate remains closed"
+            ):
+                headless_compare.compare_frozen_observations(
+                    run, expected_reader=reader
+                )
+        self.assertEqual([], calls)
+
     def test_post_gate_observation_mutation_keeps_oracle_closed(self) -> None:
         helpers = runpy.run_path(str(LEGACY_TEST))
         calls: list[str] = []

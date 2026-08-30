@@ -958,14 +958,17 @@ def _open_application(callback: StageCallback | None, *, stage_name: str = "proj
             _required_set(app, "Caption", ownership_caption)
             process = _bind_process_to_caption(process, executable, ownership_caption)
             ownership_confirmed = True
-            _required_set(app, "Visible", False)
             identity_details = _owned_process_identity_details(process)
+            # Journal the full destructive-authority identity immediately after
+            # caption binding. Any later readback failure must leave the parent
+            # enough evidence to identify the exact owned process safely.
             _emit(
                 callback,
                 stage_name,
                 "ownership_caption_set",
                 **identity_details,
             )
+            _required_set(app, "Visible", False)
             _emit(
                 callback,
                 stage_name,
@@ -975,12 +978,48 @@ def _open_application(callback: StageCallback | None, *, stage_name: str = "proj
         assert process is not None
         session = _ProjectSession(app, pythoncom, process, executable)
         return session
-    except Exception:
-        if app is not None and ownership_confirmed and process is not None:
-            with contextlib.suppress(Exception):
-                if _owned_process_identity_matches(process, executable):
-                    app.Quit(PJ_DO_NOT_SAVE)
-        pythoncom.CoUninitialize()
+    except Exception as startup_error:
+        cleanup_session: _ProjectSession | None = None
+        try:
+            if app is not None and ownership_confirmed and process is not None:
+                cleanup_session = _ProjectSession(
+                    app,
+                    pythoncom,
+                    process,
+                    executable,
+                )
+                try:
+                    cleanup_result = {
+                        **process,
+                        **cleanup_session.quit(),
+                    }
+                except Exception as cleanup_error:
+                    cleanup_result = {
+                        **process,
+                        "pid": process.get("pid"),
+                        "exited": False,
+                        "forced_termination": False,
+                        "termination_error": (
+                            "owned startup-exception cleanup raised "
+                            f"{type(cleanup_error).__name__}: {cleanup_error}"
+                        ),
+                        "ownership_revalidated_before_quit": False,
+                        "process_identity": dict(process),
+                    }
+                    startup_error.add_note(cleanup_result["termination_error"])
+                cleanup_stop_conditions = _process_cleanup_stop_conditions(
+                    [cleanup_result]
+                )
+                _emit(
+                    callback,
+                    stage_name,
+                    "startup_exception_cleanup",
+                    cleanup=cleanup_result,
+                    stop_conditions=cleanup_stop_conditions,
+                )
+        finally:
+            if cleanup_session is None or not cleanup_session.closed:
+                pythoncom.CoUninitialize()
         raise
 
 

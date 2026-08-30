@@ -185,12 +185,13 @@ def _freeze_artifacts(
     artifacts: dict[str, Path] = {}
     for role, filename in sorted(headless.CASE_ARTIFACT_FILENAMES.items()):
         path = case_path / filename
-        path.write_bytes(
-            xml_payload
-            if role in {"initial_xml", "reopened_xml"}
-            else payload + b":" + role.encode("ascii")
-        )
         artifacts[role] = path
+        if role != "worker_result":
+            path.write_bytes(
+                xml_payload
+                if role in {"initial_xml", "reopened_xml"}
+                else payload + b":" + role.encode("ascii")
+            )
     observation["artifacts"] = {
         role: str(artifacts[role])
         for role in sorted(headless.CASE_NATIVE_ARTIFACT_ROLES)
@@ -201,6 +202,7 @@ def _freeze_artifacts(
     observation["reopened_xml_observation"] = (
         headless.parse_project_xml_observation(artifacts["reopened_xml"])
     )
+    headless.durable_write_canonical_json(artifacts["worker_result"], observation)
     return artifacts
 
 
@@ -1433,6 +1435,120 @@ class ParentOwnershipEvidenceTests(unittest.TestCase):
             self.assertTrue(stop["project_windows"][0]["visible"])
             terminate.assert_called_once_with(42, expected, process_identity=identity)
 
+    def test_mismatched_new_project_stops_before_it_disappears_without_cleanup(self) -> None:
+        runner = runpy.run_path(
+            str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
+        )
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+        mismatched = {
+            "pid": 4242,
+            "creation_time_100ns": 9_999,
+            "executable_name": "WINPROJ.EXE",
+            "executable_path": "D:/unexpected/WINPROJ.EXE",
+        }
+
+        class RunningProcess:
+            def __init__(self) -> None:
+                self.return_code: int | None = None
+
+            def poll(self) -> int | None:
+                return self.return_code
+
+            def terminate(self) -> None:
+                self.return_code = 0
+
+            def kill(self) -> None:
+                self.return_code = -9
+
+            def wait(self, timeout: int | None = None) -> int:
+                return 0 if self.return_code is None else self.return_code
+
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary) / "case"
+            worker = RunningProcess()
+            destructive_cleanup = Mock()
+            with (
+                patch.object(
+                    runner["headless_com"],
+                    "registered_project_executable",
+                    return_value=expected,
+                ),
+                patch.object(
+                    runner["headless_com"],
+                    "list_winproj_processes",
+                    side_effect=[[], [mismatched], []],
+                ),
+                patch.object(
+                    runner["headless_com"],
+                    "windows_for_pid",
+                    return_value=[],
+                ),
+                patch.object(
+                    runner["headless_com"],
+                    "terminate_verified_project_process",
+                    destructive_cleanup,
+                ),
+                patch.object(runner["subprocess"], "Popen", return_value=worker),
+                self.assertRaisesRegex(
+                    runner["SupervisionError"],
+                    "project_process_identity_mismatch",
+                ),
+            ):
+                runner["run_supervised_worker"](
+                    operation="case",
+                    repository_root=ROOT,
+                    run_id="test",
+                    workspace=workspace,
+                    result_path=workspace / "result.json",
+                    case_id="SEM-REL-001",
+                )
+
+            stop = json.loads((workspace / "case-watchdog-stop.json").read_text())
+            self.assertEqual("project_process_identity_mismatch", stop["condition"])
+            self.assertEqual(str(expected), stop["expected_project_executable"])
+            self.assertEqual(
+                "unexpected_executable_path",
+                stop["processes"][0]["identity_mismatch"],
+            )
+            self.assertEqual([], stop["new_project_processes_after_worker_stop"])
+            self.assertEqual(0, worker.return_code)
+            destructive_cleanup.assert_not_called()
+
+    def test_mismatched_current_path_never_regains_cleanup_authority(self) -> None:
+        runner = runpy.run_path(
+            str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
+        )
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+        journal_identity = _owned_process_identity(
+            pid=4242,
+            executable_path=str(expected),
+        )
+        current = {
+            **journal_identity,
+            "executable_path": "D:/unexpected/WINPROJ.EXE",
+            "identity_mismatch": "unexpected_executable_path",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            log_path = Path(temporary) / "case-com-log.jsonl"
+            log_path.write_text(
+                json.dumps(
+                    {
+                        "phase": "ownership_caption_set",
+                        "details": journal_identity,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                [],
+                runner["_verified_owned_identities"](
+                    log_path,
+                    new_processes=[current],
+                    expected_path=expected,
+                ),
+            )
+
     def test_success_and_failure_process_leaks_use_full_identity_cleanup(self) -> None:
         runner = runpy.run_path(
             str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
@@ -1954,6 +2070,115 @@ class ComFailClosedTests(unittest.TestCase):
                 headless_com._open_application(None)
         app.Quit.assert_not_called()
         pythoncom.CoUninitialize.assert_called_once()
+
+    def test_owned_startup_failure_uses_session_cleanup_and_journals_stop(self) -> None:
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+        identity = _owned_process_identity(executable_path=str(expected))
+        identity_details = {
+            field: identity[field]
+            for field in headless_com.OWNED_PROCESS_IDENTITY_FIELDS
+        }
+        events: list[tuple[str, dict]] = []
+        pythoncom = Mock()
+        app = Mock()
+        app.Visible = False
+        client = Mock()
+        client.DispatchEx.return_value = app
+        original_required_set = headless_com._required_set
+
+        def fail_visible_readback(obj: object, name: str, value: object) -> None:
+            if name == "Visible":
+                raise headless_com.ProjectComError("post-bind Visible readback failed")
+            original_required_set(obj, name, value)
+
+        def callback(_stage: str, phase: str, details: dict) -> None:
+            events.append((phase, details))
+
+        wait_handle = Mock(
+            side_effect=headless_com.ProjectComError(
+                "startup cleanup wait-handle identity query failed"
+            )
+        )
+        destructive_cleanup = Mock(return_value=False)
+        with (
+            patch.object(
+                headless_com,
+                "_load_pywin32",
+                return_value=(pythoncom, Mock(), client),
+            ),
+            patch.object(
+                headless_com,
+                "registered_project_executable",
+                return_value=expected,
+            ),
+            patch.object(headless_com, "list_winproj_processes", return_value=[]),
+            patch.object(
+                headless_com,
+                "_find_new_project_process",
+                return_value=identity,
+            ),
+            patch.object(headless_com, "windows_for_pid", return_value=[]),
+            patch.object(
+                headless_com,
+                "_bind_process_to_caption",
+                return_value=identity,
+            ),
+            patch.object(
+                headless_com,
+                "_owned_process_identity_details",
+                return_value=identity_details,
+            ),
+            patch.object(
+                headless_com,
+                "_owned_process_identity_matches",
+                return_value=True,
+            ),
+            patch.object(
+                headless_com,
+                "_open_verified_process_wait_handle",
+                wait_handle,
+            ),
+            patch.object(
+                headless_com,
+                "terminate_verified_project_process",
+                destructive_cleanup,
+            ),
+            patch.object(
+                headless_com,
+                "_required_set",
+                side_effect=fail_visible_readback,
+            ),
+            self.assertRaisesRegex(
+                headless_com.ProjectComError,
+                "post-bind Visible readback failed",
+            ),
+        ):
+            headless_com._open_application(callback)
+
+        phases = [phase for phase, _details in events]
+        self.assertLess(
+            phases.index("ownership_caption_set"),
+            phases.index("startup_exception_cleanup"),
+        )
+        self.assertNotIn("process_identified", phases)
+        cleanup_event = next(
+            details
+            for phase, details in events
+            if phase == "startup_exception_cleanup"
+        )
+        self.assertFalse(cleanup_event["cleanup"]["exited"])
+        self.assertEqual(
+            "project_process_did_not_exit",
+            cleanup_event["stop_conditions"][0]["condition"],
+        )
+        wait_handle.assert_called_once_with(identity, expected)
+        destructive_cleanup.assert_called_once_with(
+            42,
+            expected,
+            process_identity=identity,
+        )
+        app.Quit.assert_called_once_with(headless_com.PJ_DO_NOT_SAVE)
+        pythoncom.CoUninitialize.assert_called_once_with()
 
     def test_process_identity_events_emit_every_destructive_authority_field(self) -> None:
         expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")

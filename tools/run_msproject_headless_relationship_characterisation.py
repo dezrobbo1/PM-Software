@@ -319,6 +319,15 @@ def _verified_owned_identities(
             continue
         if Path(str(identity["executable_path"])).resolve(strict=False) != expected:
             continue
+        current_path = current.get("executable_path")
+        if (
+            current.get("identity_query_failures")
+            or current.get("identity_mismatch")
+            or not isinstance(current_path, str)
+            or not current_path
+            or Path(current_path).resolve(strict=False) != expected
+        ):
+            continue
         verified.append(identity)
     return verified
 
@@ -473,6 +482,25 @@ def run_supervised_worker(
                     "case_id": case_id,
                     "stage": current_stage,
                     "processes": _window_inventory(identity_query_failures),
+                    "recorded_at": _now(),
+                }
+                break
+            identity_mismatches = [
+                item
+                for item in latest_new_processes
+                if item.get("identity_mismatch")
+            ]
+            if identity_mismatches:
+                stopped = {
+                    "schema_version": "headless-msproject-watchdog-stop-v0.1",
+                    "characterisation_label": TRACK_ID,
+                    "classification": "characterisation_inconclusive",
+                    "condition": "project_process_identity_mismatch",
+                    "operation": operation,
+                    "case_id": case_id,
+                    "stage": current_stage,
+                    "expected_project_executable": str(executable),
+                    "processes": _window_inventory(identity_mismatches),
                     "recorded_at": _now(),
                 }
                 break

@@ -442,6 +442,47 @@ def _validated_shared_hashes(
     return normalized
 
 
+def _verify_worker_result_binding(
+    path: Path,
+    observation: Mapping[str, Any],
+    *,
+    expected_sha256: str | None = None,
+) -> None:
+    """Bind exact bounded worker-result bytes to one observation object."""
+
+    _regular_file(path, label="worker native result")
+    try:
+        worker_bytes = path.read_bytes()
+    except OSError as error:
+        raise ObservationFreezeError(
+            "worker native result cannot be read"
+        ) from error
+    if len(worker_bytes) > 25 * 1024 * 1024:
+        raise ObservationFreezeError(
+            "worker native result exceeds the bounded 25 MiB limit"
+        )
+    if expected_sha256 is not None and (
+        hashlib.sha256(worker_bytes).hexdigest() != expected_sha256
+    ):
+        raise ObservationFreezeError(
+            "worker native result bytes disagree with the case manifest"
+        )
+    if worker_bytes != canonical_bytes(observation) + b"\n":
+        raise ObservationFreezeError(
+            "worker native result exact bytes disagree with the native observation"
+        )
+    try:
+        parsed = json.loads(worker_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ObservationFreezeError(
+            "worker native result is not valid canonical UTF-8 JSON"
+        ) from error
+    if not isinstance(parsed, Mapping) or parsed != observation:
+        raise ObservationFreezeError(
+            "worker native result object disagrees with the native observation"
+        )
+
+
 def freeze_native_observation(
     workspace: CaseWorkspace,
     observation: Mapping[str, Any],
@@ -507,6 +548,7 @@ def freeze_native_observation(
             "worker automation identities disagree with prelaunch hashes"
         )
     _validate_case_xml_bindings(observation, expected_artifacts)
+    _verify_worker_result_binding(expected_artifacts["worker_result"], observation)
     observation_path = workspace.path / "native-observation.json"
     observation_sha = durable_write_canonical_json(observation_path, observation)
     manifest = build_artifact_manifest(
@@ -586,6 +628,25 @@ def verify_observation_freeze(workspace: CaseWorkspace) -> FreezeVerification:
             raise ObservationFreezeError(
                 "native observation manifest paths are not the deterministic case artifacts"
             )
+        worker_entry = next(
+            (
+                item
+                for item in manifest["artifacts"]
+                if isinstance(item, Mapping) and item.get("role") == "worker_result"
+            ),
+            None,
+        )
+        if not isinstance(worker_entry, Mapping) or not isinstance(
+            worker_entry.get("sha256"), str
+        ):
+            raise ObservationFreezeError(
+                "native observation manifest lacks worker-result identity"
+            )
+        _verify_worker_result_binding(
+            workspace.path / CASE_ARTIFACT_FILENAMES["worker_result"],
+            observation,
+            expected_sha256=str(worker_entry["sha256"]),
+        )
         reported_native = observation.get("artifacts")
         if (
             not isinstance(reported_native, Mapping)
