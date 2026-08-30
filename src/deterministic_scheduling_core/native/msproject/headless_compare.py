@@ -17,6 +17,10 @@ from typing import Any, Callable, Mapping
 
 from deterministic_scheduling_core.provenance.canonical_json import canonical_bytes
 
+from .freeze import (
+    NativeEvidenceError,
+    read_regular_file_snapshot,
+)
 from .headless import (
     CASE_IDS,
     PILOT_ID,
@@ -53,6 +57,8 @@ COMPARATOR_MODULE = (
 COMPARATOR_SOURCE = PurePosixPath(
     "src/deterministic_scheduling_core/native/msproject/headless_compare.py"
 )
+MAX_ORACLE_JSON_BYTES = 1024 * 1024
+MAX_COMPARATOR_SOURCE_BYTES = 1024 * 1024
 ORACLE_PROVENANCE_SCHEMA = "headless-msproject-oracle-provenance-v0.1"
 SEALED_EXPECTED_KEYS = frozenset(
     {
@@ -111,6 +117,18 @@ _SEALED_CLAIM_BOUNDARY = {
     ),
 }
 
+try:
+    _IMPORTED_COMPARATOR_SOURCE_PATH = Path(__file__).resolve(strict=True)
+    _imported_comparator_source_snapshot = read_regular_file_snapshot(
+        _IMPORTED_COMPARATOR_SOURCE_PATH,
+        label="imported comparison source",
+        max_bytes=MAX_COMPARATOR_SOURCE_BYTES,
+    )
+except (OSError, NativeEvidenceError) as error:
+    raise ImportError("comparison source identity cannot be captured at import") from error
+_IMPORTED_COMPARATOR_SOURCE_BYTES = _imported_comparator_source_snapshot.data
+_IMPORTED_COMPARATOR_SOURCE_SHA256 = _imported_comparator_source_snapshot.sha256
+
 
 def _exact_json_value(value: Any, expected: Any) -> bool:
     """Compare JSON values without Python's bool/integer equality aliases."""
@@ -127,6 +145,44 @@ def _exact_json_value(value: Any, expected: Any) -> bool:
             for item, expected_item in zip(value, expected)
         )
     return value == expected
+
+
+class _DuplicateJsonKeyError(ValueError):
+    pass
+
+
+def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise _DuplicateJsonKeyError(f"duplicate JSON key {key!r}")
+        value[key] = item
+    return value
+
+
+def _parse_fixture_json(data: bytes, *, case_id: str) -> dict[str, Any]:
+    """Parse authenticated fixture bytes into the canonical JSON value domain."""
+
+    try:
+        value = json.loads(
+            data.decode("utf-8"), object_pairs_hook=_strict_json_object
+        )
+        if not isinstance(value, dict):
+            raise TypeError("fixture root is not an object")
+        # The raw digest authenticates the reviewed on-disk serialization. This
+        # additional conversion rejects values (for example floats) outside the
+        # canonical JSON domain without imposing a new whitespace serialization.
+        canonical_bytes(value)
+    except (
+        UnicodeError,
+        json.JSONDecodeError,
+        TypeError,
+        ValueError,
+    ) as error:
+        raise ObservationFreezeError(
+            f"bound full fixture {case_id} is not strict canonical-domain JSON"
+        ) from error
+    return value
 
 
 def _sealed_source_bindings(case_id: str) -> dict[str, Any]:
@@ -225,6 +281,65 @@ def _valid_sealed_envelope(value: Mapping[str, Any], case_id: str) -> bool:
     )
 
 
+def _bound_fixture_identity(
+    repository_root: Path,
+    sealed_expected: Mapping[str, Any],
+    case_id: str,
+) -> dict[str, Any]:
+    """Verify the sealed projection against one stable full-fixture snapshot."""
+
+    fixture_binding = sealed_expected["source_bindings"]["fixture"]
+    relative_path = fixture_binding["relative_path"]
+    fixture_path = repository_root.joinpath(*PurePosixPath(relative_path).parts)
+    try:
+        snapshot = read_regular_file_snapshot(
+            fixture_path,
+            label=f"bound full fixture {case_id}",
+            max_bytes=MAX_ORACLE_JSON_BYTES,
+        )
+        if snapshot.sha256 != FIXTURE_RAW_SHA256_BY_CASE_ID[case_id]:
+            raise ObservationFreezeError(
+                "bound full fixture digest does not match the known case identity"
+            )
+        fixture = _parse_fixture_json(snapshot.data, case_id=case_id)
+    except NativeEvidenceError as error:
+        raise ObservationFreezeError(
+            "bound full fixture is not a stable bounded regular-file snapshot"
+        ) from error
+
+    fixture_expected = fixture.get("expected")
+    if fixture.get("case_id") != case_id or not isinstance(
+        fixture_expected, Mapping
+    ):
+        raise ObservationFreezeError(
+            "bound full fixture identity or expected mapping is invalid"
+        )
+    required_fields = ("reference_status", "activity_times", "project_finish")
+    if any(field not in fixture_expected for field in required_fields):
+        raise ObservationFreezeError(
+            "bound full fixture expected projection is incomplete"
+        )
+    fixture_projection = {
+        field: fixture_expected[field] for field in required_fields
+    }
+    for field in ("total_float", "free_float"):
+        if field in fixture_expected:
+            fixture_projection[field] = fixture_expected[field]
+    if not _exact_json_value(
+        sealed_expected["expected_normalized"], fixture_projection
+    ):
+        raise ObservationFreezeError(
+            "sealed normalized expectation differs from its bound full fixture"
+        )
+    return {
+        "case_id": case_id,
+        "relative_path": relative_path,
+        "sha256": snapshot.sha256,
+        "byte_size": snapshot.byte_size,
+        "source_kind": "bound_fixture_byte_snapshot",
+    }
+
+
 def _expected_projection(
     value: Mapping[str, Any],
 ) -> tuple[dict[str, dict[str, int]], int]:
@@ -321,24 +436,28 @@ def _default_expected_snapshot(
         raise ObservationFreezeError(
             "sealed normalized expectation schema or identity does not match the requested case"
         )
+    fixture_identity = _bound_fixture_identity(repository_root, value, case_id)
     return value, {
         "case_id": case_id,
         "relative_path": relative_path.as_posix(),
         "sha256": hashlib.sha256(expected_bytes).hexdigest(),
         "source_kind": "sealed_reference_byte_snapshot",
+        "bound_fixture": fixture_identity,
     }
 
 
 def _comparator_source_identity(
     repository_root: Path, *, require_repository_source: bool
 ) -> dict[str, str]:
-    """Bind the comparison to the exact checked-out comparator source bytes."""
+    """Bind provenance to import-time bytes and reject later source mutation."""
 
     repository_path = repository_root.joinpath(*COMPARATOR_SOURCE.parts)
-    module_path = Path(__file__).resolve()
     if require_repository_source:
         try:
-            if repository_path.resolve(strict=True) != module_path:
+            if (
+                repository_path.resolve(strict=True)
+                != _IMPORTED_COMPARATOR_SOURCE_PATH
+            ):
                 raise ObservationFreezeError(
                     "executed comparator is not the checked-out repository source"
                 )
@@ -349,16 +468,28 @@ def _comparator_source_identity(
         path = repository_path
     else:
         # Injected readers are a parser/test seam, never a production cache.
-        path = module_path
-    _regular_file(path, label="comparison source")
+        path = _IMPORTED_COMPARATOR_SOURCE_PATH
     try:
-        source_bytes = path.read_bytes()
-    except OSError as error:
-        raise ObservationFreezeError("comparison source cannot be read") from error
+        current = read_regular_file_snapshot(
+            path,
+            label="current comparison source",
+            max_bytes=MAX_COMPARATOR_SOURCE_BYTES,
+        )
+    except NativeEvidenceError as error:
+        raise ObservationFreezeError(
+            "comparison source cannot be read as a stable bounded snapshot"
+        ) from error
+    if (
+        current.sha256 != _IMPORTED_COMPARATOR_SOURCE_SHA256
+        or current.data != _IMPORTED_COMPARATOR_SOURCE_BYTES
+    ):
+        raise ObservationFreezeError(
+            "comparison source changed after its import-time identity was captured"
+        )
     return {
         "module": COMPARATOR_MODULE,
         "relative_path": COMPARATOR_SOURCE.as_posix(),
-        "sha256": hashlib.sha256(source_bytes).hexdigest(),
+        "sha256": _IMPORTED_COMPARATOR_SOURCE_SHA256,
     }
 
 
@@ -454,6 +585,7 @@ def compare_frozen_observations(
                 "relative_path": (SEALED_DIRECTORY / f"{case_id}.json").as_posix(),
                 "sha256": hashlib.sha256(canonical_bytes(expected_value)).hexdigest(),
                 "source_kind": "injected_mapping_canonical_json",
+                "bound_fixture": None,
             }
         reference_identities.append(reference_identity)
         projection_source = (
@@ -556,10 +688,18 @@ class _Journal:
             os.replace(temporary, self.state_path)
 
 
+def _require_parent_comparator_identity(expected_sha256: str) -> None:
+    if expected_sha256 != _IMPORTED_COMPARATOR_SOURCE_SHA256:
+        raise ObservationFreezeError(
+            "imported comparator source differs from the parent prelaunch snapshot"
+        )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository-root", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
+    parser.add_argument("--expected-comparator-sha256", required=True)
     parser.add_argument("--result", type=Path, required=True)
     parser.add_argument("--state", type=Path)
     parser.add_argument("--log", type=Path)
@@ -571,6 +711,7 @@ def main(arguments: list[str] | None = None) -> int:
     journal = _Journal(args.state, args.log)
     journal.emit("start", {"run_id": args.run_id})
     try:
+        _require_parent_comparator_identity(args.expected_comparator_sha256)
         run = create_run_workspace(
             args.repository_root.resolve(), args.run_id, resume=True
         )

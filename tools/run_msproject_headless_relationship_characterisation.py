@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
+import secrets
 import stat
 import subprocess
 import sys
@@ -15,6 +16,10 @@ import time
 from typing import Any, Mapping
 
 from deterministic_scheduling_core.native.msproject import headless, headless_com
+from deterministic_scheduling_core.native.msproject.freeze import (
+    NativeEvidenceError,
+    read_regular_file_snapshot,
+)
 from deterministic_scheduling_core.native.msproject.headless import (
     CASE_IDS,
     TRACK_ID,
@@ -29,6 +34,7 @@ from deterministic_scheduling_core.native.msproject.headless import (
     verify_observation_freeze,
     verify_run_freeze_gate,
 )
+from deterministic_scheduling_core.provenance.canonical_json import canonical_bytes
 
 
 PERTH_TZ = timezone(timedelta(hours=8), name="Australia/Perth")
@@ -61,6 +67,7 @@ DEFAULT_TIMEOUTS = {
 }
 NATIVE_WORKER_OPERATIONS = frozenset({"environment", "preflight", "case", "calendar"})
 COMPARISON_TIMEOUT_SECONDS = 60
+MAX_COMPARATOR_SOURCE_BYTES = 1024 * 1024
 PREFLIGHT_REQUIRED_OPERATIONS = frozenset(
     {
         "create_blank_project",
@@ -701,26 +708,49 @@ def run_comparison_worker(
     log_path = workspace / "comparison-log.jsonl"
     stdout_path = workspace / "comparison-worker-stdout.log"
     stderr_path = workspace / "comparison-worker-stderr.log"
+    pycache_prefix = workspace / (
+        f"comparison-import-pycache-{secrets.token_hex(16)}"
+    )
     for path in (state_path, log_path, stdout_path, stderr_path, result_path):
         if path.exists():
             raise SupervisionError(f"refusing to overwrite comparison evidence: {path}")
-    command = [
-        sys.executable,
-        "-m",
-        "deterministic_scheduling_core.native.msproject.headless_compare",
-        "--repository-root",
-        str(repository_root),
-        "--run-id",
-        run_id,
-        "--result",
-        str(result_path),
-        "--state",
-        str(state_path),
-        "--log",
-        str(log_path),
-    ]
+    if pycache_prefix.exists():
+        raise SupervisionError(
+            f"comparison pycache prefix must be fresh and nonexistent: {pycache_prefix}"
+        )
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
     with stdout_path.open("xb") as stdout, stderr_path.open("xb") as stderr:
+        comparator_source_path = repository_root / COMPARATOR_SOURCE_RELATIVE_PATH
+        try:
+            comparator_snapshot = read_regular_file_snapshot(
+                comparator_source_path,
+                label="prelaunch comparator source",
+                max_bytes=MAX_COMPARATOR_SOURCE_BYTES,
+            )
+        except NativeEvidenceError as error:
+            raise SupervisionError(
+                "comparator source could not be captured before launch"
+            ) from error
+        command = [
+            sys.executable,
+            "-B",
+            "-X",
+            f"pycache_prefix={pycache_prefix}",
+            "-m",
+            "deterministic_scheduling_core.native.msproject.headless_compare",
+            "--repository-root",
+            str(repository_root),
+            "--run-id",
+            run_id,
+            "--expected-comparator-sha256",
+            comparator_snapshot.sha256,
+            "--result",
+            str(result_path),
+            "--state",
+            str(state_path),
+            "--log",
+            str(log_path),
+        ]
         process = subprocess.Popen(
             command,
             cwd=repository_root,
@@ -754,7 +784,19 @@ def run_comparison_worker(
         )
     if not result_path.is_file():
         raise SupervisionError("comparison worker did not write its result")
-    return _read_json(result_path)
+    result = _read_json(result_path)
+    provenance = result.get("oracle_provenance")
+    comparator = (
+        provenance.get("comparator") if isinstance(provenance, Mapping) else None
+    )
+    if (
+        not isinstance(comparator, Mapping)
+        or comparator.get("sha256") != comparator_snapshot.sha256
+    ):
+        raise SupervisionError(
+            "comparison result comparator provenance differs from the prelaunch snapshot"
+        )
+    return result
 
 
 def _automation_hashes(repository_root: Path) -> dict[str, str]:
@@ -1627,14 +1669,45 @@ def _validate_comparison_result(
     for case_id, relative_path, reference in zip(
         CASE_IDS, expected_reference_paths, references, strict=True
     ):
+        expected_fixture_path = (
+            f"benchmarks/semantic/cases/{case_id.lower()}.json"
+        )
+        bound_fixture = (
+            reference.get("bound_fixture")
+            if isinstance(reference, Mapping)
+            else None
+        )
         if (
             not isinstance(reference, Mapping)
             or set(reference)
-            != {"case_id", "relative_path", "sha256", "source_kind"}
+            != {
+                "case_id",
+                "relative_path",
+                "sha256",
+                "source_kind",
+                "bound_fixture",
+            }
             or reference.get("case_id") != case_id
             or reference.get("relative_path") != relative_path
             or reference.get("source_kind") != "sealed_reference_byte_snapshot"
             or not _is_sha256(reference.get("sha256"))
+            or not isinstance(bound_fixture, Mapping)
+            or set(bound_fixture)
+            != {
+                "case_id",
+                "relative_path",
+                "sha256",
+                "byte_size",
+                "source_kind",
+            }
+            or bound_fixture.get("case_id") != case_id
+            or bound_fixture.get("relative_path") != expected_fixture_path
+            or not _is_sha256(bound_fixture.get("sha256"))
+            or not isinstance(bound_fixture.get("byte_size"), int)
+            or isinstance(bound_fixture.get("byte_size"), bool)
+            or bound_fixture.get("byte_size") <= 0
+            or bound_fixture.get("source_kind")
+            != "bound_fixture_byte_snapshot"
         ):
             raise SupervisionError(
                 "comparison sealed-reference provenance is malformed or noncanonical"
@@ -1711,6 +1784,13 @@ def _validate_comparison_result(
             classification = str(field["classification"])
             native = field.get("native")
             reference = field.get("reference")
+            if type(native) is not int or (
+                reference is not None and type(reference) is not int
+            ):
+                raise SupervisionError(
+                    "comparison coordinate fields require exact JSON integers or null "
+                    f"for {case_id}: {name}"
+                )
             if native != native_by_field[name]:
                 raise SupervisionError(
                     f"comparison field disagrees with normalized native value for {case_id}: {name}"
@@ -1782,7 +1862,14 @@ def _verify_cached_comparison_against_current_oracle(
     )
     _validate_comparison_result(current, run_id=run.run_id)
     _write_result_sidecar(verification_path)
-    if current != cached:
+    try:
+        current_bytes = canonical_bytes(current)
+        cached_bytes = canonical_bytes(cached)
+    except (TypeError, ValueError) as error:
+        raise SupervisionError(
+            "cached or current comparison is outside canonical JSON"
+        ) from error
+    if current_bytes != cached_bytes:
         raise SupervisionError(
             "cached comparison disagrees with the current comparator or oracle"
         )

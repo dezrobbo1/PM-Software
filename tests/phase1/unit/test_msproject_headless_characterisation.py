@@ -575,6 +575,55 @@ class EvidenceBoundaryTests(unittest.TestCase):
                 headless_compare.compare_frozen_observations(run)
             projector.assert_not_called()
 
+    def test_default_fixture_release_follows_every_native_normalization(self) -> None:
+        events: list[str] = []
+        original_normalize = headless_compare.normalize_observation
+
+        def normalize(observation: dict) -> dict:
+            events.append(f"normalize:{observation['case_id']}")
+            return original_normalize(observation)
+
+        def snapshot(_root: Path, case_id: str) -> tuple[dict, dict]:
+            events.append(f"oracle:{case_id}")
+            raise headless.ObservationFreezeError("synthetic oracle stop")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            run = headless.create_run_workspace(Path(temporary), "oracle-order")
+            for case_id in headless.CASE_IDS:
+                case = headless.create_case_workspace(run, case_id)
+                observation = _observation(case_id)
+                shared = _provenance_for(run, case_id, observation)
+                headless.freeze_native_observation(
+                    case,
+                    observation,
+                    _freeze_artifacts(case.path, observation, case_id.encode()),
+                    shared_hashes=shared,
+                )
+            headless.verify_run_freeze_gate(run, write_index=True)
+            with patch.object(
+                headless_compare, "normalize_observation", side_effect=normalize
+            ), patch.object(
+                headless_compare,
+                "_comparator_source_identity",
+                return_value={
+                    "module": headless_compare.COMPARATOR_MODULE,
+                    "relative_path": headless_compare.COMPARATOR_SOURCE.as_posix(),
+                    "sha256": "0" * 64,
+                },
+            ), patch.object(
+                headless_compare,
+                "_default_expected_snapshot",
+                side_effect=snapshot,
+            ), self.assertRaisesRegex(
+                headless.ObservationFreezeError, "synthetic oracle stop"
+            ):
+                headless_compare.compare_frozen_observations(run)
+        self.assertEqual(
+            [f"normalize:{case_id}" for case_id in headless.CASE_IDS]
+            + ["oracle:SEM-REL-001"],
+            events,
+        )
+
     def test_legacy_forced_session_keeps_oracle_closed_before_first_read(self) -> None:
         calls: list[str] = []
 
@@ -1327,30 +1376,153 @@ class ParentOwnershipEvidenceTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
+            comparator_source = root / runner[
+                "COMPARATOR_SOURCE_RELATIVE_PATH"
+            ]
+            comparator_source.parent.mkdir(parents=True)
+            comparator_source.write_bytes(b"synthetic comparator source\n")
+            comparator_sha256 = headless.sha256_file(comparator_source)
             result_path = root / "comparison.json"
             commands: list[list[str]] = []
 
             def popen(command: list[str], **_kwargs: object) -> CompletedProcess:
                 commands.append(command)
-                result_path.write_text('{"status":"ok"}\n', encoding="utf-8")
+                result_path.write_text(
+                    json.dumps(
+                        {
+                            "status": "ok",
+                            "oracle_provenance": {
+                                "comparator": {"sha256": comparator_sha256}
+                            },
+                        }
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
                 return CompletedProcess()
 
-            with patch.object(runner["subprocess"], "Popen", side_effect=popen):
+            cache_token = "0" * 32
+            with patch.object(
+                runner["secrets"], "token_hex", return_value=cache_token
+            ), patch.object(runner["subprocess"], "Popen", side_effect=popen):
                 result = runner["run_comparison_worker"](
-                    repository_root=ROOT,
+                    repository_root=root,
                     run_id="test",
                     workspace=root / "worker",
                     result_path=result_path,
                 )
             self.assertEqual("ok", result["status"])
-            self.assertIn(
-                "deterministic_scheduling_core.native.msproject.headless_compare",
+            self.assertEqual(
+                [
+                    sys.executable,
+                    "-B",
+                    "-X",
+                    f"pycache_prefix={root / 'worker' / f'comparison-import-pycache-{cache_token}'}",
+                    "-m",
+                    "deterministic_scheduling_core.native.msproject.headless_compare",
+                    "--repository-root",
+                    str(root),
+                    "--run-id",
+                    "test",
+                    "--expected-comparator-sha256",
+                    comparator_sha256,
+                    "--result",
+                    str(result_path),
+                    "--state",
+                    str(root / "worker" / "comparison-stage-state.json"),
+                    "--log",
+                    str(root / "worker" / "comparison-log.jsonl"),
+                ],
                 commands[0],
             )
             self.assertNotIn(
                 "deterministic_scheduling_core.native.msproject.headless_worker",
                 commands[0],
             )
+
+    def test_comparison_worker_rejects_preexisting_pycache_prefix(self) -> None:
+        runner = runpy.run_path(
+            str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workspace = root / "worker"
+            cache_token = "1" * 32
+            (
+                workspace / f"comparison-import-pycache-{cache_token}"
+            ).mkdir(parents=True)
+            popen = Mock()
+            with patch.object(
+                runner["secrets"], "token_hex", return_value=cache_token
+            ), patch.object(
+                runner["subprocess"], "Popen", popen
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "pycache prefix must be fresh"
+            ):
+                runner["run_comparison_worker"](
+                    repository_root=ROOT,
+                    run_id="test",
+                    workspace=workspace,
+                    result_path=root / "comparison.json",
+                )
+            popen.assert_not_called()
+
+    def test_comparison_worker_rejects_unbound_returned_source_digest(self) -> None:
+        runner = runpy.run_path(
+            str(ROOT / "tools" / "run_msproject_headless_relationship_characterisation.py")
+        )
+
+        class CompletedProcess:
+            def wait(self, timeout: int | None = None) -> int:
+                return 0
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            comparator_source = root / runner[
+                "COMPARATOR_SOURCE_RELATIVE_PATH"
+            ]
+            comparator_source.parent.mkdir(parents=True)
+            comparator_source.write_bytes(b"synthetic comparator source\n")
+            result_path = root / "comparison.json"
+
+            def popen(command: list[str], **_kwargs: object) -> CompletedProcess:
+                expected_sha256 = command[
+                    command.index("--expected-comparator-sha256") + 1
+                ]
+                self.assertEqual(
+                    headless.sha256_file(comparator_source), expected_sha256
+                )
+                comparator_source.write_bytes(
+                    b"synthetic comparator source mutated after launch\n"
+                )
+                result_path.write_text(
+                    json.dumps(
+                        {
+                            "oracle_provenance": {
+                                "comparator": {
+                                    "sha256": headless.sha256_file(
+                                        comparator_source
+                                    )
+                                }
+                            }
+                        }
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return CompletedProcess()
+
+            with patch.object(
+                runner["subprocess"], "Popen", side_effect=popen
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "differs from the prelaunch snapshot"
+            ):
+                runner["run_comparison_worker"](
+                    repository_root=root,
+                    run_id="test",
+                    workspace=root / "worker",
+                    result_path=result_path,
+                )
 
     def test_timeout_cleanup_passes_full_identity(self) -> None:
         runner = runpy.run_path(

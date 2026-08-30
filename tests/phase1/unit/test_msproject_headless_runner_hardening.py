@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import runpy
@@ -90,12 +91,42 @@ def _comparison() -> dict:
                     ),
                     "sha256": f"{index:064x}",
                     "source_kind": "sealed_reference_byte_snapshot",
+                    "bound_fixture": {
+                        "case_id": case_id,
+                        "relative_path": (
+                            "benchmarks/semantic/cases/" f"{case_id.lower()}.json"
+                        ),
+                        "sha256": f"{index + 100:064x}",
+                        "byte_size": 1000 + index,
+                        "source_kind": "bound_fixture_byte_snapshot",
+                    },
                 }
                 for index, case_id in enumerate(headless.CASE_IDS, start=1)
             ],
         },
         "cases": cases,
     }
+
+
+def _synthetic_bound_oracle(
+    case_id: str = "SEM-REL-001",
+) -> tuple[dict, dict, bytes, str]:
+    fixture = {
+        "case_id": case_id,
+        "expected": {
+            "reference_status": "reference_exact",
+            "activity_times": {
+                "A": {"start": 0, "finish": 4},
+                "B": {"start": 4, "finish": 7},
+            },
+            "project_finish": 7,
+        },
+    }
+    fixture_bytes = headless.canonical_bytes(fixture) + b"\n"
+    fixture_digest = hashlib.sha256(fixture_bytes).hexdigest()
+    sealed = pilot._sealed_expected(case_id, fixture)
+    sealed["source_bindings"]["fixture"]["raw_sha256"] = fixture_digest
+    return sealed, fixture, fixture_bytes, fixture_digest
 
 
 class RunnerHardeningTests(unittest.TestCase):
@@ -311,6 +342,32 @@ class RunnerHardeningTests(unittest.TestCase):
         ):
             runner["_validate_comparison_result"](comparison, run_id="run")
 
+    def test_cached_comparison_rejects_numeric_type_aliases(self) -> None:
+        runner = _runner()
+        aliases = (
+            ("native_false", 0, False, 0),
+            ("reference_false", 0, 0, False),
+            ("native_true", 1, True, 1),
+            ("reference_true", 1, 1, True),
+            ("native_float", 0, 0.0, 0),
+            ("reference_float", 0, 0, 0.0),
+        )
+        for label, normalized, native, reference in aliases:
+            with self.subTest(label=label):
+                comparison = _comparison()
+                comparison["cases"][0]["normalized_native"]["activities"]["A"][
+                    "start"
+                ] = normalized
+                comparison["cases"][0]["fields"][0].update(
+                    {"native": native, "reference": reference}
+                )
+                with self.assertRaisesRegex(
+                    runner["SupervisionError"], "exact JSON integers"
+                ):
+                    runner["_validate_comparison_result"](
+                        comparison, run_id="run"
+                    )
+
     def test_cached_comparison_is_reexecuted_against_current_oracle(self) -> None:
         runner = _runner()
         cached = _comparison()
@@ -335,6 +392,68 @@ class RunnerHardeningTests(unittest.TestCase):
             ):
                 runner["_verify_cached_comparison_against_current_oracle"](
                     run, cached
+                )
+
+            cached_alias = json.loads(json.dumps(cached))
+            cached_alias["cases"][0]["fields"][0]["reference"] = False
+            comparator = Mock(side_effect=emit_current)
+            with patch.dict(
+                runner[
+                    "_verify_cached_comparison_against_current_oracle"
+                ].__globals__,
+                {"run_comparison_worker": comparator},
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "exact JSON integers"
+            ):
+                runner["_verify_cached_comparison_against_current_oracle"](
+                    run, cached_alias
+                )
+            comparator.assert_not_called()
+
+            cached_alias = json.loads(json.dumps(cached))
+            cached_alias["cases"][0]["cache_identity_probe"] = {"value": 0}
+            current = json.loads(json.dumps(cached_alias))
+            current["cases"][0]["cache_identity_probe"]["value"] = False
+            with patch.dict(
+                runner[
+                    "_verify_cached_comparison_against_current_oracle"
+                ].__globals__,
+                {"run_comparison_worker": Mock(side_effect=emit_current)},
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "current comparator or oracle"
+            ):
+                runner["_verify_cached_comparison_against_current_oracle"](
+                    run, cached_alias
+                )
+
+            cached_alias = json.loads(json.dumps(cached))
+            cached_alias["cases"][0]["cache_identity_probe"] = {"value": 0}
+            current = json.loads(json.dumps(cached_alias))
+            current["cases"][0]["cache_identity_probe"]["value"] = 0.0
+
+            def emit_noncanonical_current(
+                *, result_path: Path, **_kwargs: object
+            ) -> dict:
+                result_path.parent.mkdir(parents=True, exist_ok=True)
+                result_path.write_text(
+                    json.dumps(current, sort_keys=True) + "\n", encoding="utf-8"
+                )
+                return current
+
+            with patch.dict(
+                runner[
+                    "_verify_cached_comparison_against_current_oracle"
+                ].__globals__,
+                {
+                    "run_comparison_worker": Mock(
+                        side_effect=emit_noncanonical_current
+                    )
+                },
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "outside canonical JSON"
+            ):
+                runner["_verify_cached_comparison_against_current_oracle"](
+                    run, cached_alias
                 )
 
             current = json.loads(json.dumps(cached))
@@ -530,18 +649,8 @@ class RunnerHardeningTests(unittest.TestCase):
     def test_sealed_snapshot_rejects_wrong_identity_and_schema_before_provenance(
         self,
     ) -> None:
-        expected = pilot._sealed_expected(
-            "SEM-REL-001",
-            {
-                "expected": {
-                    "reference_status": "reference_exact",
-                    "activity_times": {
-                        "A": {"start": 0, "finish": 4},
-                        "B": {"start": 4, "finish": 7},
-                    },
-                    "project_finish": 7,
-                }
-            },
+        expected, _fixture, fixture_bytes, fixture_digest = (
+            _synthetic_bound_oracle()
         )
 
         def wrong_fixture_case(candidate: dict) -> None:
@@ -620,11 +729,33 @@ class RunnerHardeningTests(unittest.TestCase):
                 json.dumps(expected, sort_keys=True, separators=(",", ":")) + "\n",
                 encoding="utf-8",
             )
-            loaded, identity = headless_compare._default_expected_snapshot(
-                root, "SEM-REL-001"
-            )
+            fixture_path = root / "benchmarks/semantic/cases/sem-rel-001.json"
+            fixture_path.parent.mkdir(parents=True)
+            fixture_path.write_bytes(fixture_bytes)
+            known_digests = dict(pilot.FIXTURE_RAW_SHA256_BY_CASE_ID)
+            known_digests["SEM-REL-001"] = fixture_digest
+            with patch.object(
+                headless_compare,
+                "FIXTURE_RAW_SHA256_BY_CASE_ID",
+                known_digests,
+            ):
+                loaded, identity = headless_compare._default_expected_snapshot(
+                    root, "SEM-REL-001"
+                )
             self.assertEqual(expected, loaded)
             self.assertEqual("SEM-REL-001", identity["case_id"])
+            self.assertEqual(
+                {
+                    "case_id": "SEM-REL-001",
+                    "relative_path": (
+                        "benchmarks/semantic/cases/sem-rel-001.json"
+                    ),
+                    "sha256": fixture_digest,
+                    "byte_size": len(fixture_bytes),
+                    "source_kind": "bound_fixture_byte_snapshot",
+                },
+                identity["bound_fixture"],
+            )
 
             for label, mutate in mutations.items():
                 with self.subTest(label=label):
@@ -642,6 +773,10 @@ class RunnerHardeningTests(unittest.TestCase):
                     )
                     with patch.object(
                         headless_compare.hashlib, "sha256", digest
+                    ), patch.object(
+                        headless_compare,
+                        "FIXTURE_RAW_SHA256_BY_CASE_ID",
+                        known_digests,
                     ), self.assertRaisesRegex(
                         headless.ObservationFreezeError, "schema or identity"
                     ):
@@ -649,6 +784,149 @@ class RunnerHardeningTests(unittest.TestCase):
                             root, "SEM-REL-001"
                         )
                     digest.assert_not_called()
+
+    def test_bound_fixture_projection_uses_one_exact_snapshot(self) -> None:
+        sealed, _fixture, fixture_bytes, fixture_digest = (
+            _synthetic_bound_oracle()
+        )
+        sealed["expected_normalized"]["activity_times"]["A"]["start"] = 1
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sealed_path = root.joinpath(
+                *headless_compare.SEALED_DIRECTORY.parts,
+                "SEM-REL-001.json",
+            )
+            sealed_path.parent.mkdir(parents=True)
+            sealed_path.write_bytes(headless.canonical_bytes(sealed) + b"\n")
+            fixture_path = root / "benchmarks/semantic/cases/sem-rel-001.json"
+            fixture_path.parent.mkdir(parents=True)
+            fixture_path.write_bytes(fixture_bytes)
+            known_digests = dict(pilot.FIXTURE_RAW_SHA256_BY_CASE_ID)
+            known_digests["SEM-REL-001"] = fixture_digest
+            stable_reader = headless_compare.read_regular_file_snapshot
+            with patch.object(
+                headless_compare,
+                "FIXTURE_RAW_SHA256_BY_CASE_ID",
+                known_digests,
+            ), patch.object(
+                headless_compare,
+                "read_regular_file_snapshot",
+                wraps=stable_reader,
+            ) as reader, self.assertRaisesRegex(
+                headless.ObservationFreezeError, "differs from.*bound full fixture"
+            ):
+                headless_compare._default_expected_snapshot(
+                    root, "SEM-REL-001"
+                )
+            reader.assert_called_once_with(
+                fixture_path,
+                label="bound full fixture SEM-REL-001",
+                max_bytes=headless_compare.MAX_ORACLE_JSON_BYTES,
+            )
+
+    def test_bound_fixture_rejects_digest_duplicate_keys_and_oversize(self) -> None:
+        sealed, _fixture, fixture_bytes, fixture_digest = (
+            _synthetic_bound_oracle()
+        )
+        duplicate_bytes = fixture_bytes.replace(
+            b'{"case_id":',
+            b'{"case_id":"SEM-REL-001","case_id":',
+            1,
+        )
+        oversized_bytes = fixture_bytes + b" " * (
+            headless_compare.MAX_ORACLE_JSON_BYTES - len(fixture_bytes) + 1
+        )
+        cases = {
+            "wrong_digest": (fixture_bytes + b" ", fixture_digest, "digest"),
+            "duplicate_key": (
+                duplicate_bytes,
+                hashlib.sha256(duplicate_bytes).hexdigest(),
+                "strict canonical-domain JSON",
+            ),
+            "oversized": (
+                oversized_bytes,
+                hashlib.sha256(oversized_bytes).hexdigest(),
+                "stable bounded regular-file snapshot",
+            ),
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sealed_path = root.joinpath(
+                *headless_compare.SEALED_DIRECTORY.parts,
+                "SEM-REL-001.json",
+            )
+            sealed_path.parent.mkdir(parents=True)
+            fixture_path = root / "benchmarks/semantic/cases/sem-rel-001.json"
+            fixture_path.parent.mkdir(parents=True)
+            for label, (data, digest, message) in cases.items():
+                with self.subTest(label=label):
+                    candidate = json.loads(json.dumps(sealed))
+                    candidate["source_bindings"]["fixture"][
+                        "raw_sha256"
+                    ] = digest
+                    sealed_path.write_bytes(
+                        headless.canonical_bytes(candidate) + b"\n"
+                    )
+                    fixture_path.write_bytes(data)
+                    known_digests = dict(pilot.FIXTURE_RAW_SHA256_BY_CASE_ID)
+                    known_digests["SEM-REL-001"] = digest
+                    with patch.object(
+                        headless_compare,
+                        "FIXTURE_RAW_SHA256_BY_CASE_ID",
+                        known_digests,
+                    ), self.assertRaisesRegex(
+                        headless.ObservationFreezeError, message
+                    ):
+                        headless_compare._default_expected_snapshot(
+                            root, "SEM-REL-001"
+                        )
+
+    def test_comparator_source_mutation_after_import_is_rejected(self) -> None:
+        imported_bytes = b"synthetic imported comparator source\n"
+        imported_sha256 = hashlib.sha256(imported_bytes).hexdigest()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_path = root.joinpath(*headless_compare.COMPARATOR_SOURCE.parts)
+            source_path.parent.mkdir(parents=True)
+            source_path.write_bytes(imported_bytes)
+            with patch.object(
+                headless_compare,
+                "_IMPORTED_COMPARATOR_SOURCE_PATH",
+                source_path.resolve(),
+            ), patch.object(
+                headless_compare,
+                "_IMPORTED_COMPARATOR_SOURCE_BYTES",
+                imported_bytes,
+            ), patch.object(
+                headless_compare,
+                "_IMPORTED_COMPARATOR_SOURCE_SHA256",
+                imported_sha256,
+            ):
+                identity = headless_compare._comparator_source_identity(
+                    root, require_repository_source=True
+                )
+                self.assertEqual(imported_sha256, identity["sha256"])
+
+                source_path.write_bytes(b"synthetic mutated comparator source\n")
+                with self.assertRaisesRegex(
+                    headless.ObservationFreezeError, "changed after.*import-time"
+                ):
+                    headless_compare._comparator_source_identity(
+                        root, require_repository_source=True
+                    )
+
+    def test_imported_comparator_must_match_parent_prelaunch_digest(self) -> None:
+        imported_sha256 = "a" * 64
+        with patch.object(
+            headless_compare,
+            "_IMPORTED_COMPARATOR_SOURCE_SHA256",
+            imported_sha256,
+        ):
+            headless_compare._require_parent_comparator_identity(imported_sha256)
+            with self.assertRaisesRegex(
+                headless.ObservationFreezeError, "parent prelaunch snapshot"
+            ):
+                headless_compare._require_parent_comparator_identity("b" * 64)
 
     def test_worker_result_contradiction_fails_before_freeze(self) -> None:
         helpers = runpy.run_path(str(LEGACY_TEST))
