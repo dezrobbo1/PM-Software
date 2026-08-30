@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -379,6 +380,56 @@ def _valid_xml_observation(capture: dict | None = None) -> dict:
 
 
 class SourceIsolationTests(unittest.TestCase):
+    @staticmethod
+    def _synthetic_projection(*, relationship_type: str = "FS") -> dict:
+        return {
+            "case_id": "SEM-REL-001",
+            "document_type": "microsoft_project_source_only_case_projection",
+            "pilot_id": headless.PILOT_ID,
+            "projection_contract": {
+                "construction_inputs_only": True,
+                "full_fixture_binding_included": False,
+                "oracle_content_included": False,
+            },
+            "schema_version": (
+                "microsoft-project-source-only-case-projection-v0.1"
+            ),
+            "source_facts": {
+                "activity_inputs": [{"id": "A"}, {"id": "B"}],
+                "calendar_inputs": [
+                    {"id": "CAL-24X7", "working_intervals": [[0, 400]]}
+                ],
+                "operational_constraint_inputs": [],
+                "relationship_inputs": [
+                    {"lag": 0, "type": relationship_type}
+                ],
+                "resource_inputs": [],
+                "time_axis": {
+                    "origin": headless.ORIGIN,
+                    "unit": "hour",
+                },
+            },
+            "status": "prepared_not_executed",
+        }
+
+    @classmethod
+    def _write_synthetic_projection(
+        cls,
+        root: Path,
+        *,
+        relationship_type: str = "FS",
+    ) -> tuple[Path, bytes]:
+        path = headless.source_projection_path(root, "SEM-REL-001")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        source_bytes = (
+            headless.canonical_bytes(
+                cls._synthetic_projection(relationship_type=relationship_type)
+            )
+            + b"\n"
+        )
+        path.write_bytes(source_bytes)
+        return path, source_bytes
+
     def test_exact_source_projection_is_used(self) -> None:
         projection = _source()
         self.assertTrue(projection["projection_contract"]["construction_inputs_only"])
@@ -386,14 +437,148 @@ class SourceIsolationTests(unittest.TestCase):
         self.assertEqual("FS", projection["source_facts"]["relationship_inputs"][0]["type"])
 
     def test_full_fixture_and_sealed_paths_are_rejected_before_read(self) -> None:
-        for path in (
-            ROOT / "benchmarks/semantic/cases/sem-rel-001.json",
-            ROOT
-            / "native-validation/pilot-kits/microsoft-project-relationship-v0.1"
-            / "sealed-expected-normalized/SEM-REL-001.json",
-        ):
-            with self.assertRaises(headless.SourceIsolationError):
-                headless.load_source_only_projection(ROOT, "SEM-REL-001", path=path)
+        with patch.object(headless, "_read_source_projection_snapshot") as reader:
+            for path in (
+                ROOT / "benchmarks/semantic/cases/sem-rel-001.json",
+                ROOT
+                / "native-validation/pilot-kits/microsoft-project-relationship-v0.1"
+                / "sealed-expected-normalized/SEM-REL-001.json",
+            ):
+                with self.assertRaises(headless.SourceIsolationError):
+                    headless.load_source_only_projection(
+                        ROOT, "SEM-REL-001", path=path
+                    )
+        reader.assert_not_called()
+
+    def test_source_projection_snapshot_rejects_oversize_before_parse_or_hash(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = headless.source_projection_path(root, "SEM-REL-001")
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b" " * (headless.MAX_SOURCE_PROJECTION_BYTES + 1))
+            with patch.object(headless.json, "loads") as decoder, patch.object(
+                headless.hashlib, "sha256"
+            ) as digester, self.assertRaisesRegex(
+                headless.SourceIsolationError, "exceeds the bounded.*byte limit"
+            ):
+                headless.load_source_only_projection(root, "SEM-REL-001")
+            decoder.assert_not_called()
+            digester.assert_not_called()
+
+    def test_source_projection_snapshot_rejects_replacement_before_parse_or_hash(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path, _source_bytes = self._write_synthetic_projection(root)
+            real_stat = headless.os.stat
+            no_follow_path_stats = 0
+
+            def replacement_stat(candidate, *args, **kwargs):
+                nonlocal no_follow_path_stats
+                observed = real_stat(candidate, *args, **kwargs)
+                if candidate == path and kwargs.get("follow_symlinks") is False:
+                    no_follow_path_stats += 1
+                    if no_follow_path_stats != 2:
+                        return observed
+                    return type(
+                        "SyntheticReplacementStat",
+                        (),
+                        {
+                            "st_dev": observed.st_dev,
+                            "st_ino": observed.st_ino + 1,
+                            "st_size": observed.st_size,
+                            "st_mtime_ns": observed.st_mtime_ns,
+                        },
+                    )()
+                return observed
+
+            with patch.object(
+                headless.os, "stat", side_effect=replacement_stat
+            ), patch.object(headless.json, "loads") as decoder, patch.object(
+                headless.hashlib, "sha256"
+            ) as digester, self.assertRaisesRegex(
+                headless.SourceIsolationError, "replaced while it was read"
+            ):
+                headless.load_source_only_projection(root, "SEM-REL-001")
+            decoder.assert_not_called()
+            digester.assert_not_called()
+
+    def test_source_projection_parse_and_digest_use_one_exact_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path, original_bytes = self._write_synthetic_projection(root)
+            replacement_bytes = (
+                headless.canonical_bytes(
+                    self._synthetic_projection(relationship_type="SS")
+                )
+                + b"\n"
+            )
+            stable_reader = headless._read_source_projection_snapshot
+
+            def replace_after_snapshot(candidate: Path):
+                snapshot = stable_reader(candidate)
+                path.write_bytes(replacement_bytes)
+                return snapshot
+
+            with patch.object(
+                headless,
+                "_read_source_projection_snapshot",
+                side_effect=replace_after_snapshot,
+            ) as reader:
+                payload, digest = headless.load_source_only_projection_with_identity(
+                    root, "SEM-REL-001"
+                )
+
+            reader.assert_called_once_with(path)
+            self.assertEqual(
+                "FS", payload["source_facts"]["relationship_inputs"][0]["type"]
+            )
+            self.assertEqual(hashlib.sha256(original_bytes).hexdigest(), digest)
+            self.assertNotEqual(hashlib.sha256(replacement_bytes).hexdigest(), digest)
+
+    def test_source_projection_rejects_duplicate_and_nfc_colliding_json_keys(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path, source_bytes = self._write_synthetic_projection(root)
+            candidates = {
+                "exact_duplicate": (
+                    b'{"case_id":"SEM-REL-001",' + source_bytes[1:]
+                ),
+                "nfc_collision": (
+                    '{"e\\u0301":0,"é":0,'.encode("utf-8") + source_bytes[1:]
+                ),
+            }
+            for label, candidate in candidates.items():
+                with self.subTest(label=label):
+                    path.write_bytes(candidate)
+                    with self.assertRaisesRegex(
+                        headless.SourceIsolationError,
+                        "duplicate JSON key after NFC normalization",
+                    ):
+                        headless.load_source_only_projection(root, "SEM-REL-001")
+
+    def test_source_projection_path_does_not_resolve_away_final_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = headless.source_projection_path(root, "SEM-REL-001")
+            path.parent.mkdir(parents=True)
+            target = root / "synthetic-source.json"
+            target.write_bytes(
+                headless.canonical_bytes(self._synthetic_projection()) + b"\n"
+            )
+            try:
+                path.symlink_to(target)
+            except OSError as error:
+                self.skipTest(f"symlinks unavailable: {error}")
+            with self.assertRaisesRegex(
+                headless.SourceIsolationError, "must not contain symbolic links"
+            ):
+                headless.load_source_only_projection(root, "SEM-REL-001")
 
     def test_recursive_oracle_key_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -459,7 +644,7 @@ class SourceIsolationTests(unittest.TestCase):
         self.assertNotIn("compare_frozen_observations", worker_source)
         self.assertTrue(hasattr(headless_compare, "compare_frozen_observations"))
 
-    def test_fresh_native_worker_import_does_not_load_legacy_oracle_modules(self) -> None:
+    def test_fresh_native_worker_import_does_not_load_oracle_modules(self) -> None:
         script = """
 import json
 import runpy
@@ -475,6 +660,9 @@ except SystemExit:
 print(json.dumps(sorted(
     name for name in sys.modules
     if name in {
+        'deterministic_scheduling_core.canonical.frozen_suite',
+        'deterministic_scheduling_core.native.msproject.freeze',
+        'deterministic_scheduling_core.native.msproject.headless_compare',
         'deterministic_scheduling_core.native.msproject.pilot',
         'deterministic_scheduling_core.native.msproject.normalizer',
     }

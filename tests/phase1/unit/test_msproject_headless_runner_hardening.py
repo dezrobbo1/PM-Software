@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
+import py_compile
 import runpy
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -133,6 +137,91 @@ def _synthetic_bound_oracle(
     sealed = pilot._sealed_expected(case_id, fixture)
     sealed["source_bindings"]["fixture"]["raw_sha256"] = fixture_digest
     return sealed, fixture, fixture_bytes, fixture_digest
+
+
+def _native_worker_event(
+    *, sequence: int, worker_pid: int, stage: str, phase: str, details: dict
+) -> dict:
+    return {
+        "sequence": sequence,
+        "worker_pid": worker_pid,
+        "stage": stage,
+        "phase": phase,
+        "details": details,
+    }
+
+
+def _write_synthetic_native_worker_evidence(
+    command: list[str],
+    *,
+    worker_pid: int,
+    result: dict,
+    operation: str = "case",
+    run_id: str = "run",
+    case_id: str | None = "SEM-REL-001",
+    intermediate_events: list[tuple[str, str, dict]] | None = None,
+) -> tuple[str, list[dict]]:
+    result_path = Path(command[command.index("--result") + 1])
+    state_path = Path(command[command.index("--state") + 1])
+    log_path = Path(command[command.index("--log") + 1])
+    result_sha256 = headless.durable_write_canonical_json(result_path, result)
+    events = [
+        _native_worker_event(
+            sequence=1,
+            worker_pid=worker_pid,
+            stage="worker",
+            phase="start",
+            details={
+                "operation": operation,
+                "run_id": run_id,
+                "case_id": case_id,
+            },
+        )
+    ]
+    for stage, phase, details in intermediate_events or []:
+        events.append(
+            _native_worker_event(
+                sequence=len(events) + 1,
+                worker_pid=worker_pid,
+                stage=stage,
+                phase=phase,
+                details=details,
+            )
+        )
+    events.append(
+        _native_worker_event(
+            sequence=len(events) + 1,
+            worker_pid=worker_pid,
+            stage="worker",
+            phase="complete",
+            details={
+                "operation": operation,
+                "result_sha256": result_sha256,
+            },
+        )
+    )
+    headless.durable_write_bytes(
+        log_path,
+        b"".join(headless.canonical_bytes(event) + b"\n" for event in events),
+    )
+    headless.durable_write_canonical_json(state_path, events[-1])
+    return result_sha256, events
+
+
+def _owned_process_identity(
+    *, pid: int, creation_time_100ns: int, executable_path: Path
+) -> dict:
+    return {
+        "pid": pid,
+        "executable_path": str(executable_path),
+        "creation_time_100ns": creation_time_100ns,
+        "ownership_caption": f"owned-{pid}",
+        "ownership_hwnd": pid + 10_000,
+        "activation_parent_pid": pid + 20_000,
+        "activation_parent_executable_path": "C:/Windows/System32/svchost.exe",
+        "activation_parent_creation_time_100ns": creation_time_100ns - 1,
+        "ownership_origin_verified": True,
+    }
 
 
 class RunnerHardeningTests(unittest.TestCase):
@@ -1240,6 +1329,517 @@ class RunnerHardeningTests(unittest.TestCase):
                     observation,
                     {"initial_mpp": dummy},
                     shared_hashes=shared,
+                )
+
+
+class NativeSupervisorReviewRegressionTests(unittest.TestCase):
+    def test_native_worker_uses_fresh_cache_and_one_authenticated_snapshot(self) -> None:
+        runner = _runner()
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+
+        class Process:
+            pid = 7_301
+
+            def __init__(self) -> None:
+                self.poll_count = 0
+
+            def poll(self) -> int | None:
+                self.poll_count += 1
+                return None if self.poll_count == 1 else 0
+
+            def wait(self, timeout: int | None = None) -> int:
+                return 0
+
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary) / "case"
+            result_path = workspace / "result.json"
+            pending = {
+                "pid": 501,
+                "creation_time_100ns": 9_001,
+                "executable_name": "WINPROJ.EXE",
+                "executable_path": str(expected),
+            }
+            commands: list[list[str]] = []
+            result_digests: list[str] = []
+            cache_token = "a" * 32
+
+            def popen(command: list[str], **_kwargs: object) -> Process:
+                commands.append(command)
+                prefix = Path(command[command.index("-X") + 1].split("=", 1)[1])
+                self.assertFalse(prefix.exists())
+                digest, _events = _write_synthetic_native_worker_evidence(
+                    command,
+                    worker_pid=Process.pid,
+                    result={"status": "authenticated"},
+                    intermediate_events=[
+                        ("project_creation", "complete", {"elapsed": 1}),
+                        ("diagnostic", "error", {"retained": True}),
+                    ],
+                )
+                result_digests.append(digest)
+                return Process()
+
+            late_hash = Mock(
+                side_effect=AssertionError(
+                    "authenticated native sidecar must not reread the result path"
+                )
+            )
+            with (
+                patch.object(
+                    runner["headless_com"],
+                    "registered_project_executable",
+                    return_value=expected,
+                ),
+                patch.object(
+                    runner["headless_com"],
+                    "list_winproj_processes",
+                    side_effect=[[], [pending], []],
+                ),
+                patch.object(runner["subprocess"], "Popen", side_effect=popen),
+                patch.object(runner["secrets"], "token_hex", return_value=cache_token),
+                patch.object(runner["time"], "sleep"),
+                patch.dict(
+                    runner["run_supervised_worker"].__globals__,
+                    {"sha256_file": late_hash},
+                ),
+            ):
+                result = runner["run_supervised_worker"](
+                    operation="case",
+                    repository_root=ROOT,
+                    run_id="run",
+                    workspace=workspace,
+                    result_path=result_path,
+                    case_id="SEM-REL-001",
+                )
+
+            self.assertEqual({"status": "authenticated"}, result)
+            self.assertEqual(
+                [
+                    sys.executable,
+                    "-B",
+                    "-X",
+                    f"pycache_prefix={workspace / f'case-import-pycache-{cache_token}'}",
+                    "-m",
+                ],
+                commands[0][:5],
+            )
+            self.assertEqual(
+                "deterministic_scheduling_core.native.msproject.headless_worker",
+                commands[0][5],
+            )
+            self.assertFalse(
+                (workspace / f"case-import-pycache-{cache_token}").exists()
+            )
+            self.assertEqual(
+                f"{result_digests[0]}\n",
+                runner["_result_sidecar_path"](result_path).read_text(
+                    encoding="ascii"
+                ),
+            )
+            late_hash.assert_not_called()
+
+    def test_native_worker_rejects_preexisting_random_cache_prefix(self) -> None:
+        runner = _runner()
+        cache_token = "b" * 32
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary) / "case"
+            (workspace / f"case-import-pycache-{cache_token}").mkdir(parents=True)
+            popen = Mock()
+            project_lookup = Mock()
+            with (
+                patch.object(
+                    runner["secrets"], "token_hex", return_value=cache_token
+                ),
+                patch.object(
+                    runner["headless_com"],
+                    "registered_project_executable",
+                    project_lookup,
+                ),
+                patch.object(runner["subprocess"], "Popen", popen),
+                self.assertRaisesRegex(
+                    runner["SupervisionError"],
+                    "pycache prefix must be fresh and nonexistent",
+                ),
+            ):
+                runner["run_supervised_worker"](
+                    operation="case",
+                    repository_root=ROOT,
+                    run_id="run",
+                    workspace=workspace,
+                    result_path=workspace / "result.json",
+                    case_id="SEM-REL-001",
+                )
+            project_lookup.assert_not_called()
+            popen.assert_not_called()
+
+    def test_redirected_nonexistent_cache_ignores_valid_stale_default_pyc(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "cache_probe.py"
+            source.write_text('VALUE = "stale"\n', encoding="utf-8")
+            source_metadata = source.stat()
+            py_compile.compile(
+                str(source),
+                doraise=True,
+                invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP,
+            )
+            source.write_text('VALUE = "fresh"\n', encoding="utf-8")
+            os.utime(
+                source,
+                ns=(source_metadata.st_atime_ns, source_metadata.st_mtime_ns),
+            )
+            probe = "import cache_probe; print(cache_probe.VALUE)"
+            stale = subprocess.run(
+                [sys.executable, "-B", "-c", probe],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual("stale", stale.stdout.strip())
+
+            fresh_prefix = root / "cryptographically-random-nonexistent-prefix"
+            self.assertFalse(fresh_prefix.exists())
+            fresh = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    "-X",
+                    f"pycache_prefix={fresh_prefix}",
+                    "-c",
+                    probe,
+                ],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual("fresh", fresh.stdout.strip())
+            self.assertFalse(fresh_prefix.exists())
+
+    def test_multiple_exact_path_identities_stop_same_poll_with_owned_only_cleanup(
+        self,
+    ) -> None:
+        runner = _runner()
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+        identities = [
+            _owned_process_identity(
+                pid=501, creation_time_100ns=9_001, executable_path=expected
+            ),
+            _owned_process_identity(
+                pid=502, creation_time_100ns=9_002, executable_path=expected
+            ),
+        ]
+
+        class RunningProcess:
+            pid = 7_302
+
+            def __init__(self) -> None:
+                self.return_code: int | None = None
+
+            def poll(self) -> int | None:
+                return self.return_code
+
+            def terminate(self) -> None:
+                self.return_code = 0
+
+            def kill(self) -> None:
+                self.return_code = -9
+
+            def wait(self, timeout: int | None = None) -> int:
+                return 0 if self.return_code is None else self.return_code
+
+        for verified_count in (0, 1, 2):
+            with (
+                self.subTest(verified_count=verified_count),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                workspace = Path(temporary) / "case"
+                log_path = workspace / "case-com-log.jsonl"
+                worker = RunningProcess()
+
+                def popen(_command: list[str], **_kwargs: object) -> RunningProcess:
+                    if verified_count:
+                        log_path.write_bytes(
+                            b"".join(
+                                headless.canonical_bytes(
+                                    {
+                                        "phase": "process_identified",
+                                        "details": identity,
+                                    }
+                                )
+                                + b"\n"
+                                for identity in identities[:verified_count]
+                            )
+                        )
+                    return worker
+
+                cleanup = Mock(return_value=True)
+                sleeper = Mock()
+                with (
+                    patch.object(
+                        runner["headless_com"],
+                        "registered_project_executable",
+                        return_value=expected,
+                    ),
+                    patch.object(
+                        runner["headless_com"],
+                        "list_winproj_processes",
+                        side_effect=[[], identities, identities],
+                    ) as process_listing,
+                    patch.object(
+                        runner["headless_com"], "windows_for_pid", return_value=[]
+                    ),
+                    patch.object(
+                        runner["headless_com"],
+                        "terminate_verified_project_process",
+                        cleanup,
+                    ),
+                    patch.object(runner["subprocess"], "Popen", side_effect=popen),
+                    patch.object(runner["time"], "sleep", sleeper),
+                    self.assertRaisesRegex(
+                        runner["SupervisionError"],
+                        "multiple_project_process_identities",
+                    ),
+                ):
+                    runner["run_supervised_worker"](
+                        operation="case",
+                        repository_root=ROOT,
+                        run_id="run",
+                        workspace=workspace,
+                        result_path=workspace / "result.json",
+                        case_id="SEM-REL-001",
+                    )
+
+                self.assertEqual(3, process_listing.call_count)
+                sleeper.assert_not_called()
+                stop = json.loads(
+                    (workspace / "case-watchdog-stop.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                self.assertEqual(
+                    "multiple_project_process_identities", stop["condition"]
+                )
+                self.assertEqual(
+                    [501, 502], [item["pid"] for item in stop["processes"]]
+                )
+                self.assertEqual(
+                    [item["pid"] for item in identities[verified_count:]],
+                    [
+                        item["pid"]
+                        for item in stop[
+                            "unverified_exact_path_project_processes"
+                        ]
+                    ],
+                )
+                self.assertEqual(
+                    [item["pid"] for item in identities[:verified_count]],
+                    [call.args[0] for call in cleanup.call_args_list],
+                )
+
+    def test_native_result_rejects_raced_or_misidentified_terminal_evidence(
+        self,
+    ) -> None:
+        runner = _runner()
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+        cases = (
+            ("result_replacement", "does not authenticate"),
+            ("state_disagreement", "state disagrees"),
+            ("pid_mismatch", "identity or schema"),
+            ("sequence_gap", "identity or schema"),
+            ("earlier_worker_terminal", "earlier conflicting"),
+            ("wrong_start", "start event is malformed"),
+            ("wrong_terminal_operation", "well-formed terminal"),
+            ("noncanonical_log", "not exact canonical JSON"),
+            ("noncanonical_result", "not exact canonical JSON"),
+        )
+        for mode, message in cases:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary) / "case"
+                result_path = workspace / "result.json"
+                worker_pid = 7_400
+                mutation: list[object] = []
+
+                class ExitedProcess:
+                    pid = worker_pid
+
+                    def poll(self) -> int:
+                        return 0
+
+                    def wait(self, timeout: int | None = None) -> int:
+                        callback = mutation[0]
+                        callback()
+                        return 0
+
+                def popen(command: list[str], **_kwargs: object) -> ExitedProcess:
+                    _digest, events = _write_synthetic_native_worker_evidence(
+                        command,
+                        worker_pid=worker_pid,
+                        result={"status": "child-result"},
+                    )
+                    state_path = Path(command[command.index("--state") + 1])
+                    log_path = Path(command[command.index("--log") + 1])
+
+                    def mutate() -> None:
+                        changed = json.loads(json.dumps(events))
+                        if mode == "result_replacement":
+                            result_path.write_bytes(
+                                headless.canonical_bytes(
+                                    {"status": "post-exit-replacement"}
+                                )
+                                + b"\n"
+                            )
+                            return
+                        if mode == "state_disagreement":
+                            changed[-1]["details"]["result_sha256"] = "f" * 64
+                            state_path.write_bytes(
+                                headless.canonical_bytes(changed[-1]) + b"\n"
+                            )
+                            return
+                        if mode == "pid_mismatch":
+                            changed[-1]["worker_pid"] += 1
+                        elif mode == "sequence_gap":
+                            changed[-1]["sequence"] += 1
+                        elif mode == "earlier_worker_terminal":
+                            prior = _native_worker_event(
+                                sequence=2,
+                                worker_pid=worker_pid,
+                                stage="worker",
+                                phase="error",
+                                details={"retained": True},
+                            )
+                            changed[-1]["sequence"] = 3
+                            changed = [changed[0], prior, changed[-1]]
+                        elif mode == "wrong_start":
+                            changed[0]["details"]["case_id"] = "SEM-REL-002"
+                        elif mode == "wrong_terminal_operation":
+                            changed[-1]["details"]["operation"] = "preflight"
+                        elif mode == "noncanonical_log":
+                            log_path.write_bytes(
+                                b"".join(
+                                    json.dumps(event, sort_keys=True).encode("utf-8")
+                                    + b"\n"
+                                    for event in changed
+                                )
+                            )
+                            return
+                        elif mode == "noncanonical_result":
+                            result_path.write_text(
+                                json.dumps({"status": "child-result"}, indent=2)
+                                + "\n",
+                                encoding="utf-8",
+                            )
+                            return
+                        log_path.write_bytes(
+                            b"".join(
+                                headless.canonical_bytes(event) + b"\n"
+                                for event in changed
+                            )
+                        )
+                        state_path.write_bytes(
+                            headless.canonical_bytes(changed[-1]) + b"\n"
+                        )
+
+                    mutation.append(mutate)
+                    return ExitedProcess()
+
+                with (
+                    patch.object(
+                        runner["headless_com"],
+                        "registered_project_executable",
+                        return_value=expected,
+                    ),
+                    patch.object(
+                        runner["headless_com"],
+                        "list_winproj_processes",
+                        side_effect=[[], []],
+                    ),
+                    patch.object(runner["subprocess"], "Popen", side_effect=popen),
+                    self.assertRaisesRegex(runner["SupervisionError"], message),
+                ):
+                    runner["run_supervised_worker"](
+                        operation="case",
+                        repository_root=ROOT,
+                        run_id="run",
+                        workspace=workspace,
+                        result_path=result_path,
+                        case_id="SEM-REL-001",
+                    )
+                self.assertFalse(
+                    runner["_result_sidecar_path"](result_path).exists()
+                )
+
+    def test_native_result_snapshot_and_journal_are_bounded(self) -> None:
+        runner = _runner()
+        expected = Path("C:/Program Files/Microsoft Office/WINPROJ.EXE")
+
+        class ExitedProcess:
+            pid = 7_501
+
+            def poll(self) -> int:
+                return 0
+
+            def wait(self, timeout: int | None = None) -> int:
+                return 0
+
+        for bounded_role in ("result", "journal"):
+            with (
+                self.subTest(bounded_role=bounded_role),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                workspace = Path(temporary) / "case"
+                result_path = workspace / "result.json"
+
+                def popen(command: list[str], **_kwargs: object) -> ExitedProcess:
+                    _write_synthetic_native_worker_evidence(
+                        command,
+                        worker_pid=ExitedProcess.pid,
+                        result={"payload": "x" * 64},
+                    )
+                    return ExitedProcess()
+
+                limits = {
+                    "MAX_NATIVE_RESULT_BYTES": (
+                        8
+                        if bounded_role == "result"
+                        else runner["MAX_NATIVE_RESULT_BYTES"]
+                    ),
+                    "MAX_NATIVE_JOURNAL_BYTES": (
+                        8
+                        if bounded_role == "journal"
+                        else runner["MAX_NATIVE_JOURNAL_BYTES"]
+                    ),
+                }
+                with (
+                    patch.object(
+                        runner["headless_com"],
+                        "registered_project_executable",
+                        return_value=expected,
+                    ),
+                    patch.object(
+                        runner["headless_com"],
+                        "list_winproj_processes",
+                        side_effect=[[], []],
+                    ),
+                    patch.object(runner["subprocess"], "Popen", side_effect=popen),
+                    patch.dict(
+                        runner["run_supervised_worker"].__globals__, limits
+                    ),
+                    self.assertRaisesRegex(
+                        runner["SupervisionError"], "exceeds its byte limit"
+                    ),
+                ):
+                    runner["run_supervised_worker"](
+                        operation="case",
+                        repository_root=ROOT,
+                        run_id="run",
+                        workspace=workspace,
+                        result_path=result_path,
+                        case_id="SEM-REL-001",
+                    )
+                self.assertFalse(
+                    runner["_result_sidecar_path"](result_path).exists()
                 )
 
 

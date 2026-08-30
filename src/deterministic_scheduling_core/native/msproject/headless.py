@@ -13,6 +13,7 @@ import json
 import os
 import re
 import stat
+import unicodedata
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime
@@ -32,6 +33,7 @@ SOURCE_DIRECTORY = PurePosixPath(
 )
 RAW_ROOT = PurePosixPath("native-files/headless-msproject-characterisation")
 ORIGIN = "2026-01-05T08:00:00+08:00"
+MAX_SOURCE_PROJECTION_BYTES = 1024 * 1024
 _CASE_RE = re.compile(r"^SEM-REL-(?:00[1-9]|01[0-2])$")
 _RUN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 _HEX_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -117,6 +119,17 @@ class XmlObservationError(HeadlessCharacterisationError):
     """A Project-authored XML observation is malformed or unsafe."""
 
 
+@dataclass(frozen=True, slots=True)
+class _SourceProjectionSnapshot:
+    """Exact bytes and identity from one stable source-projection handle."""
+
+    data: bytes
+    sha256: str
+    byte_size: int
+    device: int
+    inode: int
+
+
 @dataclass(frozen=True)
 class RunWorkspace:
     repository_root: Path
@@ -153,6 +166,123 @@ def _regular_file(path: Path, *, label: str) -> None:
         raise DurableEvidenceError(f"{label} is missing: {path}") from error
     if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
         raise DurableEvidenceError(f"{label} must be a non-symlink regular file: {path}")
+
+
+def _require_source_projection_regular_file(path: Path) -> None:
+    """Reject source paths containing a symbolic-link component."""
+
+    absolute = path.absolute()
+    try:
+        if any(candidate.is_symlink() for candidate in (absolute, *absolute.parents)):
+            raise SourceIsolationError(
+                "source-only projection path must not contain symbolic links"
+            )
+        if not path.is_file():
+            raise SourceIsolationError(
+                "source-only projection must be a regular, non-symbolic-link file"
+            )
+    except OSError as error:
+        raise SourceIsolationError(
+            f"source-only projection path could not be inspected safely: {error}"
+        ) from error
+
+
+def _read_source_projection_snapshot(path: Path) -> _SourceProjectionSnapshot:
+    """Read one bounded, stable, no-follow source-projection snapshot."""
+
+    # The general native-evidence reader lives in ``freeze``, which imports
+    # frozen-suite oracle identities.  Keep this source-specific equivalent in
+    # the already provenance-bound worker core so construction stays oracle-free.
+    _require_source_projection_regular_file(path)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    try:
+        descriptor = os.open(path, flags)
+        try:
+            before = os.fstat(descriptor)
+            if not stat.S_ISREG(before.st_mode):
+                raise SourceIsolationError(
+                    "source-only projection must be a regular file"
+                )
+            if before.st_size > MAX_SOURCE_PROJECTION_BYTES:
+                raise SourceIsolationError(
+                    "source-only projection exceeds the bounded "
+                    f"{MAX_SOURCE_PROJECTION_BYTES}-byte limit"
+                )
+            chunks: list[bytes] = []
+            observed_size = 0
+            while True:
+                # Read no more than one byte past the limit so a concurrently
+                # growing input cannot cause an unbounded allocation.
+                remaining = MAX_SOURCE_PROJECTION_BYTES - observed_size
+                block = os.read(descriptor, min(1024 * 1024, remaining + 1))
+                if not block:
+                    break
+                observed_size += len(block)
+                if observed_size > MAX_SOURCE_PROJECTION_BYTES:
+                    raise SourceIsolationError(
+                        "source-only projection exceeds the bounded "
+                        f"{MAX_SOURCE_PROJECTION_BYTES}-byte limit"
+                    )
+                chunks.append(block)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+    except SourceIsolationError:
+        raise
+    except OSError as error:
+        raise SourceIsolationError(
+            f"source-only projection could not be read safely: {error}"
+        ) from error
+
+    try:
+        current = os.stat(path, follow_symlinks=False)
+    except OSError as error:
+        raise SourceIsolationError(
+            f"source-only projection changed while it was read: {error}"
+        ) from error
+    _require_source_projection_regular_file(path)
+    stable_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns")
+    if any(getattr(before, field) != getattr(after, field) for field in stable_fields):
+        raise SourceIsolationError("source-only projection changed while it was read")
+    if any(getattr(after, field) != getattr(current, field) for field in stable_fields):
+        raise SourceIsolationError("source-only projection was replaced while it was read")
+    source_bytes = b"".join(chunks)
+    if len(source_bytes) != after.st_size:
+        raise SourceIsolationError(
+            "source-only projection byte count changed while it was read"
+        )
+    return _SourceProjectionSnapshot(
+        data=source_bytes,
+        sha256=hashlib.sha256(source_bytes).hexdigest(),
+        byte_size=len(source_bytes),
+        device=after.st_dev,
+        inode=after.st_ino,
+    )
+
+
+class _DuplicateSourceProjectionKeyError(ValueError):
+    pass
+
+
+def _strict_source_projection_object(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    normalized_keys: set[str] = set()
+    for key, item in pairs:
+        normalized_key = unicodedata.normalize("NFC", key)
+        if key in value or normalized_key in normalized_keys:
+            raise _DuplicateSourceProjectionKeyError(
+                f"duplicate JSON key after NFC normalization: {key!r}"
+            )
+        value[key] = item
+        normalized_keys.add(normalized_key)
+    return value
 
 
 def _contains_forbidden_key(value: Any) -> str | None:
@@ -204,8 +334,8 @@ def load_source_only_projection_with_identity(
     """
 
     repository_root = repository_root.resolve()
-    expected = source_projection_path(repository_root, case_id).resolve(strict=False)
-    candidate = (path if path is not None else expected).resolve(strict=False)
+    expected = source_projection_path(repository_root, case_id).absolute()
+    candidate = (path if path is not None else expected).absolute()
     if candidate != expected:
         raise SourceIsolationError(
             "construction input must be the exact source-only projection path; "
@@ -217,14 +347,30 @@ def load_source_only_projection_with_identity(
         raise SourceIsolationError("construction input escapes the repository") from error
     if any(token in relative for token in ("benchmarks/semantic/cases", "sealed", "expected")):
         raise SourceIsolationError("oracle-bearing or full-fixture path rejected")
-    _regular_file(candidate, label="source-only projection")
+    snapshot = _read_source_projection_snapshot(candidate)
     try:
-        source_bytes = candidate.read_bytes()
-        payload = json.loads(source_bytes.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        payload = json.loads(
+            snapshot.data.decode("utf-8"),
+            object_pairs_hook=_strict_source_projection_object,
+        )
+    except _DuplicateSourceProjectionKeyError as error:
+        raise SourceIsolationError(
+            f"source-only projection contains {error}"
+        ) from error
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
         raise SourceIsolationError("source-only projection is not valid UTF-8 JSON") from error
     if not isinstance(payload, dict):
         raise SourceIsolationError("source-only projection must be a JSON object")
+    try:
+        canonical_source_bytes = canonical_bytes(payload) + b"\n"
+    except (TypeError, ValueError) as error:
+        raise SourceIsolationError(
+            "source-only projection is outside canonical JSON"
+        ) from error
+    if snapshot.data != canonical_source_bytes:
+        raise SourceIsolationError(
+            "source-only projection must use canonical JSON with one trailing LF"
+        )
     forbidden = _contains_forbidden_key(payload)
     if forbidden:
         raise SourceIsolationError(f"source-only projection contains forbidden key {forbidden!r}")
@@ -271,7 +417,7 @@ def load_source_only_projection_with_identity(
         raise SourceIsolationError("source calendar is not the frozen CAL-24X7 realization")
     if facts.get("resource_inputs") != [] or facts.get("operational_constraint_inputs") != []:
         raise SourceIsolationError("unexpected resources or operational constraints")
-    return payload, hashlib.sha256(source_bytes).hexdigest()
+    return payload, snapshot.sha256
 
 
 def create_run_workspace(repository_root: Path, run_id: str, *, resume: bool = False) -> RunWorkspace:

@@ -71,6 +71,8 @@ COMPARISON_TIMEOUT_SECONDS = 60
 MAX_COMPARATOR_SOURCE_BYTES = 1024 * 1024
 MAX_COMPARISON_RESULT_BYTES = 4 * 1024 * 1024
 MAX_COMPARISON_JOURNAL_BYTES = 1024 * 1024
+MAX_NATIVE_RESULT_BYTES = 4 * 1024 * 1024
+MAX_NATIVE_JOURNAL_BYTES = 1024 * 1024
 PREFLIGHT_REQUIRED_OPERATIONS = frozenset(
     {
         "create_blank_project",
@@ -296,6 +298,105 @@ def _read_comparison_terminal_digest(
     return str(terminal_details["result_sha256"])
 
 
+def _validate_native_worker_journal_event(
+    event: Mapping[str, Any],
+    *,
+    expected_sequence: int,
+    expected_worker_pid: int,
+) -> None:
+    if (
+        set(event) != {"sequence", "worker_pid", "stage", "phase", "details"}
+        or type(event.get("sequence")) is not int
+        or event.get("sequence") != expected_sequence
+        or type(event.get("worker_pid")) is not int
+        or event.get("worker_pid") != expected_worker_pid
+        or type(event.get("stage")) is not str
+        or not event.get("stage")
+        or type(event.get("phase")) is not str
+        or not event.get("phase")
+        or type(event.get("details")) is not dict
+    ):
+        raise SupervisionError(
+            "native worker journal event identity or schema is malformed"
+        )
+
+
+def _read_native_worker_terminal_digest(
+    *,
+    state_path: Path,
+    log_path: Path,
+    operation: str,
+    run_id: str,
+    case_id: str | None,
+    worker_pid: int,
+) -> str:
+    state, state_snapshot = _read_canonical_json_object_snapshot(
+        state_path,
+        label="native worker terminal state",
+        max_bytes=MAX_NATIVE_JOURNAL_BYTES,
+    )
+    try:
+        log_snapshot = read_regular_file_snapshot(
+            log_path,
+            label="native worker append-only journal",
+            max_bytes=MAX_NATIVE_JOURNAL_BYTES,
+        )
+    except NativeEvidenceError as error:
+        raise SupervisionError(
+            "native worker append-only journal is missing, unsafe, replaced, "
+            "or exceeds its byte limit"
+        ) from error
+    if not log_snapshot.data or not log_snapshot.data.endswith(b"\n"):
+        raise SupervisionError("native worker append-only journal is malformed")
+    event_lines = log_snapshot.data.splitlines(keepends=True)
+    events = [
+        _parse_canonical_json_object(
+            line, label=f"native worker journal event {sequence}"
+        )
+        for sequence, line in enumerate(event_lines, start=1)
+    ]
+    for sequence, event in enumerate(events, start=1):
+        _validate_native_worker_journal_event(
+            event,
+            expected_sequence=sequence,
+            expected_worker_pid=worker_pid,
+        )
+    first = events[0]
+    if (
+        first["stage"] != "worker"
+        or first["phase"] != "start"
+        or first["details"]
+        != {"operation": operation, "run_id": run_id, "case_id": case_id}
+    ):
+        raise SupervisionError("native worker journal start event is malformed")
+    if any(event["stage"] == "worker" for event in events[1:-1]):
+        raise SupervisionError(
+            "native worker journal contains an earlier conflicting worker terminal event"
+        )
+    terminal = events[-1]
+    _validate_native_worker_journal_event(
+        state,
+        expected_sequence=len(events),
+        expected_worker_pid=worker_pid,
+    )
+    if state_snapshot.data != event_lines[-1]:
+        raise SupervisionError(
+            "native worker state disagrees with the append-only journal terminal event"
+        )
+    terminal_details = terminal["details"]
+    if (
+        terminal["stage"] != "worker"
+        or terminal["phase"] != "complete"
+        or set(terminal_details) != {"operation", "result_sha256"}
+        or terminal_details.get("operation") != operation
+        or not _is_sha256(terminal_details.get("result_sha256"))
+    ):
+        raise SupervisionError(
+            "native worker journal lacks one well-formed terminal complete event"
+        )
+    return str(terminal_details["result_sha256"])
+
+
 def _identified_processes_from_log(log_path: Path) -> list[dict[str, Any]]:
     """Return full caption-bound identities emitted by the COM worker.
 
@@ -485,6 +586,19 @@ def _verified_owned_identities(
     return verified
 
 
+def _queryable_exact_path_processes(
+    new_processes: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return new WINPROJ identities whose creation time and path are exact."""
+
+    return [
+        item
+        for item in new_processes
+        if not item.get("identity_query_failures")
+        and not item.get("identity_mismatch")
+    ]
+
+
 def _window_inventory(processes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     inventory: list[dict[str, Any]] = []
     for process in processes:
@@ -516,9 +630,24 @@ def run_supervised_worker(
     log_path = workspace / f"{operation}-com-log.jsonl"
     stdout_path = workspace / f"{operation}-worker-stdout.log"
     stderr_path = workspace / f"{operation}-worker-stderr.log"
-    for path in (state_path, log_path, stdout_path, stderr_path, result_path):
+    result_sidecar_path = _result_sidecar_path(result_path)
+    pycache_prefix = workspace / (
+        f"{operation}-import-pycache-{secrets.token_hex(16)}"
+    )
+    for path in (
+        state_path,
+        log_path,
+        stdout_path,
+        stderr_path,
+        result_path,
+        result_sidecar_path,
+    ):
         if path.exists():
             raise SupervisionError(f"refusing to overwrite worker evidence: {path}")
+    if pycache_prefix.exists():
+        raise SupervisionError(
+            f"native worker pycache prefix must be fresh and nonexistent: {pycache_prefix}"
+        )
     executable = headless_com.registered_project_executable()
     baseline_processes = headless_com.list_winproj_processes()
     baseline_identities = {
@@ -533,6 +662,9 @@ def run_supervised_worker(
     }
     command = [
         sys.executable,
+        "-B",
+        "-X",
+        f"pycache_prefix={pycache_prefix}",
         "-m",
         "deterministic_scheduling_core.native.msproject.headless_worker",
         "--worker",
@@ -620,6 +752,46 @@ def run_supervised_worker(
                     "recorded_at": _now(),
                 }
                 break
+            exact_path_processes = _queryable_exact_path_processes(
+                latest_new_processes
+            )
+            if len(exact_path_processes) > 1:
+                verified_keys = {
+                    (
+                        int(identity["pid"]),
+                        int(identity["creation_time_100ns"]),
+                    )
+                    for identity in latest_verified_identities
+                }
+                unverified_exact_path_processes = [
+                    item
+                    for item in exact_path_processes
+                    if (
+                        int(item["pid"]),
+                        int(item["creation_time_100ns"]),
+                    )
+                    not in verified_keys
+                ]
+                stopped = {
+                    "schema_version": "headless-msproject-watchdog-stop-v0.1",
+                    "characterisation_label": TRACK_ID,
+                    "classification": "characterisation_inconclusive",
+                    "condition": "multiple_project_process_identities",
+                    "operation": operation,
+                    "case_id": case_id,
+                    "stage": current_stage,
+                    "expected_project_executable": str(executable),
+                    "processes": _window_inventory(exact_path_processes),
+                    "all_new_project_processes": _window_inventory(
+                        latest_new_processes
+                    ),
+                    "verified_owned_project_identities": latest_verified_identities,
+                    "unverified_exact_path_project_processes": _window_inventory(
+                        unverified_exact_path_processes
+                    ),
+                    "recorded_at": _now(),
+                }
+                break
             identity_query_failures = [
                 item
                 for item in latest_new_processes
@@ -657,8 +829,7 @@ def run_supervised_worker(
                     "recorded_at": _now(),
                 }
                 break
-            if latest_verified_identities:
-                owned_identity = latest_verified_identities[-1]
+            for owned_identity in latest_verified_identities:
                 try:
                     visible = [
                         item
@@ -696,6 +867,8 @@ def run_supervised_worker(
                         "recorded_at": _now(),
                     }
                     break
+            if stopped is not None:
+                break
             timeout = int(timeouts.get(current_stage, timeouts.get("worker", 30)))
             if time.monotonic() - stage_started >= timeout:
                 stopped = {
@@ -836,7 +1009,25 @@ def run_supervised_worker(
         raise SupervisionError(f"{operation} worker failed ({return_code}): {message}")
     if not result_path.is_file():
         raise SupervisionError(f"{operation} worker did not write its result")
-    return _read_json(result_path)
+    result, result_snapshot = _read_canonical_json_object_snapshot(
+        result_path,
+        label=f"{operation} native worker result",
+        max_bytes=MAX_NATIVE_RESULT_BYTES,
+    )
+    terminal_digest = _read_native_worker_terminal_digest(
+        state_path=state_path,
+        log_path=log_path,
+        operation=operation,
+        run_id=run_id,
+        case_id=case_id,
+        worker_pid=process.pid,
+    )
+    if result_snapshot.sha256 != terminal_digest:
+        raise SupervisionError(
+            "native worker terminal journal digest does not authenticate the stable result snapshot"
+        )
+    _write_result_sidecar(result_path, result_sha256=result_snapshot.sha256)
+    return result
 
 
 def run_comparison_worker(
@@ -1267,7 +1458,6 @@ def _ensure_environment_and_preflight(
             result_path=environment_path,
         )
         _validate_environment_capture(environment)
-        _write_result_sidecar(environment_path)
     _validate_environment_capture(environment)
     if preflight_path.exists():
         if resume_existing:
@@ -1291,7 +1481,6 @@ def _ensure_environment_and_preflight(
             workspace=preflight_path.parent,
             artifacts=preflight_artifacts,
         )
-        _write_result_sidecar(preflight_path)
     preflight_artifacts = _validate_preflight_capture(
         preflight, workspace=preflight_path.parent
     )
@@ -2117,7 +2306,6 @@ def _complete_run(
             workspace=calendar_path.parent,
             artifacts=calendar_artifacts,
         )
-        _write_result_sidecar(calendar_path)
     # Re-read and reject the frozen observations immediately before handing
     # control to the separate oracle-capable process.  That process repeats
     # the durable gate independently.
