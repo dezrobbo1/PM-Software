@@ -655,6 +655,8 @@ class EvidenceBoundaryTests(unittest.TestCase):
         )
         first = _valid_xml_observation()
         second = json.loads(json.dumps(first))
+        bound_first = json.loads(json.dumps(first))
+        bound_second = json.loads(json.dumps(second))
         representation = headless.validated_cal24x7_calendar(first)
         calendar_capture = {
             "project": {
@@ -712,7 +714,11 @@ class EvidenceBoundaryTests(unittest.TestCase):
             )
 
             def parse(path: Path) -> dict:
-                return second if path == Path(artifacts["reexported_xml"]) else first
+                return (
+                    bound_second
+                    if path == Path(artifacts["reexported_xml"]).resolve()
+                    else bound_first
+                )
 
             with patch.object(
                 runner["headless"],
@@ -726,7 +732,8 @@ class EvidenceBoundaryTests(unittest.TestCase):
 
                 second["calendars"][0]["weekdays"][0]["day_working"] = "0"
                 with self.assertRaisesRegex(
-                    runner["SupervisionError"], "XML observation is invalid"
+                    runner["SupervisionError"],
+                    "inline XML observations disagree with bound artifacts",
                 ):
                     runner["_validate_calendar_result"](
                         calendar, workspace=workspace
@@ -1118,6 +1125,13 @@ class ParentOwnershipEvidenceTests(unittest.TestCase):
                 f"{headless.sha256_file(environment_path)}\n", encoding="ascii"
             )
             worker = Mock()
+            live_time_zone_gate = Mock(
+                return_value={
+                    "windows_name": "W. Australia Standard Time",
+                    "utc_offset": "+08:00",
+                    "matches_required_perth_zone": True,
+                }
+            )
             validator = Mock(
                 side_effect=runner["SupervisionError"]("stale environment")
             )
@@ -1126,6 +1140,7 @@ class ParentOwnershipEvidenceTests(unittest.TestCase):
                 patch.dict(
                     function_globals,
                     {
+                        "_require_live_perth_time_zone": live_time_zone_gate,
                         "run_supervised_worker": worker,
                         "_validate_environment_capture": validator,
                     },
@@ -1137,6 +1152,7 @@ class ParentOwnershipEvidenceTests(unittest.TestCase):
                 runner["_ensure_environment_and_preflight"](
                     run, resume_existing=True
                 )
+            live_time_zone_gate.assert_called_once_with()
             worker.assert_not_called()
 
     def test_resume_sweep_failure_precedes_any_case_worker(self) -> None:
@@ -1456,6 +1472,7 @@ class ComFailClosedTests(unittest.TestCase):
             headless_com.ctypes,
             "WinDLL",
             side_effect=[kernel32, user32],
+            create=True,
         ):
             configured_kernel32 = headless_com._configured_kernel32()
             configured_user32 = headless_com._configured_user32(callback_type)
