@@ -229,6 +229,8 @@ def _provenance_for(
         "headless_core_sha256": "b" * 64,
         "headless_com_sha256": "c" * 64,
         "headless_worker_sha256": "d" * 64,
+        "canonical_json_sha256": "f" * 64,
+        "freeze_sha256": "9" * 64,
     }
     shared = {
         **automation,
@@ -382,35 +384,11 @@ def _valid_xml_observation(capture: dict | None = None) -> dict:
 class SourceIsolationTests(unittest.TestCase):
     @staticmethod
     def _synthetic_projection(*, relationship_type: str = "FS") -> dict:
-        return {
-            "case_id": "SEM-REL-001",
-            "document_type": "microsoft_project_source_only_case_projection",
-            "pilot_id": headless.PILOT_ID,
-            "projection_contract": {
-                "construction_inputs_only": True,
-                "full_fixture_binding_included": False,
-                "oracle_content_included": False,
-            },
-            "schema_version": (
-                "microsoft-project-source-only-case-projection-v0.1"
-            ),
-            "source_facts": {
-                "activity_inputs": [{"id": "A"}, {"id": "B"}],
-                "calendar_inputs": [
-                    {"id": "CAL-24X7", "working_intervals": [[0, 400]]}
-                ],
-                "operational_constraint_inputs": [],
-                "relationship_inputs": [
-                    {"lag": 0, "type": relationship_type}
-                ],
-                "resource_inputs": [],
-                "time_axis": {
-                    "origin": headless.ORIGIN,
-                    "unit": "hour",
-                },
-            },
-            "status": "prepared_not_executed",
-        }
+        projection = json.loads(json.dumps(_source("SEM-REL-001")))
+        projection["source_facts"]["relationship_inputs"][0][
+            "type"
+        ] = relationship_type
+        return projection
 
     @classmethod
     def _write_synthetic_projection(
@@ -435,6 +413,130 @@ class SourceIsolationTests(unittest.TestCase):
         self.assertTrue(projection["projection_contract"]["construction_inputs_only"])
         self.assertFalse(projection["projection_contract"]["oracle_content_included"])
         self.assertEqual("FS", projection["source_facts"]["relationship_inputs"][0]["type"])
+
+    def test_source_fact_digest_map_matches_every_public_projection(self) -> None:
+        self.assertEqual(
+            set(headless.CASE_IDS),
+            set(headless.SOURCE_FACTS_SHA256_BY_CASE_ID),
+        )
+        observed: set[str] = set()
+        for case_id in headless.CASE_IDS:
+            path = headless.source_projection_path(ROOT, case_id)
+            projection = json.loads(path.read_text(encoding="utf-8"))
+            digest = hashlib.sha256(
+                headless.canonical_bytes(projection["source_facts"])
+            ).hexdigest()
+            with self.subTest(case_id=case_id):
+                self.assertEqual(
+                    headless.SOURCE_FACTS_SHA256_BY_CASE_ID[case_id],
+                    digest,
+                )
+            observed.add(digest)
+        self.assertEqual(len(headless.CASE_IDS), len(observed))
+
+    def test_every_case_rejects_critical_source_fact_mutations(self) -> None:
+        def clone(value: dict) -> dict:
+            return json.loads(json.dumps(value))
+
+        def mutations(facts: dict) -> list[tuple[str, dict]]:
+            candidates: list[tuple[str, dict]] = []
+
+            candidate = clone(facts)
+            candidate["activity_inputs"][0]["duration"] += 1
+            candidates.append(("activity_duration", candidate))
+
+            candidate = clone(facts)
+            candidate["activity_inputs"][0]["source_fields"]["synthetic"] = 1
+            candidates.append(("nested_activity_construction_field", candidate))
+
+            candidate = clone(facts)
+            relationship = candidate["relationship_inputs"][0]
+            relationship["type"] = {
+                "FS": "SS",
+                "SS": "FF",
+                "FF": "SF",
+                "SF": "FS",
+            }[relationship["type"]]
+            candidates.append(("relationship_type", candidate))
+
+            candidate = clone(facts)
+            relationship = candidate["relationship_inputs"][0]
+            relationship["lag"] = {-2: 0, 0: 2, 2: 0}[relationship["lag"]]
+            candidates.append(("relationship_lag", candidate))
+
+            candidate = clone(facts)
+            candidate["relationship_inputs"][0]["predecessor_id"] = "B"
+            candidates.append(("relationship_predecessor", candidate))
+
+            candidate = clone(facts)
+            candidate["relationship_inputs"][0]["successor_id"] = "A"
+            candidates.append(("relationship_successor", candidate))
+
+            candidate = clone(facts)
+            constraints = candidate["activity_inputs"][0]["constraints"]
+            if constraints:
+                constraints[0]["value"] += 1
+            else:
+                constraints.append(
+                    {
+                        "id": "C-A-01",
+                        "type": "start_no_earlier_than",
+                        "value": 4,
+                    }
+                )
+            candidates.append(("activity_constraints", candidate))
+
+            candidate = clone(facts)
+            candidate["project_inputs"]["project_start"] = False
+            candidates.append(("type_strict_project_start", candidate))
+
+            candidate = clone(facts)
+            candidate["project_inputs"]["progress_policy"] = "synthetic"
+            candidates.append(("project_progress_policy", candidate))
+
+            candidate = clone(facts)
+            candidate["time_axis"]["horizon"] += 1
+            candidates.append(("time_axis_horizon", candidate))
+
+            candidate = clone(facts)
+            candidate["calendar_inputs"][0]["working_intervals"][0][1] -= 1
+            candidates.append(("calendar_working_interval", candidate))
+
+            candidate = clone(facts)
+            candidate["resource_inputs"].append({"id": "R-SYNTHETIC"})
+            candidates.append(("resource_inputs", candidate))
+
+            candidate = clone(facts)
+            candidate["operational_constraint_inputs"].append(
+                {"id": "OC-SYNTHETIC"}
+            )
+            candidates.append(("operational_constraints", candidate))
+
+            candidate = clone(facts)
+            candidate["title"] += " mutated"
+            candidates.append(("descriptive_construction_fact", candidate))
+
+            candidate = clone(facts)
+            candidate["synthetic_unknown_construction_field"] = True
+            candidates.append(("unknown_construction_field", candidate))
+            return candidates
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for case_id in headless.CASE_IDS:
+                public_path = headless.source_projection_path(ROOT, case_id)
+                projection = json.loads(public_path.read_text(encoding="utf-8"))
+                path = headless.source_projection_path(root, case_id)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                for field, mutated_facts in mutations(projection["source_facts"]):
+                    candidate = clone(projection)
+                    candidate["source_facts"] = mutated_facts
+                    path.write_bytes(headless.canonical_bytes(candidate) + b"\n")
+                    with self.subTest(case_id=case_id, field=field), self.assertRaisesRegex(
+                        headless.SourceIsolationError,
+                        "exact frozen construction identity",
+                    ):
+                        headless.load_source_only_projection(root, case_id)
 
     def test_full_fixture_and_sealed_paths_are_rejected_before_read(self) -> None:
         with patch.object(headless, "_read_source_projection_snapshot") as reader:
@@ -474,35 +576,40 @@ class SourceIsolationTests(unittest.TestCase):
             root = Path(temporary)
             path, _source_bytes = self._write_synthetic_projection(root)
             real_stat = headless.os.stat
-            no_follow_path_stats = 0
+            expected = headless.source_projection_path(
+                root.resolve(), "SEM-REL-001"
+            )
+            observed = real_stat(expected, follow_symlinks=False)
+            replacement_stat = type(
+                "SyntheticReplacementStat",
+                (),
+                {
+                    "st_dev": observed.st_dev,
+                    "st_ino": observed.st_ino + 1,
+                    "st_size": observed.st_size,
+                    "st_mtime_ns": observed.st_mtime_ns,
+                },
+            )()
 
-            def replacement_stat(candidate, *args, **kwargs):
-                nonlocal no_follow_path_stats
-                observed = real_stat(candidate, *args, **kwargs)
-                if candidate == path and kwargs.get("follow_symlinks") is False:
-                    no_follow_path_stats += 1
-                    if no_follow_path_stats != 2:
-                        return observed
-                    return type(
-                        "SyntheticReplacementStat",
-                        (),
-                        {
-                            "st_dev": observed.st_dev,
-                            "st_ino": observed.st_ino + 1,
-                            "st_size": observed.st_size,
-                            "st_mtime_ns": observed.st_mtime_ns,
-                        },
-                    )()
-                return observed
+            def replaced_identity(candidate, *args, **kwargs):
+                if (
+                    candidate == expected
+                    and kwargs.get("follow_symlinks") is False
+                ):
+                    return replacement_stat
+                return real_stat(candidate, *args, **kwargs)
 
             with patch.object(
-                headless.os, "stat", side_effect=replacement_stat
+                headless, "_require_source_projection_regular_file"
+            ) as regular_file, patch.object(
+                headless.os, "stat", side_effect=replaced_identity
             ), patch.object(headless.json, "loads") as decoder, patch.object(
                 headless.hashlib, "sha256"
             ) as digester, self.assertRaisesRegex(
                 headless.SourceIsolationError, "replaced while it was read"
             ):
                 headless.load_source_only_projection(root, "SEM-REL-001")
+            self.assertEqual(2, regular_file.call_count)
             decoder.assert_not_called()
             digester.assert_not_called()
 
@@ -532,7 +639,8 @@ class SourceIsolationTests(unittest.TestCase):
                     root, "SEM-REL-001"
                 )
 
-            reader.assert_called_once_with(path)
+            reader.assert_called_once()
+            self.assertTrue(headless.os.path.samefile(reader.call_args.args[0], path))
             self.assertEqual(
                 "FS", payload["source_facts"]["relationship_inputs"][0]["type"]
             )
@@ -579,6 +687,46 @@ class SourceIsolationTests(unittest.TestCase):
                 headless.SourceIsolationError, "must not contain symbolic links"
             ):
                 headless.load_source_only_projection(root, "SEM-REL-001")
+
+    def test_source_projection_path_rejects_windows_junction_components(self) -> None:
+        component = Mock()
+        component.is_symlink.return_value = False
+        component.is_junction.return_value = True
+        self.assertTrue(headless._is_source_projection_link_component(component))
+
+        class LegacyWindowsJunction:
+            @staticmethod
+            def is_symlink() -> bool:
+                return False
+
+            @staticmethod
+            def lstat():
+                return type(
+                    "SyntheticReparseStat",
+                    (),
+                    {"st_file_attributes": 0x400},
+                )()
+
+        with patch.object(headless.os, "name", "nt"), patch.object(
+            headless.stat,
+            "FILE_ATTRIBUTE_REPARSE_POINT",
+            0x400,
+            create=True,
+        ):
+            self.assertTrue(
+                headless._is_source_projection_link_component(
+                    LegacyWindowsJunction()
+                )
+            )
+
+        with patch.object(
+            headless, "_is_source_projection_link_component", return_value=True
+        ), self.assertRaisesRegex(
+            headless.SourceIsolationError, "symbolic links or junctions"
+        ):
+            headless._require_source_projection_regular_file(
+                Path("C:/synthetic/source/SEM-REL-001.json")
+            )
 
     def test_recursive_oracle_key_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -632,6 +780,69 @@ class SourceIsolationTests(unittest.TestCase):
             ),
             digest,
         )
+
+    def test_source_projection_accepts_one_lf_or_crlf_and_hashes_exact_bytes(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = headless.source_projection_path(root, "SEM-REL-001")
+            path.parent.mkdir(parents=True)
+            canonical_body = headless.canonical_bytes(self._synthetic_projection())
+            for terminator in (b"\n", b"\r\n"):
+                with self.subTest(terminator=terminator):
+                    source_bytes = canonical_body + terminator
+                    path.write_bytes(source_bytes)
+                    payload, digest = (
+                        headless.load_source_only_projection_with_identity(
+                            root, "SEM-REL-001"
+                        )
+                    )
+                    self.assertEqual("SEM-REL-001", payload["case_id"])
+                    self.assertEqual(
+                        hashlib.sha256(source_bytes).hexdigest(), digest
+                    )
+
+    def test_windows_complete_short_alias_uses_final_path_and_file_identity(
+        self,
+    ) -> None:
+        expected = Path(
+            "C:/Users/runneradmin/AppData/Local/Temp/source/SEM-REL-001.json"
+        )
+        candidate = Path(
+            "C:/Users/RUNNER~1/AppData/Local/Temp/source/SEM-RE~1.JSON"
+        )
+        with patch.object(headless.os, "name", "nt"), patch.object(
+            headless, "_require_source_projection_regular_file"
+        ) as regular_file, patch.object(
+            type(candidate), "resolve", autospec=True, return_value=expected
+        ) as resolver, patch.object(
+            headless.os.path, "samefile", return_value=True
+        ) as samefile:
+            self.assertTrue(
+                headless._same_source_projection_path(candidate, expected)
+            )
+        self.assertEqual(
+            [candidate, expected, candidate, expected],
+            [item.args[0] for item in regular_file.call_args_list],
+        )
+        self.assertEqual(2, resolver.call_count)
+        samefile.assert_called_once_with(candidate, expected)
+
+        with patch.object(headless.os, "name", "nt"), patch.object(
+            headless, "_require_source_projection_regular_file"
+        ), patch.object(
+            type(candidate),
+            "resolve",
+            autospec=True,
+            side_effect=(candidate, expected),
+        ), patch.object(
+            headless.os.path, "samefile", return_value=True
+        ) as samefile:
+            self.assertFalse(
+                headless._same_source_projection_path(candidate, expected)
+            )
+        samefile.assert_not_called()
 
     def test_native_import_graph_has_no_oracle_capability(self) -> None:
         self.assertFalse(hasattr(headless, "compare_frozen_observations"))
@@ -687,6 +898,117 @@ class EvidenceBoundaryTests(unittest.TestCase):
                 headless.create_run_workspace(Path(temporary), "run-1")
             with self.assertRaises(headless.DurableEvidenceError):
                 headless.create_case_workspace(run, "SEM-REL-001")
+
+    def test_frozen_observation_snapshot_is_bounded_before_json_decode_or_hash(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "native-observation.json"
+            with path.open("wb") as handle:
+                handle.truncate(
+                    headless_compare.MAX_FROZEN_OBSERVATION_BYTES + 1
+                )
+            with patch.object(
+                headless_compare.json, "loads"
+            ) as decoder, patch.object(
+                headless_compare.freeze_module.hashlib, "sha256"
+            ) as digester, self.assertRaisesRegex(
+                headless.ObservationFreezeError,
+                "stable bounded regular-file snapshot",
+            ):
+                headless_compare._load_frozen_observation_snapshot(
+                    path,
+                    case_id="SEM-REL-001",
+                    expected_digest="0" * 64,
+                )
+            decoder.assert_not_called()
+            digester.assert_not_called()
+
+    def test_frozen_observation_snapshot_rejects_replacement_before_json_decode(
+        self,
+    ) -> None:
+        path = Path("C:/synthetic/native-observation.json")
+        reader = Mock(
+            side_effect=headless_compare.NativeEvidenceError(
+                "frozen observation was replaced while it was read"
+            )
+        )
+        with patch.object(
+            headless_compare,
+            "read_regular_file_snapshot",
+            reader,
+        ), patch.object(
+            headless_compare.json, "loads"
+        ) as decoder, self.assertRaisesRegex(
+            headless.ObservationFreezeError,
+            "stable bounded regular-file snapshot",
+        ):
+            headless_compare._load_frozen_observation_snapshot(
+                path,
+                case_id="SEM-REL-001",
+                expected_digest="0" * 64,
+            )
+        reader.assert_called_once_with(
+            path,
+            label="frozen observation SEM-REL-001",
+            max_bytes=headless_compare.MAX_FROZEN_OBSERVATION_BYTES,
+        )
+        decoder.assert_not_called()
+
+    def test_frozen_observation_digest_and_parse_use_one_exact_snapshot(
+        self,
+    ) -> None:
+        observation = _observation("SEM-REL-001")
+        original = headless.canonical_bytes(observation) + b"\n"
+        replacement = b"{}\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "native-observation.json"
+            path.write_bytes(original)
+            stable_reader = headless_compare.read_regular_file_snapshot
+
+            def replace_after_snapshot(*args, **kwargs):
+                snapshot = stable_reader(*args, **kwargs)
+                path.write_bytes(replacement)
+                return snapshot
+
+            with patch.object(
+                headless_compare,
+                "read_regular_file_snapshot",
+                side_effect=replace_after_snapshot,
+            ) as reader:
+                parsed = headless_compare._load_frozen_observation_snapshot(
+                    path,
+                    case_id="SEM-REL-001",
+                    expected_digest=hashlib.sha256(original).hexdigest(),
+                )
+            observed_replacement = path.read_bytes()
+
+        reader.assert_called_once_with(
+            path,
+            label="frozen observation SEM-REL-001",
+            max_bytes=headless_compare.MAX_FROZEN_OBSERVATION_BYTES,
+        )
+        self.assertEqual("SEM-REL-001", parsed["case_id"])
+        self.assertEqual(headless.TRACK_ID, parsed["characterisation_label"])
+        self.assertEqual(replacement, observed_replacement)
+
+    def test_frozen_observation_snapshot_rejects_duplicate_json_keys(self) -> None:
+        duplicate = (
+            b'{"case_id":"SEM-REL-001","case_id":"SEM-REL-001",'
+            b'"characterisation_label":"headless_native_characterisation"}\n'
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "native-observation.json"
+            path.write_bytes(duplicate)
+            with self.assertRaisesRegex(
+                headless.ObservationFreezeError,
+                "malformed observation",
+            ):
+                headless_compare._load_frozen_observation_snapshot(
+                    path,
+                    case_id="SEM-REL-001",
+                    expected_digest=hashlib.sha256(duplicate).hexdigest(),
+                )
 
     def test_inline_xml_must_match_exact_bytes_before_observation_freeze(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -1286,6 +1608,92 @@ class EvidenceBoundaryTests(unittest.TestCase):
 
 
 class XmlCharacterisationTests(unittest.TestCase):
+    @staticmethod
+    def _minimal_xml_bytes(namespace: str = "urn:test-project") -> bytes:
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            f'<Project xmlns="{namespace}"><SaveVersion>99</SaveVersion></Project>'
+        ).encode("utf-8")
+
+    def test_project_xml_snapshot_rejects_oversize_before_parse_or_hash(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "oversized.xml"
+            with path.open("wb") as handle:
+                handle.truncate(headless.MAX_PROJECT_XML_BYTES + 1)
+            with patch.object(headless.ET, "fromstring") as parser, patch.object(
+                headless.hashlib, "sha256"
+            ) as digester, self.assertRaisesRegex(
+                headless.XmlObservationError,
+                "exceeds the bounded.*byte limit",
+            ):
+                headless.parse_project_xml_observation(path)
+            parser.assert_not_called()
+            digester.assert_not_called()
+
+    def test_project_xml_snapshot_rejects_replacement_before_parse_or_hash(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "replaced.xml"
+            path.write_bytes(self._minimal_xml_bytes())
+            real_stat = headless.os.stat
+            observed = real_stat(path, follow_symlinks=False)
+            replacement_stat = type(
+                "SyntheticReplacementStat",
+                (),
+                {
+                    "st_dev": observed.st_dev,
+                    "st_ino": observed.st_ino + 1,
+                    "st_size": observed.st_size,
+                    "st_mtime_ns": observed.st_mtime_ns,
+                },
+            )()
+
+            def replaced_identity(candidate, *args, **kwargs):
+                if candidate == path and kwargs.get("follow_symlinks") is False:
+                    return replacement_stat
+                return real_stat(candidate, *args, **kwargs)
+
+            with patch.object(
+                headless, "_require_project_xml_regular_file"
+            ) as regular_file, patch.object(
+                headless.os, "stat", side_effect=replaced_identity
+            ), patch.object(headless.ET, "fromstring") as parser, patch.object(
+                headless.hashlib, "sha256"
+            ) as digester, self.assertRaisesRegex(
+                headless.XmlObservationError,
+                "replaced while it was read",
+            ):
+                headless.parse_project_xml_observation(path)
+            self.assertEqual(2, regular_file.call_count)
+            parser.assert_not_called()
+            digester.assert_not_called()
+
+    def test_project_xml_parse_uses_one_exact_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "snapshot.xml"
+            path.write_bytes(self._minimal_xml_bytes("urn:original"))
+            replacement = self._minimal_xml_bytes("urn:replacement")
+            stable_reader = headless._read_project_xml_snapshot
+
+            def replace_after_snapshot(candidate: Path):
+                snapshot = stable_reader(candidate)
+                path.write_bytes(replacement)
+                return snapshot
+
+            with patch.object(
+                headless,
+                "_read_project_xml_snapshot",
+                side_effect=replace_after_snapshot,
+            ) as reader:
+                root, namespace = headless._safe_xml_root(path)
+
+            reader.assert_called_once_with(path)
+            self.assertEqual("urn:original", namespace)
+            self.assertEqual("{urn:original}Project", root.tag)
+
     def test_actual_namespace_saveversion_relationship_and_midnight_are_retained(self) -> None:
         xml = """<?xml version="1.0" encoding="UTF-8"?>
 <Project xmlns="urn:test-project"><SaveVersion>99</SaveVersion><StartDate>2026-01-05T08:00:00</StartDate>
@@ -3068,7 +3476,7 @@ class ComFailClosedTests(unittest.TestCase):
         )
         app.FileBuildID.assert_called_once_with()
 
-    def test_project_xml_reopen_uses_exact_exported_text(self) -> None:
+    def test_project_xml_reopen_uses_one_exact_exported_snapshot(self) -> None:
         app = Mock()
         app.OpenXML.return_value = 0
         marker = object()
@@ -3076,9 +3484,45 @@ class ComFailClosedTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "exact.xml"
             path.write_bytes(b"\xef\xbb\xbf<Project><Name>exact</Name></Project>")
-            observed = headless_com._open_project_xml(app, path)
+            stable_reader = headless._read_project_xml_snapshot
+
+            def replace_after_snapshot(candidate: Path):
+                snapshot = stable_reader(candidate)
+                path.write_bytes(b"<Project><Name>replacement</Name></Project>")
+                return snapshot
+
+            with patch.object(
+                headless_com,
+                "_read_project_xml_snapshot",
+                side_effect=replace_after_snapshot,
+            ) as reader:
+                observed = headless_com._open_project_xml(app, path)
         self.assertIs(marker, observed)
+        reader.assert_called_once_with(path)
         app.OpenXML.assert_called_once_with("<Project><Name>exact</Name></Project>")
+
+    def test_project_xml_reopen_keeps_openxml_closed_on_snapshot_failure(
+        self,
+    ) -> None:
+        for failure in (
+            "Project XML exceeds the bounded byte limit",
+            "Project XML was replaced while it was read",
+        ):
+            with self.subTest(failure=failure):
+                app = Mock()
+                reader = Mock(side_effect=headless.XmlObservationError(failure))
+                path = Path("C:/synthetic/project.xml")
+                with patch.object(
+                    headless_com,
+                    "_read_project_xml_snapshot",
+                    reader,
+                ), self.assertRaisesRegex(
+                    headless_com.ProjectComError,
+                    "Project XML is not readable UTF-8",
+                ):
+                    headless_com._open_project_xml(app, path)
+                reader.assert_called_once_with(path)
+                app.OpenXML.assert_not_called()
 
     def test_datetime_serialization_preserves_project_wall_clock_components(self) -> None:
         tagged = headless_com._json_value(

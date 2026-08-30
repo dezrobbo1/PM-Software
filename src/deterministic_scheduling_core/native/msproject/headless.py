@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from deterministic_scheduling_core.provenance.canonical_json import canonical_bytes
 
@@ -27,6 +27,24 @@ from deterministic_scheduling_core.provenance.canonical_json import canonical_by
 PILOT_ID = "microsoft-project-relationship-v0.1"
 TRACK_ID = "headless_native_characterisation"
 CASE_IDS = tuple(f"SEM-REL-{number:03d}" for number in range(1, 13))
+# Canonical SHA-256 identities of the complete public source-only
+# ``source_facts`` objects.  Canonicalizing the parsed value makes the binding
+# independent of the checkout's LF/CRLF policy while retaining every nested
+# construction field and its exact JSON type.
+SOURCE_FACTS_SHA256_BY_CASE_ID = {
+    "SEM-REL-001": "0cdf3ca89b45622b7a2e1ed694a169b8e63d1b99a82e54def50f2194667e3944",
+    "SEM-REL-002": "e9a429ddf9ce1a4dabfeee5ef9b1869a085291536b95fc180bcf4fecff885170",
+    "SEM-REL-003": "5ae5f1dc100b3c38d6efb1cf0840f4bac662a15f39cc0dca45a4b3718d79c6fa",
+    "SEM-REL-004": "eddc7ef36b559dd9324660b88530d39df03553772ec46d151abb5e7000ae1c6f",
+    "SEM-REL-005": "621d88ceef87d792bc77cfa765f810721f58e02c56b271f9807e9e028d3dae9d",
+    "SEM-REL-006": "8b81e9956e24f85b635dbfefeb1673a027b8931d405ff2a51c60fda55af22293",
+    "SEM-REL-007": "96e413b22145ac7782b3853c9ab3ef1b4e49cca116b212bd1b1dbb0df5267415",
+    "SEM-REL-008": "f6cf93f27b974a435a10a9ac417a66a03c6782e7c89b3aa022027c1bb19a6591",
+    "SEM-REL-009": "f5c40ac0b4daca5782235f51bbcac3fb7b48c58575ed97f5f9afb48c7922a2fc",
+    "SEM-REL-010": "538bee1f5ae141b51a05922d367a7c5521c6f8f7dcdab455a82fdf77444db6b6",
+    "SEM-REL-011": "240078dc171754ddb9a8ab6b0b0a771cc5d2c5fa1cd6d292c3b1997978b2b0b8",
+    "SEM-REL-012": "41a33bd0d2e8f4b0f4a3cfa853e64b9c639801d63e821f16ed7005b5ae30eed3",
+}
 SOURCE_DIRECTORY = PurePosixPath(
     "native-validation/pilot-kits/microsoft-project-relationship-v0.1/"
     "source-only-case-projections"
@@ -34,10 +52,11 @@ SOURCE_DIRECTORY = PurePosixPath(
 RAW_ROOT = PurePosixPath("native-files/headless-msproject-characterisation")
 ORIGIN = "2026-01-05T08:00:00+08:00"
 MAX_SOURCE_PROJECTION_BYTES = 1024 * 1024
+MAX_PROJECT_XML_BYTES = 25 * 1024 * 1024
 _CASE_RE = re.compile(r"^SEM-REL-(?:00[1-9]|01[0-2])$")
 _RUN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 _HEX_RE = re.compile(r"^[0-9a-f]{64}$")
-_AUTOMATION_HASH_ROLES = frozenset(
+_LEGACY_AUTOMATION_HASH_ROLES = frozenset(
     {
         "automation_tool_sha256",
         "headless_core_sha256",
@@ -45,8 +64,17 @@ _AUTOMATION_HASH_ROLES = frozenset(
         "headless_worker_sha256",
     }
 )
+_AUTOMATION_HASH_ROLES = _LEGACY_AUTOMATION_HASH_ROLES | frozenset(
+    {"canonical_json_sha256", "freeze_sha256"}
+)
+_LEGACY_COMMON_SHARED_HASH_ROLES = _LEGACY_AUTOMATION_HASH_ROLES | frozenset(
+    {"environment_sha256", "project_executable_sha256"}
+)
 _COMMON_SHARED_HASH_ROLES = _AUTOMATION_HASH_ROLES | frozenset(
     {"environment_sha256", "project_executable_sha256"}
+)
+_LEGACY_ALL_SHARED_HASH_ROLES = _LEGACY_COMMON_SHARED_HASH_ROLES | frozenset(
+    {"source_only_projection_sha256"}
 )
 _ALL_SHARED_HASH_ROLES = _COMMON_SHARED_HASH_ROLES | frozenset(
     {"source_only_projection_sha256"}
@@ -120,14 +148,19 @@ class XmlObservationError(HeadlessCharacterisationError):
 
 
 @dataclass(frozen=True, slots=True)
-class _SourceProjectionSnapshot:
-    """Exact bytes and identity from one stable source-projection handle."""
+class _RegularFileSnapshot:
+    """Exact bytes and identity from one stable, no-follow file handle."""
 
     data: bytes
     sha256: str
     byte_size: int
     device: int
     inode: int
+
+
+# Retain the source-specific name for narrow test seams and callers while the
+# implementation is shared with Project XML parsing.
+_SourceProjectionSnapshot = _RegularFileSnapshot
 
 
 @dataclass(frozen=True)
@@ -168,32 +201,81 @@ def _regular_file(path: Path, *, label: str) -> None:
         raise DurableEvidenceError(f"{label} must be a non-symlink regular file: {path}")
 
 
-def _require_source_projection_regular_file(path: Path) -> None:
-    """Reject source paths containing a symbolic-link component."""
+def _is_source_projection_link_component(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    is_junction = getattr(path, "is_junction", None)
+    if is_junction is not None and is_junction():
+        return True
+    if os.name == "nt":
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        attributes = getattr(path.lstat(), "st_file_attributes", 0)
+        return bool(reparse_flag and attributes & reparse_flag)
+    return False
+
+
+def _require_snapshot_regular_file(
+    path: Path,
+    *,
+    label: str,
+    error_type: type[HeadlessCharacterisationError],
+    link_component_check: Callable[[Path], bool] = _is_source_projection_link_component,
+) -> None:
+    """Reject paths containing a symbolic-link, junction or non-file component."""
 
     absolute = path.absolute()
     try:
-        if any(candidate.is_symlink() for candidate in (absolute, *absolute.parents)):
-            raise SourceIsolationError(
-                "source-only projection path must not contain symbolic links"
+        if any(
+            link_component_check(candidate)
+            for candidate in (absolute, *absolute.parents)
+        ):
+            raise error_type(
+                f"{label} path must not contain symbolic links or junctions"
             )
         if not path.is_file():
-            raise SourceIsolationError(
-                "source-only projection must be a regular, non-symbolic-link file"
+            raise error_type(
+                f"{label} must be a regular, non-symbolic-link file"
             )
     except OSError as error:
-        raise SourceIsolationError(
-            f"source-only projection path could not be inspected safely: {error}"
+        raise error_type(
+            f"{label} path could not be inspected safely: {error}"
         ) from error
 
 
-def _read_source_projection_snapshot(path: Path) -> _SourceProjectionSnapshot:
-    """Read one bounded, stable, no-follow source-projection snapshot."""
+def _require_source_projection_regular_file(path: Path) -> None:
+    """Reject source paths containing a symbolic-link or junction component."""
 
-    # The general native-evidence reader lives in ``freeze``, which imports
-    # frozen-suite oracle identities.  Keep this source-specific equivalent in
-    # the already provenance-bound worker core so construction stays oracle-free.
-    _require_source_projection_regular_file(path)
+    _require_snapshot_regular_file(
+        path,
+        label="source-only projection",
+        error_type=SourceIsolationError,
+        # Keep the source-specific seam used by the Windows alias regressions.
+        link_component_check=_is_source_projection_link_component,
+    )
+
+
+def _require_project_xml_regular_file(path: Path) -> None:
+    _require_snapshot_regular_file(
+        path,
+        label="Project XML",
+        error_type=XmlObservationError,
+    )
+
+
+def _read_regular_file_snapshot(
+    path: Path,
+    *,
+    label: str,
+    max_bytes: int,
+    error_type: type[HeadlessCharacterisationError],
+    require_regular_file: Callable[[Path], None],
+) -> _RegularFileSnapshot:
+    """Read one bounded snapshot and reject mutation or path replacement."""
+
+    # The general evidence reader in ``freeze`` imports frozen-suite oracle
+    # identities.  Keep this small equivalent in the worker-safe core so both
+    # construction JSON and Project XML remain oracle-free.
+    require_regular_file(path)
     flags = (
         os.O_RDONLY
         | getattr(os, "O_CLOEXEC", 0)
@@ -205,63 +287,81 @@ def _read_source_projection_snapshot(path: Path) -> _SourceProjectionSnapshot:
         try:
             before = os.fstat(descriptor)
             if not stat.S_ISREG(before.st_mode):
-                raise SourceIsolationError(
-                    "source-only projection must be a regular file"
-                )
-            if before.st_size > MAX_SOURCE_PROJECTION_BYTES:
-                raise SourceIsolationError(
-                    "source-only projection exceeds the bounded "
-                    f"{MAX_SOURCE_PROJECTION_BYTES}-byte limit"
+                raise error_type(f"{label} must be a regular file")
+            if before.st_size > max_bytes:
+                raise error_type(
+                    f"{label} exceeds the bounded {max_bytes}-byte limit"
                 )
             chunks: list[bytes] = []
             observed_size = 0
             while True:
                 # Read no more than one byte past the limit so a concurrently
                 # growing input cannot cause an unbounded allocation.
-                remaining = MAX_SOURCE_PROJECTION_BYTES - observed_size
+                remaining = max_bytes - observed_size
                 block = os.read(descriptor, min(1024 * 1024, remaining + 1))
                 if not block:
                     break
                 observed_size += len(block)
-                if observed_size > MAX_SOURCE_PROJECTION_BYTES:
-                    raise SourceIsolationError(
-                        "source-only projection exceeds the bounded "
-                        f"{MAX_SOURCE_PROJECTION_BYTES}-byte limit"
+                if observed_size > max_bytes:
+                    raise error_type(
+                        f"{label} exceeds the bounded {max_bytes}-byte limit"
                     )
                 chunks.append(block)
             after = os.fstat(descriptor)
         finally:
             os.close(descriptor)
-    except SourceIsolationError:
+    except error_type:
         raise
     except OSError as error:
-        raise SourceIsolationError(
-            f"source-only projection could not be read safely: {error}"
+        raise error_type(
+            f"{label} could not be read safely: {error}"
         ) from error
 
     try:
         current = os.stat(path, follow_symlinks=False)
     except OSError as error:
-        raise SourceIsolationError(
-            f"source-only projection changed while it was read: {error}"
+        raise error_type(
+            f"{label} changed while it was read: {error}"
         ) from error
-    _require_source_projection_regular_file(path)
+    require_regular_file(path)
     stable_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns")
     if any(getattr(before, field) != getattr(after, field) for field in stable_fields):
-        raise SourceIsolationError("source-only projection changed while it was read")
+        raise error_type(f"{label} changed while it was read")
     if any(getattr(after, field) != getattr(current, field) for field in stable_fields):
-        raise SourceIsolationError("source-only projection was replaced while it was read")
-    source_bytes = b"".join(chunks)
-    if len(source_bytes) != after.st_size:
-        raise SourceIsolationError(
-            "source-only projection byte count changed while it was read"
+        raise error_type(f"{label} was replaced while it was read")
+    snapshot_bytes = b"".join(chunks)
+    if len(snapshot_bytes) != after.st_size:
+        raise error_type(
+            f"{label} byte count changed while it was read"
         )
-    return _SourceProjectionSnapshot(
-        data=source_bytes,
-        sha256=hashlib.sha256(source_bytes).hexdigest(),
-        byte_size=len(source_bytes),
+    return _RegularFileSnapshot(
+        data=snapshot_bytes,
+        sha256=hashlib.sha256(snapshot_bytes).hexdigest(),
+        byte_size=len(snapshot_bytes),
         device=after.st_dev,
         inode=after.st_ino,
+    )
+
+
+def _read_source_projection_snapshot(path: Path) -> _SourceProjectionSnapshot:
+    """Read one bounded, stable, no-follow source-projection snapshot."""
+
+    return _read_regular_file_snapshot(
+        path,
+        label="source-only projection",
+        max_bytes=MAX_SOURCE_PROJECTION_BYTES,
+        error_type=SourceIsolationError,
+        require_regular_file=_require_source_projection_regular_file,
+    )
+
+
+def _read_project_xml_snapshot(path: Path) -> _RegularFileSnapshot:
+    return _read_regular_file_snapshot(
+        path,
+        label="Project XML",
+        max_bytes=MAX_PROJECT_XML_BYTES,
+        error_type=XmlObservationError,
+        require_regular_file=_require_project_xml_regular_file,
     )
 
 
@@ -307,6 +407,38 @@ def source_projection_path(repository_root: Path, case_id: str) -> Path:
     return repository_root.joinpath(*SOURCE_DIRECTORY.parts, f"{case_id}.json")
 
 
+def _same_source_projection_path(candidate: Path, expected: Path) -> bool:
+    """Accept Windows 8.3 aliases without accepting a different source path."""
+
+    if candidate == expected:
+        return True
+    if os.name != "nt":
+        return False
+
+    # Reject reparse aliases before asking Windows for its final normalized
+    # names.  This permits complete 8.3 aliases (including a shortened filename)
+    # without resolving a symlink or junction away before it can be rejected.
+    _require_source_projection_regular_file(candidate)
+    _require_source_projection_regular_file(expected)
+    try:
+        candidate_final = candidate.resolve(strict=True)
+        expected_final = expected.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise SourceIsolationError(
+            f"construction input path identity could not be verified: {error}"
+        ) from error
+    _require_source_projection_regular_file(candidate)
+    _require_source_projection_regular_file(expected)
+    try:
+        return candidate_final == expected_final and os.path.samefile(
+            candidate, expected
+        )
+    except OSError as error:
+        raise SourceIsolationError(
+            f"construction input path identity could not be verified: {error}"
+        ) from error
+
+
 def load_source_only_projection(
     repository_root: Path,
     case_id: str,
@@ -336,13 +468,13 @@ def load_source_only_projection_with_identity(
     repository_root = repository_root.resolve()
     expected = source_projection_path(repository_root, case_id).absolute()
     candidate = (path if path is not None else expected).absolute()
-    if candidate != expected:
+    if not _same_source_projection_path(candidate, expected):
         raise SourceIsolationError(
             "construction input must be the exact source-only projection path; "
             f"expected {expected}, received {candidate}"
         )
     try:
-        relative = candidate.relative_to(repository_root).as_posix().lower()
+        relative = expected.relative_to(repository_root).as_posix().lower()
     except ValueError as error:
         raise SourceIsolationError("construction input escapes the repository") from error
     if any(token in relative for token in ("benchmarks/semantic/cases", "sealed", "expected")):
@@ -367,9 +499,12 @@ def load_source_only_projection_with_identity(
         raise SourceIsolationError(
             "source-only projection is outside canonical JSON"
         ) from error
-    if snapshot.data != canonical_source_bytes:
+    if snapshot.data not in (
+        canonical_source_bytes,
+        canonical_source_bytes[:-1] + b"\r\n",
+    ):
         raise SourceIsolationError(
-            "source-only projection must use canonical JSON with one trailing LF"
+            "source-only projection must use canonical JSON with one trailing LF or CRLF"
         )
     forbidden = _contains_forbidden_key(payload)
     if forbidden:
@@ -394,6 +529,16 @@ def load_source_only_projection_with_identity(
     facts = payload.get("source_facts")
     if not isinstance(facts, dict):
         raise SourceIsolationError("source facts are missing")
+    # Bind the requested case to the complete construction value, rather than
+    # merely accepting a broad relationship/lag schema.  This canonical-value
+    # digest is type-strict and intentionally independent of LF versus CRLF in
+    # the authenticated outer source snapshot.
+    facts_sha256 = hashlib.sha256(canonical_bytes(facts)).hexdigest()
+    if facts_sha256 != SOURCE_FACTS_SHA256_BY_CASE_ID[case_id]:
+        raise SourceIsolationError(
+            "source facts do not match the exact frozen construction identity "
+            f"for {case_id}"
+        )
     axis = facts.get("time_axis")
     if not isinstance(axis, dict) or axis.get("origin") != ORIGIN or axis.get("unit") != "hour":
         raise SourceIsolationError("unexpected native time axis")
@@ -551,16 +696,47 @@ def verify_artifact_manifest(path: Path, *, root: Path) -> dict[str, Any]:
     return manifest
 
 
+def _required_shared_hash_roles(
+    manifest_schema_version: Any,
+    observation_schema_version: Any = None,
+) -> frozenset[str]:
+    if manifest_schema_version not in {
+        "headless-msproject-artifact-manifest-v0.1",
+        "headless-msproject-artifact-manifest-v0.2",
+    }:
+        raise ObservationFreezeError("unsupported case manifest schema")
+    if observation_schema_version not in {
+        None,
+        "headless-msproject-native-observation-v0.1",
+        "headless-msproject-native-observation-v0.2",
+    }:
+        raise ObservationFreezeError("unsupported native observation schema")
+    if (
+        manifest_schema_version
+        == "headless-msproject-artifact-manifest-v0.2"
+        or observation_schema_version
+        == "headless-msproject-native-observation-v0.2"
+    ):
+        return _ALL_SHARED_HASH_ROLES
+    return _LEGACY_ALL_SHARED_HASH_ROLES
+
+
 def _validated_shared_hashes(
-    manifest: Mapping[str, Any], workspace: CaseWorkspace
+    manifest: Mapping[str, Any],
+    workspace: CaseWorkspace,
+    *,
+    observation_schema_version: Any = None,
 ) -> dict[str, str]:
+    required_roles = _required_shared_hash_roles(
+        manifest.get("schema_version"), observation_schema_version
+    )
     shared = manifest.get("shared_hashes")
-    if not isinstance(shared, Mapping) or set(shared) != _ALL_SHARED_HASH_ROLES:
+    if not isinstance(shared, Mapping) or set(shared) != required_roles:
         raise ObservationFreezeError(
             "case manifest shared hashes do not contain the exact required roles"
         )
     normalized: dict[str, str] = {}
-    for role in sorted(_ALL_SHARED_HASH_ROLES):
+    for role in sorted(required_roles):
         digest = shared.get(role)
         if not isinstance(digest, str) or not _HEX_RE.fullmatch(digest):
             raise ObservationFreezeError(f"case manifest has an invalid {role}")
@@ -725,7 +901,6 @@ def verify_observation_freeze(workspace: CaseWorkspace) -> FreezeVerification:
     manifest = verify_artifact_manifest(manifest_path, root=workspace.run.path)
     if manifest.get("case_id") != workspace.case_id or manifest.get("observation_frozen_before_oracle") is not True:
         raise ObservationFreezeError("case manifest does not prove observation-before-oracle")
-    shared_hashes = _validated_shared_hashes(manifest, workspace)
     try:
         observation = json.loads(observation_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -734,6 +909,11 @@ def verify_observation_freeze(workspace: CaseWorkspace) -> FreezeVerification:
         raise ObservationFreezeError("native observation must be an object")
     if observation.get("case_id") != workspace.case_id:
         raise ObservationFreezeError("native observation case identity mismatch")
+    shared_hashes = _validated_shared_hashes(
+        manifest,
+        workspace,
+        observation_schema_version=observation.get("schema_version"),
+    )
     strong_manifest = (
         manifest.get("schema_version")
         == "headless-msproject-artifact-manifest-v0.2"
@@ -824,9 +1004,14 @@ def verify_observation_freeze(workspace: CaseWorkspace) -> FreezeVerification:
                 "native observation does not bind the parsed source bytes"
             )
     if strong_manifest or worker_automation is not None:
+        automation_roles = (
+            _AUTOMATION_HASH_ROLES
+            if strong_manifest
+            else _LEGACY_AUTOMATION_HASH_ROLES
+        )
         if not isinstance(worker_automation, Mapping) or {
-            role: worker_automation.get(role) for role in _AUTOMATION_HASH_ROLES
-        } != {role: shared_hashes[role] for role in _AUTOMATION_HASH_ROLES}:
+            role: worker_automation.get(role) for role in automation_roles
+        } != {role: shared_hashes[role] for role in automation_roles}:
             raise ObservationFreezeError(
                 "native observation does not bind the executed automation sources"
             )
@@ -891,8 +1076,17 @@ def verify_run_freeze_gate(
             raise ObservationFreezeError(
                 f"oracle gate remains closed: {case_id} contains stop conditions: {retained_stops}"
             )
-        shared = _validated_shared_hashes(manifest, workspace)
-        candidate_common = {role: shared[role] for role in _COMMON_SHARED_HASH_ROLES}
+        observation_schema_version = observation.get("schema_version")
+        shared_roles = _required_shared_hash_roles(
+            manifest.get("schema_version"), observation_schema_version
+        )
+        shared = _validated_shared_hashes(
+            manifest,
+            workspace,
+            observation_schema_version=observation_schema_version,
+        )
+        common_roles = shared_roles - {"source_only_projection_sha256"}
+        candidate_common = {role: shared[role] for role in common_roles}
         if common_hashes is None:
             common_hashes = candidate_common
         elif candidate_common != common_hashes:
@@ -1045,10 +1239,8 @@ def normalize_observation(observation: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _safe_xml_root(path: Path) -> tuple[ET.Element, str]:
-    _regular_file(path, label="Project XML")
-    data = path.read_bytes()
-    if len(data) > 25 * 1024 * 1024:
-        raise XmlObservationError("Project XML exceeds the bounded 25 MiB limit")
+    snapshot = _read_project_xml_snapshot(path)
+    data = snapshot.data
     lowered = data.lower()
     if b"<!doctype" in lowered or b"<!entity" in lowered:
         raise XmlObservationError("DTD/entity declarations are forbidden in Project XML observations")

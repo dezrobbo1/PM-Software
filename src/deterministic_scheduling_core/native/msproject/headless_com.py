@@ -30,6 +30,8 @@ except ImportError:  # Linux CI must still be able to import the fail-closed ada
 from .headless import (
     ORIGIN,
     TRACK_ID,
+    XmlObservationError,
+    _read_project_xml_snapshot,
     parse_project_xml_observation,
     sha256_file,
     validated_cal24x7_calendar,
@@ -1240,8 +1242,8 @@ def _open_project_xml(app: Any, path: Path) -> Any:
     """Open the exact exported XML text without invoking the Import Wizard."""
 
     try:
-        xml_text = path.read_bytes().decode("utf-8-sig")
-    except (OSError, UnicodeDecodeError) as error:
+        xml_text = _read_project_xml_snapshot(path).data.decode("utf-8-sig")
+    except (OSError, UnicodeDecodeError, XmlObservationError) as error:
         raise ProjectComError(f"Project XML is not readable UTF-8: {path}") from error
     result = app.OpenXML(xml_text)
     if int(result) != 0:
@@ -1397,8 +1399,12 @@ def _case_capture_stop_conditions(
                 "observed": project.get("status_date"),
             }
         )
+    project_wall_clocks: dict[str, str | None] = {}
     for field in ("start", "finish"):
-        if _wall_clock(project.get(field), require_offset=True) is None:
+        project_wall_clocks[field] = _wall_clock(
+            project.get(field), require_offset=True
+        )
+        if project_wall_clocks[field] is None:
             conditions.append(
                 {
                     "condition": "required_schedule_timestamp_invalid",
@@ -1408,6 +1414,22 @@ def _case_capture_stop_conditions(
                     "com_timestamp_valid": False,
                 }
             )
+
+    source_origin = facts.get("time_axis", {}).get("origin")
+    source_origin_wall_clock = _wall_clock(source_origin, require_offset=True)
+    if (
+        source_origin_wall_clock is not None
+        and project_wall_clocks["start"] is not None
+        and project_wall_clocks["start"] != source_origin_wall_clock
+    ):
+        conditions.append(
+            {
+                "condition": "native_project_start_changed",
+                "stage": stage,
+                "expected": source_origin,
+                "observed": project.get("start"),
+            }
+        )
 
     source_by_name = {
         str(item["name"]): item

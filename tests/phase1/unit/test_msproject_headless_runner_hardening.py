@@ -16,6 +16,7 @@ from deterministic_scheduling_core.native.msproject import (
     freeze,
     headless,
     headless_compare,
+    headless_com,
     pilot,
 )
 
@@ -1769,6 +1770,341 @@ class NativeSupervisorReviewRegressionTests(unittest.TestCase):
                 self.assertFalse(
                     runner["_result_sidecar_path"](result_path).exists()
                 )
+
+    def test_standalone_resume_verifies_its_selected_nonprefix_case(self) -> None:
+        runner = _runner()
+        helpers = runpy.run_path(str(LEGACY_TEST))
+        case_id = "SEM-REL-005"
+        with tempfile.TemporaryDirectory() as temporary:
+            run = headless.create_run_workspace(Path(temporary), "standalone-resume")
+            workspace = headless.create_case_workspace(run, case_id)
+            observation = helpers["_observation"](case_id)
+            shared = helpers["_provenance_for"](run, case_id, observation)
+            artifacts = helpers["_freeze_artifacts"](
+                workspace.path, observation
+            )
+            headless.freeze_native_observation(
+                workspace,
+                observation,
+                artifacts,
+                shared_hashes=shared,
+            )
+            environment = {"project_executable": {"sha256": "e" * 64}}
+            automation = dict(observation["automation_source_hashes"])
+            environment_gate = Mock()
+            with patch.dict(
+                runner["_resume_existing_cases"].__globals__,
+                {
+                    "_automation_hashes": Mock(return_value=automation),
+                    "_validate_environment_capture": environment_gate,
+                },
+            ):
+                resumed = runner["_resume_existing_cases"](
+                    run,
+                    environment,
+                    selected_case_id=case_id,
+                )
+
+            self.assertEqual([case_id], list(resumed))
+            self.assertEqual(case_id, resumed[case_id]["case_id"])
+            environment_gate.assert_called_once_with(environment)
+
+    def test_standalone_resume_rejects_unrelated_retained_case(self) -> None:
+        runner = _runner()
+        with tempfile.TemporaryDirectory() as temporary:
+            run = headless.create_run_workspace(Path(temporary), "unrelated-resume")
+            (run.path / "cases" / "SEM-REL-004").mkdir(parents=True)
+            (run.path / "cases" / "SEM-REL-005").mkdir(parents=True)
+            worker = Mock()
+            with patch.dict(
+                runner["_resume_existing_cases"].__globals__,
+                {
+                    "_validate_environment_capture": Mock(),
+                    "run_supervised_worker": worker,
+                },
+            ), self.assertRaisesRegex(
+                runner["SupervisionError"], "unrelated case workspaces"
+            ):
+                runner["_resume_existing_cases"](
+                    run,
+                    {},
+                    selected_case_id="SEM-REL-005",
+                )
+            worker.assert_not_called()
+
+    def test_case_resume_cli_scopes_retained_verification_to_selected_case(
+        self,
+    ) -> None:
+        runner = _runner()
+        run = Mock(
+            run_id="standalone-cli",
+            path=ROOT / "synthetic-run",
+            repository_root=ROOT,
+        )
+        environment = {"retained": True}
+        resume = Mock(return_value={})
+        run_case = Mock(return_value={"case_id": "SEM-REL-007"})
+        with patch.dict(
+            runner["main"].__globals__,
+            {
+                "create_run_workspace": Mock(return_value=run),
+                "_ensure_environment_and_preflight": Mock(
+                    return_value=(environment, {})
+                ),
+                "_resume_existing_cases": resume,
+                "_run_one_case": run_case,
+            },
+        ), patch("builtins.print"):
+            return_code = runner["main"](
+                [
+                    "--case",
+                    "SEM-REL-007",
+                    "--repository-root",
+                    str(ROOT),
+                    "--run-id",
+                    "standalone-cli",
+                    "--resume",
+                ]
+            )
+
+        self.assertEqual(0, return_code)
+        resume.assert_called_once_with(
+            run,
+            environment,
+            selected_case_id="SEM-REL-007",
+        )
+        run_case.assert_called_once_with(
+            run,
+            "SEM-REL-007",
+            environment,
+            resume_existing=True,
+        )
+
+    def test_project_start_must_equal_source_origin_by_wall_clock(self) -> None:
+        helpers = runpy.run_path(str(LEGACY_TEST))
+        facts = helpers["_source"]()["source_facts"]
+        assignment = {"native_type_supplied": 1}
+        expected_origin = facts["time_axis"]["origin"]
+
+        for stage in (
+            "initial_calculated",
+            "after_open",
+            "after_recalculation",
+            "preflight",
+        ):
+            with self.subTest(stage=stage):
+                capture = helpers["_capture"]()
+                # This denotes the same UTC instant as the frozen +08:00
+                # origin, but Project's local wall-clock start has changed.
+                capture["project"]["start"] = "2026-01-05T00:00:00+00:00"
+                conditions = headless_com._case_capture_stop_conditions(
+                    capture,
+                    facts,
+                    assignment,
+                    stage=stage,
+                )
+                starts = [
+                    item
+                    for item in conditions
+                    if item.get("condition") == "native_project_start_changed"
+                ]
+                self.assertEqual(
+                    [
+                        {
+                            "condition": "native_project_start_changed",
+                            "stage": stage,
+                            "expected": expected_origin,
+                            "observed": "2026-01-05T00:00:00+00:00",
+                        }
+                    ],
+                    starts,
+                )
+
+        capture = helpers["_capture"]()
+        capture["project"]["start"] = "2026-01-05T08:00:00+00:00"
+        conditions = headless_com._case_capture_stop_conditions(
+            capture,
+            facts,
+            assignment,
+            stage="offset-only-change",
+        )
+        self.assertNotIn(
+            "native_project_start_changed",
+            {item.get("condition") for item in conditions},
+        )
+
+    def test_worker_and_parent_bind_dependencies_without_worker_oracle_imports(
+        self,
+    ) -> None:
+        runner = _runner()
+        script = r"""
+import json
+from pathlib import Path
+import sys
+sys.path.insert(0, sys.argv[1])
+from deterministic_scheduling_core.native.msproject import headless_worker
+
+hashes = headless_worker._automation_source_hashes(Path(sys.argv[2]))
+forbidden = sorted(
+    name
+    for name in sys.modules
+    if name in {
+        "deterministic_scheduling_core.canonical.frozen_suite",
+        "deterministic_scheduling_core.native.msproject.freeze",
+        "deterministic_scheduling_core.native.msproject.headless_compare",
+        "deterministic_scheduling_core.native.msproject.pilot",
+    }
+)
+print(json.dumps({
+    "hashes": hashes,
+    "forbidden": forbidden,
+    "canonical_json_loaded": (
+        "deterministic_scheduling_core.provenance.canonical_json" in sys.modules
+    ),
+}, sort_keys=True))
+"""
+        completed = subprocess.run(
+            [sys.executable, "-c", script, str(ROOT / "src"), str(ROOT)],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        payload = json.loads(completed.stdout)
+        expected_roles = {
+            "automation_tool_sha256",
+            "headless_core_sha256",
+            "headless_com_sha256",
+            "headless_worker_sha256",
+            "canonical_json_sha256",
+            "freeze_sha256",
+        }
+        self.assertEqual(expected_roles, set(payload["hashes"]))
+        self.assertEqual(runner["_automation_hashes"](ROOT), payload["hashes"])
+        self.assertTrue(payload["canonical_json_loaded"])
+        self.assertEqual([], payload["forbidden"])
+
+    def test_legacy_v01_gate_and_v02_provenance_roles_are_schema_scoped(
+        self,
+    ) -> None:
+        helpers = runpy.run_path(str(LEGACY_TEST))
+        with tempfile.TemporaryDirectory() as temporary:
+            run = headless.create_run_workspace(Path(temporary), "legacy-v01-gate")
+            for case_id in headless.CASE_IDS:
+                workspace = headless.create_case_workspace(run, case_id)
+                observation = helpers["_observation"](case_id)
+                shared = helpers["_provenance_for"](
+                    run, case_id, observation
+                )
+                headless.freeze_native_observation(
+                    workspace,
+                    observation,
+                    helpers["_freeze_artifacts"](
+                        workspace.path, observation, case_id.encode("ascii")
+                    ),
+                    shared_hashes=shared,
+                )
+
+                observation_path = workspace.path / "native-observation.json"
+                legacy_observation = json.loads(
+                    observation_path.read_text(encoding="utf-8")
+                )
+                legacy_observation["schema_version"] = (
+                    "headless-msproject-native-observation-v0.1"
+                )
+                legacy_observation.pop("source_projection_sha256")
+                legacy_observation.pop("automation_source_hashes")
+                observation_path.write_bytes(
+                    headless.canonical_bytes(legacy_observation) + b"\n"
+                )
+
+                manifest_path = workspace.path / "case-manifest.json"
+                legacy_manifest = json.loads(
+                    manifest_path.read_text(encoding="utf-8")
+                )
+                legacy_manifest["schema_version"] = (
+                    "headless-msproject-artifact-manifest-v0.1"
+                )
+                legacy_manifest["shared_hashes"].pop("canonical_json_sha256")
+                legacy_manifest["shared_hashes"].pop("freeze_sha256")
+                observation_entry = next(
+                    item
+                    for item in legacy_manifest["artifacts"]
+                    if item["role"] == "native_observation"
+                )
+                observation_entry["byte_size"] = observation_path.stat().st_size
+                observation_entry["sha256"] = headless.sha256_file(
+                    observation_path
+                )
+                manifest_path.write_bytes(
+                    headless.canonical_bytes(legacy_manifest) + b"\n"
+                )
+                (workspace.path / "native-observation.sha256").write_text(
+                    f"{headless.sha256_file(observation_path)}\n",
+                    encoding="ascii",
+                )
+                (workspace.path / "case-manifest.sha256").write_text(
+                    f"{headless.sha256_file(manifest_path)}\n",
+                    encoding="ascii",
+                )
+
+            written = headless.verify_run_freeze_gate(run, write_index=True)
+            audited = headless.verify_run_freeze_gate(
+                run,
+                write_index=False,
+                allow_legacy_stop_evidence_for_audit=True,
+            )
+            self.assertEqual(written, audited)
+
+        for manifest_version, observation_version in (
+            (
+                "headless-msproject-artifact-manifest-v0.2",
+                "headless-msproject-native-observation-v0.1",
+            ),
+            (
+                "headless-msproject-artifact-manifest-v0.1",
+                "headless-msproject-native-observation-v0.2",
+            ),
+        ):
+            with self.subTest(
+                manifest_version=manifest_version,
+                observation_version=observation_version,
+            ):
+                self.assertEqual(
+                    headless._ALL_SHARED_HASH_ROLES,
+                    headless._required_shared_hash_roles(
+                        manifest_version, observation_version
+                    ),
+                )
+
+        for missing_role in ("canonical_json_sha256", "freeze_sha256"):
+            with (
+                self.subTest(missing_role=missing_role),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                run = headless.create_run_workspace(
+                    Path(temporary), f"missing-{missing_role}"
+                )
+                workspace = headless.create_case_workspace(
+                    run, "SEM-REL-001"
+                )
+                observation = helpers["_observation"]("SEM-REL-001")
+                shared = helpers["_provenance_for"](
+                    run, "SEM-REL-001", observation
+                )
+                del shared[missing_role]
+                with self.assertRaisesRegex(
+                    headless.ObservationFreezeError,
+                    "exact valid shared provenance hashes",
+                ):
+                    headless.freeze_native_observation(
+                        workspace,
+                        observation,
+                        helpers["_freeze_artifacts"](
+                            workspace.path, observation, b"v02"
+                        ),
+                        shared_hashes=shared,
+                    )
 
     def test_native_result_snapshot_and_journal_are_bounded(self) -> None:
         runner = _runner()

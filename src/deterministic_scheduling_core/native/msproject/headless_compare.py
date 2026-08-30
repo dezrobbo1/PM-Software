@@ -33,7 +33,6 @@ from .headless import (
     TRACK_ID,
     ObservationFreezeError,
     RunWorkspace,
-    _regular_file,
     create_run_workspace,
     durable_write_canonical_json,
     effective_stop_conditions,
@@ -91,6 +90,7 @@ ORACLE_SOURCE_SPECS = {
 }
 MAX_ORACLE_JSON_BYTES = 1024 * 1024
 MAX_COMPARATOR_SOURCE_BYTES = 1024 * 1024
+MAX_FROZEN_OBSERVATION_BYTES = 25 * 1024 * 1024
 ORACLE_PROVENANCE_SCHEMA = "headless-msproject-oracle-provenance-v0.1"
 SEALED_EXPECTED_KEYS = frozenset(
     {
@@ -564,6 +564,50 @@ def _oracle_source_bundle_identity(
     }
 
 
+def _load_frozen_observation_snapshot(
+    observation_path: Path,
+    *,
+    case_id: str,
+    expected_digest: Any,
+) -> Mapping[str, Any]:
+    """Authenticate and parse one bounded frozen-observation byte snapshot."""
+
+    try:
+        snapshot = read_regular_file_snapshot(
+            observation_path,
+            label=f"frozen observation {case_id}",
+            max_bytes=MAX_FROZEN_OBSERVATION_BYTES,
+        )
+    except (OSError, NativeEvidenceError) as error:
+        raise ObservationFreezeError(
+            "oracle gate remains closed: frozen observation "
+            f"{case_id} is not a stable bounded regular-file snapshot"
+        ) from error
+    if not isinstance(expected_digest, str) or snapshot.sha256 != expected_digest:
+        raise ObservationFreezeError(
+            f"oracle gate remains closed: {case_id} changed after freeze verification"
+        )
+    try:
+        observation = json.loads(
+            snapshot.data.decode("utf-8"),
+            object_pairs_hook=_strict_json_object,
+        )
+    except (
+        UnicodeError,
+        json.JSONDecodeError,
+        _DuplicateJsonKeyError,
+        RecursionError,
+    ) as error:
+        raise ObservationFreezeError(
+            f"oracle gate remains closed: malformed observation {case_id}"
+        ) from error
+    if not isinstance(observation, Mapping):
+        raise ObservationFreezeError(
+            f"oracle gate remains closed: malformed observation {case_id}"
+        )
+    return observation
+
+
 def compare_frozen_observations(
     run: RunWorkspace,
     *,
@@ -590,29 +634,16 @@ def compare_frozen_observations(
     # the comparison loop would reveal earlier references before a later stop.
     for case_id in CASE_IDS:
         observation_path = run.path / "cases" / case_id / "native-observation.json"
-        try:
-            _regular_file(observation_path, label=f"frozen observation {case_id}")
-            # Hash and parse the same bounded byte snapshot.  Reopening the
-            # path after the freeze gate would create a gate-to-oracle TOCTOU
-            # window in which unfrozen bytes could be normalized before the
-            # first sealed-reference read.
-            observation_bytes = observation_path.read_bytes()
-            digest = hashlib.sha256(observation_bytes).hexdigest()
-            expected_digest = frozen_digests.get(case_id)
-            if not isinstance(expected_digest, str) or digest != expected_digest:
-                raise ObservationFreezeError(
-                    f"oracle gate remains closed: {case_id} changed after freeze verification"
-                )
-            observation = json.loads(observation_bytes.decode("utf-8"))
-        except ObservationFreezeError:
-            raise
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise ObservationFreezeError(
-                f"oracle gate remains closed: malformed observation {case_id}"
-            ) from error
+        # Reopening this path for hashing and parsing would create a
+        # gate-to-oracle TOCTOU window.  One bounded, stable handle supplies
+        # both the authenticated digest and the parsed JSON bytes.
+        observation = _load_frozen_observation_snapshot(
+            observation_path,
+            case_id=case_id,
+            expected_digest=frozen_digests.get(case_id),
+        )
         if (
-            not isinstance(observation, Mapping)
-            or observation.get("case_id") != case_id
+            observation.get("case_id") != case_id
             or observation.get("characterisation_label") != TRACK_ID
         ):
             raise ObservationFreezeError(

@@ -15,7 +15,11 @@ import sys
 import time
 from typing import Any, Mapping
 
-from deterministic_scheduling_core.native.msproject import headless, headless_com
+from deterministic_scheduling_core.native.msproject import (
+    freeze as native_freeze,
+    headless,
+    headless_com,
+)
 from deterministic_scheduling_core.native.msproject.freeze import (
     NativeEvidenceError,
     RegularFileSnapshot,
@@ -34,6 +38,9 @@ from deterministic_scheduling_core.native.msproject.headless import (
     sha256_file,
     verify_observation_freeze,
     verify_run_freeze_gate,
+)
+from deterministic_scheduling_core.provenance import (
+    canonical_json as canonical_json_module,
 )
 from deterministic_scheduling_core.provenance.canonical_json import canonical_bytes
 
@@ -1190,6 +1197,8 @@ def _automation_hashes(repository_root: Path) -> dict[str, str]:
                 type("Missing", (), {"__file__": repository_root / "src/deterministic_scheduling_core/native/msproject/headless_worker.py"}),
             ).__file__
         ).resolve(),
+        "canonical_json_sha256": Path(canonical_json_module.__file__).resolve(),
+        "freeze_sha256": Path(native_freeze.__file__).resolve(),
     }
     if not paths["headless_worker_sha256"].is_file():
         paths["headless_worker_sha256"] = repository_root / "src/deterministic_scheduling_core/native/msproject/headless_worker.py"
@@ -1579,9 +1588,20 @@ def _reject_run_stop_conditions(
 def _resume_existing_cases(
     run: headless.RunWorkspace,
     environment: Mapping[str, Any],
+    *,
+    selected_case_id: str | None = None,
 ) -> dict[str, Mapping[str, Any]]:
-    """Verify every retained case and shared identity before any new launch."""
+    """Verify retained cases and shared identity before any new launch.
 
+    Batch resumes require the retained workspaces to be a canonical prefix.
+    A standalone resume is intentionally scoped to its selected case and
+    rejects any unrelated retained case workspace.
+    """
+
+    if selected_case_id is not None and selected_case_id not in CASE_IDS:
+        raise SupervisionError(
+            f"standalone resume selected an unknown case: {selected_case_id}"
+        )
     _validate_environment_capture(environment)
     cases_root = run.path / "cases"
     if not cases_root.exists():
@@ -1596,12 +1616,22 @@ def _resume_existing_cases(
     existing_case_ids = [
         case_id for case_id in CASE_IDS if (cases_root / case_id).is_dir()
     ]
-    expected_prefix = list(CASE_IDS[: len(existing_case_ids)])
-    if existing_case_ids != expected_prefix:
-        raise SupervisionError(
-            "resume case workspaces must form an exact canonical prefix; "
-            f"found={existing_case_ids}, expected={expected_prefix}"
-        )
+    if selected_case_id is None:
+        expected_prefix = list(CASE_IDS[: len(existing_case_ids)])
+        if existing_case_ids != expected_prefix:
+            raise SupervisionError(
+                "resume case workspaces must form an exact canonical prefix; "
+                f"found={existing_case_ids}, expected={expected_prefix}"
+            )
+    else:
+        unrelated = [
+            case_id for case_id in existing_case_ids if case_id != selected_case_id
+        ]
+        if unrelated:
+            raise SupervisionError(
+                "standalone resume contains unrelated case workspaces; "
+                f"selected={selected_case_id}, unrelated={unrelated}"
+            )
     current_automation = _automation_hashes(run.repository_root)
     expected_common = {
         **current_automation,
@@ -2411,7 +2441,15 @@ def main(arguments: list[str] | None = None) -> int:
         )
         selected = list(CASE_IDS) if args.all_relationship_cases else [args.case]
         observations: dict[str, Mapping[str, Any]] = (
-            _resume_existing_cases(run, environment) if args.resume else {}
+            _resume_existing_cases(
+                run,
+                environment,
+                selected_case_id=(
+                    None if args.all_relationship_cases else args.case
+                ),
+            )
+            if args.resume
+            else {}
         )
         for case_id in selected:
             observations[case_id] = _run_one_case(

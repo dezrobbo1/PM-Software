@@ -16,6 +16,10 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
+from deterministic_scheduling_core.provenance import (
+    canonical_json as canonical_json_module,
+)
+
 from . import headless as headless_core
 from . import headless_com as com_backend
 from .headless import (
@@ -86,6 +90,16 @@ def _automation_source_hashes(repository_root: Path) -> dict[str, str]:
         "headless_core_sha256": Path(headless_core.__file__).resolve(),
         "headless_com_sha256": Path(com_backend.__file__).resolve(),
         "headless_worker_sha256": Path(__file__).resolve(),
+        "canonical_json_sha256": Path(canonical_json_module.__file__).resolve(),
+        # The parent executes freeze.py when authenticating the worker's bounded
+        # result and journal snapshots.  Bind those exact source bytes here
+        # without importing freeze (which deliberately remains oracle-capable).
+        "freeze_sha256": repository_root
+        / "src"
+        / "deterministic_scheduling_core"
+        / "native"
+        / "msproject"
+        / "freeze.py",
     }
     return {role: _sha256_file(path) for role, path in paths.items()}
 
