@@ -1,0 +1,29 @@
+name: POC smoke
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: python -m pip install -e .
+      - name: Run focused scheduling tests
+        run: >-
+          python -m unittest
+          tests.phase1.unit.test_canonical_json_and_calendars
+          tests.phase1.unit.test_kernel
+          tests.phase1.unit.test_independent_validator
+          -v
+      - name: Compile active package
+        run: python -m compileall -q src

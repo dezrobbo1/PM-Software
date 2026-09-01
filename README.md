@@ -1,114 +1,155 @@
-# Deterministic Scheduling Core — Phase 1 Reference Prototype
+# PM-Software — deterministic AI project-management research
 
-Status: **Phase 0 frozen at `phase0-0.1.4`; bounded Phase 1 reference prototype implemented**
-Research date: **16 August 2026**
-Scope: **Separate from Shutdown Tracker**
+**Status: exploratory R&D / proof of concept**
 
-The Phase 0 protocol remains frozen. Phase 1 adds a small standard-library CPM
-research kernel, a canonical loader, an independent result validator and a
-deterministic execution harness for the preregistered semantic corpus. Frozen
-fixture inputs and expected results remain unchanged.
+## Aim
 
-The bounded thesis is:
+This project exists to investigate whether modern technology can enable a **new, better and leaner approach to professional project planning, scheduling and execution control**.
 
-> A deterministic, auditable companion optimisation kernel may outperform priority-rule resource levelling and manual search on selected resource-constrained and operationally constrained problems while Primavera P6 or Microsoft Project remain authoritative.
+The original technical idea is a **deterministic AI core**: a trustworthy computational core that can reason about project logic, resources, operational constraints, alternatives and changing execution conditions, while modern AI can assist where it adds genuine value.
 
-This bundle does **not** claim:
+We are not trying to copy Primavera P6 or Microsoft Project. Existing products are useful sources of knowledge, comparison and potentially future interoperability, but they do not define our architecture or product model.
 
-- P6 compatibility;
-- Microsoft Project compatibility;
-- superiority over expert-configured levelling;
-- superiority over experienced planners;
-- safe native round-trip;
-- commercial product validation;
-- production readiness.
+No final product architecture is assumed. Optimisation, constraint programming, AI, conventional scheduling mathematics, new data models and other approaches may all be researched and tested where useful.
 
-## Frozen Phase 0 outputs
+## How this project progresses
 
-- Prototype scope and explicit exclusions
-- Reference semantic contract
-- Canonical schedule model
-- Deterministic execution contract
-- Lexicographic objective policy
-- Benchmark and comparator protocols
-- Data-access and anonymisation plan
-- Decision gates and stop conditions
-- Change-control rules
-- Fifty semantic micro-test fixtures
-- Schemas and evidence registers, including preparation-only experiment records
-- Structural and negative-regression validation, continuous integration, and complete SHA-256 manifest
+The working loop is:
 
-## Validate the protocol and prototype
+**Research → Idea → Prototype → Test → Learn → Next experiment**
 
-Run the negative regression suite and the full protocol validator from a clean Git checkout:
+Research and ideas are valuable when they lead toward something we can test. We should not spend excessive time proving an idea theoretically when a small experiment can teach us more quickly.
+
+A failed experiment is useful progress when it tells us an approach does not work or shows us what to try next.
+
+### Forward Progress Principle
+
+Everything we do should either:
+
+- increase working capability;
+- test a promising idea;
+- answer an important question that changes what we build next; or
+- remove a real blocker to doing one of those things.
+
+Research, documentation, tests, refactoring, validation, compatibility work and hardening support the project. They are not progress by themselves.
+
+Before starting substantial work, ask:
+
+> **What will we be able to do, demonstrate or know after this that we cannot do or know now?**
+
+If there is no clear answer, reconsider the work.
+
+A newly discovered issue does not automatically become the next task. If it does not stop the current experiment or materially invalidate what we are learning, record it and continue.
+
+Prefer moving to the next useful experiment with known limitations over repeatedly perfecting the previous experiment.
+
+## Progress gates
+
+These gates measure capability and learning, not process completion.
+
+### Gate 1 — Core works
+
+Can the deterministic AI core create a useful schedule?
+
+Pass when a small, understandable project can be given to the core and it produces a feasible schedule that respects the constraints implemented in the experiment.
+
+### Gate 2 — Core adds value
+
+Does the new approach do something worth pursuing?
+
+Pass when at least one controlled case demonstrates a useful scheduling, resource or planning decision that a simpler conventional approach misses or handles less effectively.
+
+### Gate 3 — Operational reality
+
+Can the approach represent meaningful real-world project restrictions without becoming impractical?
+
+Examples to explore include specialist crews, equipment, workfaces, access, permits, isolations, materials, shifts, supervision and SIMOPS. These are examples, not a mandatory feature list.
+
+Pass when selected operational constraints can be represented and the resulting plan is useful enough to justify continuing.
+
+### Gate 4 — Change and replanning
+
+Can the core remain useful when execution changes the plan?
+
+Test progress, delays, changed durations, emergent work, unavailable resources and other realistic disturbances.
+
+Pass when the system can produce a sensible revised plan and make the important consequences understandable.
+
+### Gate 5 — Real-world proof
+
+Does the approach remain useful outside synthetic examples?
+
+Pass when representative real or anonymised project information can be tested and experienced users judge the results useful enough to continue development.
+
+### Later — Productisation
+
+Production hardening, comprehensive security, broad compatibility, deployment, large-scale performance guarantees and exhaustive validation belong later, if the experiments justify building a product.
+
+## Current position
+
+We have **not passed Gate 1**.
+
+Earlier work produced useful foundations:
+
+- a canonical schedule representation and semantic fixtures;
+- productive calendar arithmetic;
+- a bounded reference CPM kernel;
+- an independent result validator;
+- command-line and test infrastructure;
+- extensive scheduling and practitioner research.
+
+It also produced a large amount of protocol, governance and Microsoft Project validation machinery. That work is retained as history and possible future reference, but it is no longer the active direction.
+
+The Microsoft Project headless-characterisation experiment was closed unmerged. Native Microsoft Project/P6 compatibility work is paused.
+
+## Next experiment
+
+The immediate objective is to pass **Gate 1** with the smallest useful deterministic-AI scheduling experiment.
+
+A reasonable first experiment is approximately 10–30 activities with:
+
+- durations;
+- precedence;
+- one or more constrained shared resources;
+- a simple comparison or baseline;
+- readable output showing the resulting sequence and important waiting/conflicts.
+
+OR-Tools CP-SAT is a candidate for this experiment, not a permanent architectural commitment.
+
+Once it works, inspect the result and decide what experiment teaches us the most next. Do not automatically harden Gate 1 before attempting Gate 2.
+
+## Parallel STO research
+
+`dezrobbo1/STO-Scheduler-Tracker-Research` is a separate STO-focused scheduling and live-execution experiment. It is not subordinate to this repository and is not being frozen by this reset.
+
+If the STO repository is producing useful capability or evidence, it should continue in its own direction. The two projects should compare results and selectively reuse useful ideas, tests or code rather than forcing an early merge or preventing productive parallel exploration.
+
+A future shared core, package or repository merge should be considered only when working experiments show that it would simplify development or improve the product.
+
+## Existing research and history
+
+The earlier Phase 0 material, schemas, registers, semantic corpus and native-validation work remain available because they contain potentially useful research and implementation work. They are not current acceptance criteria.
+
+See `docs/README.md` for the documentation map and `docs/archive/` for superseded top-level control material.
+
+## Development setup
+
+Python 3.11 or later is required.
 
 ```bash
-python -m pip install --require-hashes --only-binary=:all: -r requirements/phase1-ci.lock
-python -m pip install --no-deps --no-build-isolation -e .
-python -m unittest discover -s tests -v
-python tools/validate_phase0.py
-python tools/validate_phase1_governance.py
-python -m deterministic_scheduling_core run-semantic-suite
+python -m pip install -e .
+python -m unittest \
+  tests.phase1.unit.test_canonical_json_and_calendars \
+  tests.phase1.unit.test_kernel \
+  tests.phase1.unit.test_independent_validator -v
 ```
 
-The checks validate all JSON Schemas and 50 fixtures, enforce date-time formats, stable-ID and reference integrity across current and scenario states, preserve frozen coordinates, require deterministic status time for in-progress work, reject invalid calendars, WBS cycles, actual-state contradictions, malformed scenario spans and incomplete expected results; resolve structured explanation causes and counterfactual milestones against the canonical input; enforce RFC 6901 patch paths; verify the exact frozen semantic, objective and deterministic profiles; enforce the exact header sequence for every evidence register and typed preparation records in the experiment register; enforce the exact preregistered fixture identities and catalogue order; independently recompute every declared relationship formula and all 49 declared canonical coordinate sets; check productive duration, supported date bounds, exclusive-resource feasibility, restricted float and curated driving relationships; recompute complete objective-vector values from complete feasible selected states; require complete approved-forecast and proposed-scenario activity coverage; ensure the authoritative chapter set and consolidated protocol are exact; and require the SHA-256 manifest to cover exactly the intended tracked files.
+## Repository map
 
-The Phase 1 command discovers the exact 50 frozen identities, calculates all 49
-declared reference results, retains `SEM-STA-045` as
-`native_validation_required`, independently validates every calculated result,
-and writes deterministic evidence beneath `results/phase1-semantic-suite/`.
-The `results/` directory is intentionally untracked. `deterministic-v0.3`
-publishes portable success/failure result hashes separately from the environment-bound
-evidence hash, verifies the locked dependency closure and exact source inventory, and
-will only replace an output tree carrying the exact harness ownership marker.
-Every case also carries a hashed native-requirements sidecar that records P6 and
-Microsoft Project separately; neither product has been executed by this suite.
-
-## Implemented Phase 1 boundary
-
-The executable package under `src/deterministic_scheduling_core/` is limited to:
-
-1. canonical-model and semantic-fixture loading with schema and reference validation;
-2. the declared `reference-v0.3` CPM subset;
-3. an independent unit-coordinate validation path;
-4. exact execution of the 50 frozen semantic fixtures;
-5. canonical JSON, SHA-256 provenance and schema-valid evidence records.
-
-No optimiser, production scheduler, native P6/MS Project input generator or
-compatibility claim is included. The Microsoft Project pilot adds only
-preparation, freeze, and strict output-evidence normalization tooling. Alternate
-lag calendars, cumulative capacity, fixed dates,
-execution modes, operational constraints and product-specific Actual Dates
-forecasting fail closed at the execution boundary. See
-`PHASE-1-REFERENCE-PROTOTYPE.md` for the architecture and evidence contract.
-
-## Microsoft Project relationship-pilot preparation
-
-`microsoft-project-relationship-v0.1` prepares twelve independent relationship
-cases, manual build/review sheets, comparison controls and pre-execution evidence
-tooling. Operator-visible materials bind deterministic source-only case
-projections. `pilot-index.json` and `pilot-kit-manifest.json` exclude every
-comparison-control path and digest. Track A opens the comparison control only
-after the observed native output has been normalized, durably persisted and
-hash-verified. Track B never consults an expected oracle and compares only its
-frozen pre-close and post-recalculation observations.
-
-This is a **procedural, non-access-controlled blind**. The public repository
-necessarily contains oracle-bearing frozen fixtures and comparison controls. The
-operator and pre-execution reviewer must use only the allowlisted packet and
-attest that they did not inspect those public oracle materials before observation
-freeze. A breach invalidates the blind classification, though the native
-observation may still be retained as unblinded characterisation.
-
-The native analyser has a platform-specific durability boundary: Windows uses an
-exclusive write-through `CreateFileW` handle followed by `FlushFileBuffers`;
-POSIX uses file and directory `fsync`. Microsoft Project has not been executed and
-the three native evidence tracks remain separate. Exact `CAL-24X7` MSPDI
-serialization is not normatively established by the official XML reference, so
-adapter generation remains `preparation_blocked`; no XML is invented and no
-compatibility claim exists. See `docs/phase1-msproject-relationship-pilot.md`.
-
-```bash
-python -m deterministic_scheduling_core prepare-msproject-relationship-pilot
-python -m deterministic_scheduling_core verify-msproject-relationship-pilot
-```
+- `src/deterministic_scheduling_core/` — current reusable calculation and validation code; the name is historical and may change as the concept develops.
+- `benchmarks/semantic/` — existing small semantic cases.
+- `tests/phase1/unit/` — focused reference-kernel tests.
+- `docs/` — current and historical research documentation.
+- `native-validation/` — paused Microsoft Project/P6 research material.
+- `registers/` — historical evidence templates, not active development requirements.
+- `docs/archive/` — superseded protocol snapshots, CI workflows, governance profile and manifest.

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "deterministic-scheduling-core"
 version = "0.2.1"
-description = "Bounded reference CPM research kernel for the frozen deterministic scheduling protocol"
+description = "Proof-of-concept resource-constrained scheduling experiments"
 requires-python = ">=3.11"
 dependencies = [
   "jsonschema==4.26.0",
@@ -23,6 +23,6 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.dsc]
-phase = "1"
-status = "reference-prototype"
+phase = "proof-of-concept"
+status = "active"
 implementation_started = true
