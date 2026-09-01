@@ -118,6 +118,14 @@ OR-Tools CP-SAT is a candidate for this experiment, not a permanent architectura
 
 Once it works, inspect the result and decide what experiment teaches us the most next. Do not automatically harden Gate 1 before attempting Gate 2.
 
+## Parallel STO research
+
+`dezrobbo1/STO-Scheduler-Tracker-Research` is a separate STO-focused scheduling and live-execution experiment. It is not subordinate to this repository and is not being frozen by this reset.
+
+If the STO repository is producing useful capability or evidence, it should continue in its own direction. The two projects should compare results and selectively reuse useful ideas, tests or code rather than forcing an early merge or preventing productive parallel exploration.
+
+A future shared core, package or repository merge should be considered only when working experiments show that it would simplify development or improve the product.
+
 ## Existing research and history
 
 The earlier Phase 0 material, schemas, registers, semantic corpus and native-validation work remain available because they contain potentially useful research and implementation work. They are not current acceptance criteria.
