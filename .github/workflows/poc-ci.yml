@@ -24,6 +24,9 @@ jobs:
           tests.phase1.unit.test_canonical_json_and_calendars
           tests.phase1.unit.test_kernel
           tests.phase1.unit.test_independent_validator
+          tests.test_gate1_experiment
           -v
+      - name: Run Gate 1 scheduling experiment
+        run: python -m deterministic_scheduling_core run-gate1-experiment
       - name: Compile active package
         run: python -m compileall -q src
