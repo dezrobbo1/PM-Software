@@ -32,6 +32,28 @@ A newly discovered issue is not automatically the next task. Fix it now only whe
 
 Do not allow repeated review, correction, hardening and further-review cycles to replace capability development.
 
+## Capability-first rule
+
+For implementation tasks, the primary output must be a **working capability or executable experiment**. Supporting work must remain proportionate to that capability.
+
+Do not spend most of a capability task on refactoring, validation, compatibility, documentation, test expansion, defensive programming, architecture work or edge-case handling unless the requested capability cannot work or cannot be meaningfully tested without it.
+
+If the requested capability works and the focused tests needed to trust the experiment pass, **stop**. Do not continue polishing merely because additional improvements are possible.
+
+Do not improve unrelated code while completing a capability task. Do not convert discovered technical debt into immediate scope. Do not redesign architecture unless the current design prevents the experiment from working or prevents the next useful experiment.
+
+When choosing between extending a working experiment and making the current implementation more complete or robust, prefer the next useful experiment unless the extra robustness is necessary to trust the result.
+
+### POC code may be temporary
+
+Proof-of-concept code does not need to be the architecture we would ship.
+
+Throwaway scripts, hard-coded experimental data, narrow assumptions, small duplicated paths and intentionally limited implementations are acceptable when they are understandable and let us test an idea quickly.
+
+Do not generalise experimental code solely to make it reusable. Generalise or refactor when repeated experiments demonstrate that doing so will make useful development faster or when the existing implementation is blocking progress.
+
+A limitation that is visible and understood is acceptable during R&D. The goal is to learn whether the idea works before investing in making it complete.
+
 ## Automated review policy
 
 Automated review, including Codex review, is **advisory during proof-of-concept development**. A review comment is not automatically a blocker and does not automatically expand the task.
