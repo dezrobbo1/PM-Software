@@ -87,7 +87,30 @@ Production hardening, comprehensive security, broad compatibility, deployment, l
 
 ## Current position
 
-We have **not passed Gate 1**.
+**Gate 1 is provisionally demonstrated by a working resource-constrained
+scheduling experiment.**
+
+Run it with:
+
+```bash
+python -m deterministic_scheduling_core run-gate1-experiment
+```
+
+The transparent 18-activity sample has finish-to-start precedence and three
+shared unit-capacity resources: mechanical crew, crane and inspection. The
+fixed activity-ID baseline produces a feasible 48-hour schedule. The OR-Tools
+CP-SAT experiment produces an optimal, independently feasibility-checked
+38-hour schedule.
+
+The useful scheduling decision is visible in the output: the experimental
+scheduler moves the long vessel branch ahead of lower-priority cooler and
+valve work, allowing its six-hour cure/hold period to overlap that other work.
+This reduces makespan by 10 hours without breaking precedence or
+double-booking a constrained resource.
+
+This is deliberately a narrow proof of concept, not a production scheduler.
+It assumes integer-hour, non-preemptive work, finish-to-start relationships and
+unit-capacity resources.
 
 Earlier work produced useful foundations:
 
@@ -104,19 +127,13 @@ The Microsoft Project headless-characterisation experiment was closed unmerged. 
 
 ## Next experiment
 
-The immediate objective is to pass **Gate 1** with the smallest useful deterministic-AI scheduling experiment.
+The strongest Gate 2 candidate is one controlled execution-mode choice: let a
+critical repair use either a longer single-crew mode or a shorter mode that also
+consumes a scarce specialist, then compare the solver's whole-project decision
+with a simple locally-greedy choice. This would test whether the core adds value
+beyond sequencing a fixed set of activities.
 
-A reasonable first experiment is approximately 10–30 activities with:
-
-- durations;
-- precedence;
-- one or more constrained shared resources;
-- a simple comparison or baseline;
-- readable output showing the resulting sequence and important waiting/conflicts.
-
-OR-Tools CP-SAT is a candidate for this experiment, not a permanent architectural commitment.
-
-Once it works, inspect the result and decide what experiment teaches us the most next. Do not automatically harden Gate 1 before attempting Gate 2.
+Do not automatically harden Gate 1 before attempting that experiment.
 
 ## Parallel STO research
 
@@ -141,7 +158,9 @@ python -m pip install -e .
 python -m unittest \
   tests.phase1.unit.test_canonical_json_and_calendars \
   tests.phase1.unit.test_kernel \
-  tests.phase1.unit.test_independent_validator -v
+  tests.phase1.unit.test_independent_validator \
+  tests.test_gate1_experiment -v
+python -m deterministic_scheduling_core run-gate1-experiment
 ```
 
 ## Repository map

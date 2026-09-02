@@ -5,6 +5,10 @@ import sys
 from pathlib import Path
 
 from deterministic_scheduling_core.execution import SemanticSuiteHarness
+from deterministic_scheduling_core.gate1_experiment import (
+    render_comparison,
+    run_gate1_experiment,
+)
 from deterministic_scheduling_core.native.msproject import (
     CASE_IDS as MSPROJECT_PILOT_CASE_IDS,
     PILOT_ID as MSPROJECT_PILOT_ID,
@@ -35,6 +39,10 @@ def find_repository_root(start: Path | None = None) -> Path:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="deterministic_scheduling_core")
     subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser(
+        "run-gate1-experiment",
+        help="compare a fixed-priority baseline with the Gate 1 CP-SAT schedule",
+    )
     run = subparsers.add_parser(
         "run-semantic-suite", help="execute the exact frozen 50-case semantic corpus"
     )
@@ -200,6 +208,9 @@ def _parse_role_paths(values: list[str], *, option: str) -> dict[str, Path]:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.command == "run-gate1-experiment":
+            print(render_comparison(run_gate1_experiment()))
+            return 0
         root = (args.repository_root or find_repository_root()).resolve()
         if args.command == "run-semantic-suite":
             output_dir = args.output_dir or root / "results" / "phase1-semantic-suite"
