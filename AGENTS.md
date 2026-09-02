@@ -32,6 +32,24 @@ A newly discovered issue is not automatically the next task. Fix it now only whe
 
 Do not allow repeated review, correction, hardening and further-review cycles to replace capability development.
 
+## Automated review policy
+
+Automated review, including Codex review, is **advisory during proof-of-concept development**. A review comment is not automatically a blocker and does not automatically expand the task.
+
+For each finding, make one decision:
+
+- **Fix now** only if it makes the current experiment materially wrong, unusable, destructive, insecure in a realistic way, or prevents the next useful experiment.
+- **Defer** if it is a maintainability improvement, broader validation request, compatibility concern, speculative edge case, production-hardening issue or future-proofing suggestion that does not affect the current experiment.
+- **Reject** if it conflicts with the current research goal or would add complexity without useful learning.
+
+Do not enter an automatic `review → fix everything → review again → harden → review again` loop.
+
+Normal rule: **one automated review pass per meaningful capability change**. After that pass, fix only findings that meet the "Fix now" test above. Do not request another automated review solely to obtain a clean review unless the fixes materially changed the capability or the user explicitly asks for another review cycle.
+
+A PR may be merged with deferred automated-review findings during proof-of-concept work when the implemented experiment works, the focused tests pass, and the deferred findings do not invalidate what the experiment is intended to teach us.
+
+Review quality is not measured by the number of findings resolved. Project progress is measured by capability and useful learning.
+
 ## Product direction
 
 Do not treat Primavera P6 or Microsoft Project as specifications for this product. We are researching something new. Existing products may be studied, compared with, imported from or exported to later, but their semantics and architecture do not define ours.
