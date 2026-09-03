@@ -88,14 +88,12 @@ The numbered Phase 0 documents, registers, native-validation material and archiv
 
 Gate 1 through Gate 4 are provisionally demonstrated by working experiments.
 
-Gate 4 starts from the Gate 3 operational plan, freezes work already started at H04, introduces a one-hour `CRANE-C04` outage at H05-H06, and replans the future. The revised plan moves the affected lift and its downstream chain by one hour, keeps unrelated future inspection work unchanged, and explains the direct and propagated consequences.
+Gate 5 now has a successful **technical** real-world trial using an anonymised 19-node derivative of a real shutdown schedule slice. The source slice contains a declared capacity overload; the core removes it while preserving the existing handoff and moves only two activities.
 
-The project is now at **Gate 5 — Real-world proof**.
+**Gate 5 is not yet passed.** Its remaining requirement is practitioner judgement about whether those movements are operationally sensible in the original context.
 
-The next experiment should use representative real or anonymised project information and ask whether the current approach remains useful outside deliberately constructed synthetic cases. Prefer the smallest real slice that tests actual logic, scarce resources, operational constraints or replanning behaviour.
+Do not turn this pause into a hardening phase. Do not add more synthetic cases, generic import architecture, compatibility work or broad refactoring while waiting for that judgement.
 
-Do not build a broad importer, compatibility programme, production UI or large-scale architecture merely to begin Gate 5. If useful representative data already exists in the parallel STO research repository, selectively reuse or extract a bounded test case rather than forcing the repositories to merge.
+If the practitioner accepts the result, record Gate 5 as provisionally passed and choose the next capability/research question from the evidence gathered so far.
 
-The useful question is whether the current ideas survive contact with less-curated project data and produce a result that an experienced practitioner considers sensible enough to keep developing.
-
-Do not harden or generalise Gate 1/2/3/4 before moving forward unless a discovered defect materially invalidates their learning.
+If the practitioner rejects the result, identify the specific missing operational fact that makes it wrong, add the smallest representation needed for that fact, and rerun the real-world experiment.
