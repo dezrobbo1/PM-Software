@@ -86,12 +86,14 @@ The numbered Phase 0 documents, registers, native-validation material and archiv
 
 ## Current gate
 
-Gate 1 and Gate 2 are provisionally demonstrated by working experiments.
+Gate 1, Gate 2 and Gate 3 are provisionally demonstrated by working experiments.
 
-The project is now at **Gate 3 — Operational reality**.
+The project is now at **Gate 4 — Change and replanning**.
 
-The next experiment should add only a small number of meaningful operational restrictions beyond generic capacity. Prefer a transparent case such as a permit/access window plus one named exclusive equipment or workface restriction.
+The next experiment should begin with an already feasible plan, introduce one small realistic execution disturbance, and produce a revised plan that remains feasible under the existing operational constraints.
 
-The question is whether representing operational reality changes the plan in a useful, understandable way without unreasonable modelling effort.
+Prefer one transparent perturbation such as a short `CRANE-C04` unavailability or a changed remaining duration. The useful question is whether the core can respond sensibly, preserve unaffected work where possible, and explain the important downstream change.
 
-Do not harden or generalise the Gate 1/2 experiments before moving forward unless a discovered defect materially invalidates their learning.
+Do not turn Gate 4 into a general progress engine, event architecture, baseline/change-control framework or production replanning platform. Build the smallest experiment that tells us whether replanning is useful.
+
+Do not harden or generalise the Gate 1/2/3 experiments before moving forward unless a discovered defect materially invalidates their learning.
