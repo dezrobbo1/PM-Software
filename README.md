@@ -87,7 +87,7 @@ Production hardening, comprehensive security, broad compatibility, deployment, l
 
 ## Current position
 
-**Gate 1, Gate 2 and Gate 3 are provisionally demonstrated by working experiments.**
+**Gate 1 through Gate 4 are provisionally demonstrated by working experiments.**
 
 Gate 1:
 
@@ -103,18 +103,7 @@ Gate 2:
 python -m deterministic_scheduling_core.gate2_experiment
 ```
 
-Gate 2 tests the same repair choice in two different specialist-resource contexts:
-
-- `NORMAL`: 8 hours using MECH only;
-- `ACCELERATED`: 5 hours using MECH + scarce SPEC.
-
-The local baseline always chooses the shorter activity mode and then receives optimal sequencing, so the comparison isolates the value of whole-project mode choice rather than poor sequencing.
-
-In **G2-A**, the specialist is lightly loaded. Both the local rule and global optimiser choose `ACCELERATED`, finishing in 16 hours; forcing `NORMAL` finishes in 19 hours.
-
-In **G2-B**, the specialist drives another branch. The local rule still chooses `ACCELERATED` and the best schedule under that choice finishes in 22 hours. The global optimiser instead chooses the locally slower `NORMAL` mode, lets the repair and specialist branch proceed in parallel, and finishes in 19 hours — a 3-hour improvement.
-
-The useful learning is simple: **the shortest activity mode is not inherently the best project decision. Its value depends on what else needs the scarce resource.**
+The same repair can run in `NORMAL` mode (8h, MECH) or `ACCELERATED` mode (5h, MECH + scarce SPEC). In a lightly loaded specialist context, both the local rule and global optimiser choose `ACCELERATED` and finish in 16h. In a competing specialist context, the local rule still chooses `ACCELERATED` and finishes in 22h, while the global optimiser deliberately chooses the locally slower `NORMAL` mode and finishes in 19h. The useful learning is that the shortest individual activity mode is not necessarily the best whole-project decision.
 
 Gate 3:
 
@@ -122,18 +111,19 @@ Gate 3:
 python -m deterministic_scheduling_core.gate3_experiment
 ```
 
-Gate 3 compares an already-optimised resource-capacity model with the same 10-activity project after adding only two operational facts:
+The 10-activity case compares an already optimised resource-capacity model with the same project after adding only two operational facts: an H04-H09 heavy-lift permit/access window and a workface exclusion between scaffold stripping and the exchanger lift. The 16h capacity-only optimum is resource-feasible but not executable. The operational model uses `CRANE-C04` on another lift while the exchanger workface clears, then performs the exchanger lift H05-H08 and finishes at H17. The useful learning is that a mathematically shorter resource-feasible schedule can still be the wrong plan when operational facts are absent.
 
-- exchanger heavy-lift permit/access window: H04-H09;
-- exchanger workface exclusion between scaffold stripping and the heavy lift.
+Gate 4:
 
-Both sides already model the named exclusive crane `CRANE-C04`, so the comparison is not against a weak resource baseline.
+```bash
+python -m deterministic_scheduling_core.gate4_experiment
+```
 
-The capacity-only optimiser finds a 16-hour schedule, but it is not executable: `O03 Lift exchanger spool` starts at H03 before its permit/access window and overlaps scaffold stripping in the exchanger workface.
+Gate 4 begins from the approved 17h Gate 3 plan, sets a status point at H04, freezes work already started, and then introduces an unexpected `CRANE-C04` outage from H05-H06. The revised optimiser minimises project finish first and movement from the approved future plan second.
 
-The operational model uses `CRANE-C04` on the valve-actuator lift at H01-H03 while the exchanger workface is being cleared, then performs the exchanger lift at H05-H08 inside the allowed window. The resulting schedule is operationally feasible and finishes at H17.
+The exchanger lift moves from H05-H08 to H06-H09, still inside its permit/access window. Its downstream chain (`O04`, `O08`, `O09`, `O10`) moves one hour, while unrelated future inspection `O05` remains H05-H08 and already-started work remains fixed. The revised project finishes at H18, a one-hour impact, with five future activities moved by one hour each.
 
-The useful learning is that **a mathematically shorter resource-feasible schedule can still be the wrong plan when operational facts are absent from the model**. In this case, two explicit extra facts are enough to change the answer visibly and sensibly.
+The useful learning is that **a small execution disturbance can be propagated through the operational plan without rewriting work that does not need to move, while keeping the cause and downstream consequence explicit**.
 
 These remain narrow proof-of-concept experiments, not production scheduling claims.
 
@@ -152,13 +142,15 @@ The Microsoft Project headless-characterisation experiment was closed unmerged. 
 
 ## Next experiment
 
-The project now moves to **Gate 4 — Change and replanning**.
+The project now moves to **Gate 5 — Real-world proof**.
 
-The next experiment should start from an already feasible plan and introduce one small execution disturbance, then produce and explain a revised plan. A strong first candidate is a short unexpected `CRANE-C04` unavailability or a changed remaining duration that affects the Gate 3 operational plan.
+The next experiment should use representative real or anonymised project information and ask whether the current approach remains useful outside carefully constructed synthetic examples.
 
-The important test is not merely whether the solver can calculate again. It is whether the revised schedule is sensible, preserves work that does not need to move, respects the operational constraints, and explains the important downstream consequence.
+Prefer the smallest real slice that lets us test actual logic, scarce resources, operational constraints or replanning behaviour. Do not build a broad importer, native compatibility programme, production UI or enterprise architecture merely to begin this test.
 
-Keep the experiment small. Do not build a general progress engine, event system, baseline framework or production change-control architecture to answer Gate 4.
+If suitable representative shutdown/turnaround data already exists in the parallel `STO-Scheduler-Tracker-Research` repository, selectively reuse or extract a bounded test case rather than forcing an early repository merge.
+
+The important question is whether these ideas survive contact with less-curated project data and produce a plan or decision that an experienced practitioner considers sensible enough to justify continuing.
 
 ## Parallel STO research
 
@@ -186,10 +178,12 @@ python -m unittest \
   tests.phase1.unit.test_independent_validator \
   tests.test_gate1_experiment \
   tests.test_gate2_experiment \
-  tests.test_gate3_experiment -v
+  tests.test_gate3_experiment \
+  tests.test_gate4_experiment -v
 python -m deterministic_scheduling_core run-gate1-experiment
 python -m deterministic_scheduling_core.gate2_experiment
 python -m deterministic_scheduling_core.gate3_experiment
+python -m deterministic_scheduling_core.gate4_experiment
 ```
 
 ## Repository map

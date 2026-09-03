@@ -27,6 +27,7 @@ jobs:
           tests.test_gate1_experiment
           tests.test_gate2_experiment
           tests.test_gate3_experiment
+          tests.test_gate4_experiment
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment
@@ -34,5 +35,7 @@ jobs:
         run: python -m deterministic_scheduling_core.gate2_experiment
       - name: Run Gate 3 operational-reality experiment
         run: python -m deterministic_scheduling_core.gate3_experiment
+      - name: Run Gate 4 change-and-replanning experiment
+        run: python -m deterministic_scheduling_core.gate4_experiment
       - name: Compile active package
         run: python -m compileall -q src
