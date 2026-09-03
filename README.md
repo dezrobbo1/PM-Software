@@ -4,7 +4,7 @@
 
 ## Aim
 
-This project exists to investigate whether modern technology can enable a **new, better and leaner approach to professional project planning, scheduling and execution control**.
+This project investigates whether modern technology can enable a **new, better and leaner approach to professional project planning, scheduling and execution control**.
 
 The original technical idea is a **deterministic AI core**: a trustworthy computational core that can reason about project logic, resources, operational constraints, alternatives and changing execution conditions, while modern AI can assist where it adds genuine value.
 
@@ -12,74 +12,47 @@ We are not trying to copy Primavera P6 or Microsoft Project. Existing products a
 
 No final product architecture is assumed. Optimisation, constraint programming, AI, conventional scheduling mathematics, new data models and other approaches may all be researched and tested where useful.
 
-## How this project progresses
-
-The working loop is:
+## Working loop
 
 **Research → Idea → Prototype → Test → Learn → Next experiment**
 
-Research and ideas are valuable when they lead toward something we can test. We should not spend excessive time proving an idea theoretically when a small experiment can teach us more quickly.
-
-A failed experiment is useful progress when it tells us an approach does not work or shows us what to try next.
+Research and ideas are valuable when they lead toward something testable. A failed experiment is useful progress when it tells us an approach does not work or what to try next.
 
 ### Forward Progress Principle
 
-Everything we do should either:
+Everything we do should either increase working capability, test a promising idea, answer an important question that changes what we build next, or remove a real blocker to one of those things.
 
-- increase working capability;
-- test a promising idea;
-- answer an important question that changes what we build next; or
-- remove a real blocker to doing one of those things.
-
-Research, documentation, tests, refactoring, validation, compatibility work and hardening support the project. They are not progress by themselves.
-
-Before starting substantial work, ask:
+Before substantial work, ask:
 
 > **What will we be able to do, demonstrate or know after this that we cannot do or know now?**
 
-If there is no clear answer, reconsider the work.
-
-A newly discovered issue does not automatically become the next task. If it does not stop the current experiment or materially invalidate what we are learning, record it and continue.
-
-Prefer moving to the next useful experiment with known limitations over repeatedly perfecting the previous experiment.
+Research, documentation, tests, refactoring, validation, compatibility work and hardening support the project. They are not progress by themselves.
 
 ## Progress gates
 
-These gates measure capability and learning, not process completion.
+These gates measure capability and useful learning, not process completion.
 
 ### Gate 1 — Core works
 
 Can the deterministic AI core create a useful schedule?
 
-Pass when a small, understandable project can be given to the core and it produces a feasible schedule that respects the constraints implemented in the experiment.
-
 ### Gate 2 — Core adds value
 
-Does the new approach do something worth pursuing?
-
-Pass when at least one controlled case demonstrates a useful scheduling, resource or planning decision that a simpler conventional approach misses or handles less effectively.
+Can it make a useful whole-project decision that a simpler local approach misses or handles less effectively?
 
 ### Gate 3 — Operational reality
 
-Can the approach represent meaningful real-world project restrictions without becoming impractical?
-
-Examples to explore include specialist crews, equipment, workfaces, access, permits, isolations, materials, shifts, supervision and SIMOPS. These are examples, not a mandatory feature list.
-
-Pass when selected operational constraints can be represented and the resulting plan is useful enough to justify continuing.
+Can meaningful real-world restrictions such as scarce resources, workfaces, access or permit windows be represented without impractical modelling overhead?
 
 ### Gate 4 — Change and replanning
 
-Can the core remain useful when execution changes the plan?
-
-Test progress, delays, changed durations, emergent work, unavailable resources and other realistic disturbances.
-
-Pass when the system can produce a sensible revised plan and make the important consequences understandable.
+Can the core respond sensibly when execution changes the plan, preserving unaffected work where possible and explaining important consequences?
 
 ### Gate 5 — Real-world proof
 
 Does the approach remain useful outside synthetic examples?
 
-Pass when representative real or anonymised project information can be tested and experienced users judge the results useful enough to continue development.
+Gate 5 passes only when representative real or anonymised project information has been tested **and an experienced practitioner judges the result useful enough to continue development**.
 
 ### Later — Productisation
 
@@ -87,84 +60,84 @@ Production hardening, comprehensive security, broad compatibility, deployment, l
 
 ## Current position
 
-**Gate 1 through Gate 4 are provisionally demonstrated by working experiments.**
+**Gate 1 through Gate 4 are provisionally demonstrated by working experiments. Gate 5 now has a successful technical trial but remains pending practitioner judgement.**
 
-Gate 1:
+### Gate 1
 
 ```bash
 python -m deterministic_scheduling_core run-gate1-experiment
 ```
 
-The 18-activity resource-constrained sample produces a feasible 48-hour fixed-priority baseline and an optimal 38-hour CP-SAT schedule. The core advances the long vessel branch so its cure/hold overlaps other work, reducing makespan by 10 hours without breaking precedence or double-booking constrained resources.
+An 18-activity resource-constrained sample produces a 48-hour fixed-priority baseline and a 38-hour CP-SAT schedule. The core advances the long branch so non-resource work can overlap other work, reducing makespan by 10 hours without breaking precedence or double-booking constrained resources.
 
-Gate 2:
+### Gate 2
 
 ```bash
 python -m deterministic_scheduling_core.gate2_experiment
 ```
 
-The same repair can run in `NORMAL` mode (8h, MECH) or `ACCELERATED` mode (5h, MECH + scarce SPEC). In a lightly loaded specialist context, both the local rule and global optimiser choose `ACCELERATED` and finish in 16h. In a competing specialist context, the local rule still chooses `ACCELERATED` and finishes in 22h, while the global optimiser deliberately chooses the locally slower `NORMAL` mode and finishes in 19h. The useful learning is that the shortest individual activity mode is not necessarily the best whole-project decision.
+The same repair can use a locally faster specialist-assisted mode or a slower normal mode. In one context acceleration is correct. In another, the optimiser deliberately selects the slower activity mode because preserving the scarce specialist lets the whole project finish three hours earlier.
 
-Gate 3:
+### Gate 3
 
 ```bash
 python -m deterministic_scheduling_core.gate3_experiment
 ```
 
-The 10-activity case compares an already optimised resource-capacity model with the same project after adding only two operational facts: an H04-H09 heavy-lift permit/access window and a workface exclusion between scaffold stripping and the exchanger lift. The 16h capacity-only optimum is resource-feasible but not executable. The operational model uses `CRANE-C04` on another lift while the exchanger workface clears, then performs the exchanger lift H05-H08 and finishes at H17. The useful learning is that a mathematically shorter resource-feasible schedule can still be the wrong plan when operational facts are absent.
+A 16-hour resource-feasible optimum becomes non-executable when an access/permit window and workface exclusion are considered. Adding only those two operational facts produces a sensible executable 17-hour plan.
 
-Gate 4:
+### Gate 4
 
 ```bash
 python -m deterministic_scheduling_core.gate4_experiment
 ```
 
-Gate 4 begins from the approved 17h Gate 3 plan, sets a status point at H04, freezes work already started, and then introduces an unexpected `CRANE-C04` outage from H05-H06. The revised optimiser minimises project finish first and movement from the approved future plan second.
+A one-hour named-crane outage is introduced after execution has started. The core moves the directly affected lift and its downstream chain by one hour, preserves unrelated future work, and explains the direct and propagated consequences.
 
-The exchanger lift moves from H05-H08 to H06-H09, still inside its permit/access window. Its downstream chain (`O04`, `O08`, `O09`, `O10`) moves one hour, while unrelated future inspection `O05` remains H05-H08 and already-started work remains fixed. The revised project finishes at H18, a one-hour impact, with five future activities moved by one hour each.
+### Gate 5 technical trial
 
-The useful learning is that **a small execution disturbance can be propagated through the operational plan without rewriting work that does not need to move, while keeping the cause and downstream consequence explicit**.
+```bash
+python -m deterministic_scheduling_core.gate5_experiment
+```
 
-These remain narrow proof-of-concept experiments, not production scheduling claims.
+The Gate 5 fixture is an **anonymised 19-node derivative of a real shutdown schedule slice**. The raw Microsoft Project XML and identifying task/resource names are not committed to this public repository.
 
-Earlier work also produced useful foundations:
+The source starts are treated as not-before boundaries so calendar and external-readiness facts that are outside the bounded slice are not silently pulled earlier.
 
-- a canonical schedule representation and semantic fixtures;
-- productive calendar arithmetic;
-- a bounded reference CPM kernel;
-- an independent result validator;
-- command-line and test infrastructure;
-- extensive scheduling and practitioner research.
+The published slice contains a declared resource-capacity overload:
 
-It also produced a large amount of protocol, governance and Microsoft Project validation machinery. That work is retained as history and possible future reference, but it is no longer the active direction.
+- `RES-B`: demand 3 against capacity 2 from M240 to M360.
 
-The Microsoft Project headless-characterisation experiment was closed unmerged. Native Microsoft Project/P6 compatibility work is paused.
+The stable revision removes that overload while preserving the existing handoff at M600. Only two activities move:
 
-## Next experiment
+- `R12`: M240 → M420 (+180 minutes);
+- `R11`: M480 → M540 (+60 minutes).
 
-The project now moves to **Gate 5 — Real-world proof**.
+Total later-start movement is 240 minutes. All other source coordinates remain unchanged, precedence is respected, and the handoff does not move.
 
-The next experiment should use representative real or anonymised project information and ask whether the current approach remains useful outside carefully constructed synthetic examples.
+This demonstrates that the core can process a bounded piece of less-curated real schedule structure and produce a technically feasible revision. **It does not by itself pass Gate 5.** The proposed movement still requires practitioner judgement about whether it makes operational sense.
 
-Prefer the smallest real slice that lets us test actual logic, scarce resources, operational constraints or replanning behaviour. Do not build a broad importer, native compatibility programme, production UI or enterprise architecture merely to begin this test.
+## Gate 5 decision point
 
-If suitable representative shutdown/turnaround data already exists in the parallel `STO-Scheduler-Tracker-Research` repository, selectively reuse or extract a bounded test case rather than forcing an early repository merge.
+The next step is not another synthetic experiment or another hardening cycle.
 
-The important question is whether these ideas survive contact with less-curated project data and produce a plan or decision that an experienced practitioner considers sensible enough to justify continuing.
+An experienced practitioner should review the two proposed real-world movements in their original operational context and decide whether the result is sensible enough to continue.
+
+If the result is sensible, Gate 5 can be provisionally passed and the next development phase should be chosen from what we learned rather than automatically starting production hardening.
+
+If the result is not sensible, that is useful evidence: identify the missing operational fact, add the smallest representation needed for it, and rerun the real-world experiment.
 
 ## Parallel STO research
 
-`dezrobbo1/STO-Scheduler-Tracker-Research` is a separate STO-focused scheduling and live-execution experiment. It is not subordinate to this repository and is not being frozen by this reset.
+`dezrobbo1/STO-Scheduler-Tracker-Research` remains a separate STO-focused scheduling and live-execution experiment. It is not subordinate to this repository and should continue productive work in its own direction.
 
-If the STO repository is producing useful capability or evidence, it should continue in its own direction. The two projects should compare results and selectively reuse useful ideas, tests or code rather than forcing an early merge or preventing productive parallel exploration.
-
-A future shared core, package or repository merge should be considered only when working experiments show that it would simplify development or improve the product.
+The two projects should compare results and selectively reuse useful ideas, tests or code. A future shared core, package or repository merge should be considered only when working experiments show that it would simplify development or improve the product.
 
 ## Existing research and history
 
-The earlier Phase 0 material, schemas, registers, semantic corpus and native-validation work remain available because they contain potentially useful research and implementation work. They are not current acceptance criteria.
+Earlier Phase 0 material, schemas, registers, semantic work and native-validation work remain available as research references. They are not current acceptance criteria.
 
-See `docs/README.md` for the documentation map and `docs/archive/` for superseded top-level control material.
+See `docs/README.md` and `docs/archive/`.
 
 ## Development setup
 
@@ -179,18 +152,20 @@ python -m unittest \
   tests.test_gate1_experiment \
   tests.test_gate2_experiment \
   tests.test_gate3_experiment \
-  tests.test_gate4_experiment -v
+  tests.test_gate4_experiment \
+  tests.test_gate5_experiment -v
 python -m deterministic_scheduling_core run-gate1-experiment
 python -m deterministic_scheduling_core.gate2_experiment
 python -m deterministic_scheduling_core.gate3_experiment
 python -m deterministic_scheduling_core.gate4_experiment
+python -m deterministic_scheduling_core.gate5_experiment
 ```
 
 ## Repository map
 
-- `src/deterministic_scheduling_core/` — current reusable calculation and validation code; the name is historical and may change as the concept develops.
+- `src/deterministic_scheduling_core/` — current reusable calculation and experimental code.
 - `benchmarks/semantic/` — existing small semantic cases.
-- `tests/phase1/unit/` — focused reference-kernel tests.
+- `tests/` — focused reference and experiment tests.
 - `docs/` — current and historical research documentation.
 - `native-validation/` — paused Microsoft Project/P6 research material.
 - `registers/` — historical evidence templates, not active development requirements.
