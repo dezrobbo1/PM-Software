@@ -86,14 +86,16 @@ The numbered Phase 0 documents, registers, native-validation material and archiv
 
 ## Current gate
 
-Gate 1, Gate 2 and Gate 3 are provisionally demonstrated by working experiments.
+Gate 1 through Gate 4 are provisionally demonstrated by working experiments.
 
-The project is now at **Gate 4 — Change and replanning**.
+Gate 4 starts from the Gate 3 operational plan, freezes work already started at H04, introduces a one-hour `CRANE-C04` outage at H05-H06, and replans the future. The revised plan moves the affected lift and its downstream chain by one hour, keeps unrelated future inspection work unchanged, and explains the direct and propagated consequences.
 
-The next experiment should begin with an already feasible plan, introduce one small realistic execution disturbance, and produce a revised plan that remains feasible under the existing operational constraints.
+The project is now at **Gate 5 — Real-world proof**.
 
-Prefer one transparent perturbation such as a short `CRANE-C04` unavailability or a changed remaining duration. The useful question is whether the core can respond sensibly, preserve unaffected work where possible, and explain the important downstream change.
+The next experiment should use representative real or anonymised project information and ask whether the current approach remains useful outside deliberately constructed synthetic cases. Prefer the smallest real slice that tests actual logic, scarce resources, operational constraints or replanning behaviour.
 
-Do not turn Gate 4 into a general progress engine, event architecture, baseline/change-control framework or production replanning platform. Build the smallest experiment that tells us whether replanning is useful.
+Do not build a broad importer, compatibility programme, production UI or large-scale architecture merely to begin Gate 5. If useful representative data already exists in the parallel STO research repository, selectively reuse or extract a bounded test case rather than forcing the repositories to merge.
 
-Do not harden or generalise the Gate 1/2/3 experiments before moving forward unless a discovered defect materially invalidates their learning.
+The useful question is whether the current ideas survive contact with less-curated project data and produce a result that an experienced practitioner considers sensible enough to keep developing.
+
+Do not harden or generalise Gate 1/2/3/4 before moving forward unless a discovered defect materially invalidates their learning.
