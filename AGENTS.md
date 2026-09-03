@@ -86,8 +86,12 @@ The numbered Phase 0 documents, registers, native-validation material and archiv
 
 ## Current gate
 
-The project is currently at **Gate 1 — Core works**.
+Gate 1 and Gate 2 are provisionally demonstrated by working experiments.
 
-The immediate experiment should be small enough to run and inspect: roughly 10–30 activities with durations, precedence and constrained shared resources, producing a readable feasible schedule and a simple comparison/baseline.
+The project is now at **Gate 3 — Operational reality**.
 
-The objective is to learn whether the deterministic AI core idea is worth taking to Gate 2, not to make Gate 1 production-ready.
+The next experiment should add only a small number of meaningful operational restrictions beyond generic capacity. Prefer a transparent case such as a permit/access window plus one named exclusive equipment or workface restriction.
+
+The question is whether representing operational reality changes the plan in a useful, understandable way without unreasonable modelling effort.
+
+Do not harden or generalise the Gate 1/2 experiments before moving forward unless a discovered defect materially invalidates their learning.
