@@ -25,8 +25,11 @@ jobs:
           tests.phase1.unit.test_kernel
           tests.phase1.unit.test_independent_validator
           tests.test_gate1_experiment
+          tests.test_gate2_experiment
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment
+      - name: Run Gate 2 mode-choice experiment
+        run: python -m deterministic_scheduling_core.gate2_experiment
       - name: Compile active package
         run: python -m compileall -q src
