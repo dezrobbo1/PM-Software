@@ -87,7 +87,7 @@ Production hardening, comprehensive security, broad compatibility, deployment, l
 
 ## Current position
 
-**Gate 1 and Gate 2 are provisionally demonstrated by working experiments.**
+**Gate 1, Gate 2 and Gate 3 are provisionally demonstrated by working experiments.**
 
 Gate 1:
 
@@ -116,6 +116,25 @@ In **G2-B**, the specialist drives another branch. The local rule still chooses 
 
 The useful learning is simple: **the shortest activity mode is not inherently the best project decision. Its value depends on what else needs the scarce resource.**
 
+Gate 3:
+
+```bash
+python -m deterministic_scheduling_core.gate3_experiment
+```
+
+Gate 3 compares an already-optimised resource-capacity model with the same 10-activity project after adding only two operational facts:
+
+- exchanger heavy-lift permit/access window: H04-H09;
+- exchanger workface exclusion between scaffold stripping and the heavy lift.
+
+Both sides already model the named exclusive crane `CRANE-C04`, so the comparison is not against a weak resource baseline.
+
+The capacity-only optimiser finds a 16-hour schedule, but it is not executable: `O03 Lift exchanger spool` starts at H03 before its permit/access window and overlaps scaffold stripping in the exchanger workface.
+
+The operational model uses `CRANE-C04` on the valve-actuator lift at H01-H03 while the exchanger workface is being cleared, then performs the exchanger lift at H05-H08 inside the allowed window. The resulting schedule is operationally feasible and finishes at H17.
+
+The useful learning is that **a mathematically shorter resource-feasible schedule can still be the wrong plan when operational facts are absent from the model**. In this case, two explicit extra facts are enough to change the answer visibly and sensibly.
+
 These remain narrow proof-of-concept experiments, not production scheduling claims.
 
 Earlier work also produced useful foundations:
@@ -133,13 +152,13 @@ The Microsoft Project headless-characterisation experiment was closed unmerged. 
 
 ## Next experiment
 
-The project now moves to **Gate 3 — Operational reality**.
+The project now moves to **Gate 4 — Change and replanning**.
 
-The next experiment should add only a small number of operational constraints that are meaningful beyond generic resource capacity. A strong first candidate is a **permit/access window plus one exclusive named equipment or workface restriction**, using a similarly small transparent case.
+The next experiment should start from an already feasible plan and introduce one small execution disturbance, then produce and explain a revised plan. A strong first candidate is a short unexpected `CRANE-C04` unavailability or a changed remaining duration that affects the Gate 3 operational plan.
 
-The question is not whether CP-SAT can express arbitrary constraints. The useful question is whether representing a real operational restriction changes the plan in an understandable and useful way without requiring ridiculous modelling effort.
+The important test is not merely whether the solver can calculate again. It is whether the revised schedule is sensible, preserves work that does not need to move, respects the operational constraints, and explains the important downstream consequence.
 
-Do not automatically harden or generalise Gate 1 or Gate 2 before attempting Gate 3.
+Keep the experiment small. Do not build a general progress engine, event system, baseline framework or production change-control architecture to answer Gate 4.
 
 ## Parallel STO research
 
@@ -166,9 +185,11 @@ python -m unittest \
   tests.phase1.unit.test_kernel \
   tests.phase1.unit.test_independent_validator \
   tests.test_gate1_experiment \
-  tests.test_gate2_experiment -v
+  tests.test_gate2_experiment \
+  tests.test_gate3_experiment -v
 python -m deterministic_scheduling_core run-gate1-experiment
 python -m deterministic_scheduling_core.gate2_experiment
+python -m deterministic_scheduling_core.gate3_experiment
 ```
 
 ## Repository map
