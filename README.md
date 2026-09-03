@@ -87,32 +87,38 @@ Production hardening, comprehensive security, broad compatibility, deployment, l
 
 ## Current position
 
-**Gate 1 is provisionally demonstrated by a working resource-constrained
-scheduling experiment.**
+**Gate 1 and Gate 2 are provisionally demonstrated by working experiments.**
 
-Run it with:
+Gate 1:
 
 ```bash
 python -m deterministic_scheduling_core run-gate1-experiment
 ```
 
-The transparent 18-activity sample has finish-to-start precedence and three
-shared unit-capacity resources: mechanical crew, crane and inspection. The
-fixed activity-ID baseline produces a feasible 48-hour schedule. The OR-Tools
-CP-SAT experiment produces an optimal, independently feasibility-checked
-38-hour schedule.
+The 18-activity resource-constrained sample produces a feasible 48-hour fixed-priority baseline and an optimal 38-hour CP-SAT schedule. The core advances the long vessel branch so its cure/hold overlaps other work, reducing makespan by 10 hours without breaking precedence or double-booking constrained resources.
 
-The useful scheduling decision is visible in the output: the experimental
-scheduler moves the long vessel branch ahead of lower-priority cooler and
-valve work, allowing its six-hour cure/hold period to overlap that other work.
-This reduces makespan by 10 hours without breaking precedence or
-double-booking a constrained resource.
+Gate 2:
 
-This is deliberately a narrow proof of concept, not a production scheduler.
-It assumes integer-hour, non-preemptive work, finish-to-start relationships and
-unit-capacity resources.
+```bash
+python -m deterministic_scheduling_core.gate2_experiment
+```
 
-Earlier work produced useful foundations:
+Gate 2 tests the same repair choice in two different specialist-resource contexts:
+
+- `NORMAL`: 8 hours using MECH only;
+- `ACCELERATED`: 5 hours using MECH + scarce SPEC.
+
+The local baseline always chooses the shorter activity mode and then receives optimal sequencing, so the comparison isolates the value of whole-project mode choice rather than poor sequencing.
+
+In **G2-A**, the specialist is lightly loaded. Both the local rule and global optimiser choose `ACCELERATED`, finishing in 16 hours; forcing `NORMAL` finishes in 19 hours.
+
+In **G2-B**, the specialist drives another branch. The local rule still chooses `ACCELERATED` and the best schedule under that choice finishes in 22 hours. The global optimiser instead chooses the locally slower `NORMAL` mode, lets the repair and specialist branch proceed in parallel, and finishes in 19 hours — a 3-hour improvement.
+
+The useful learning is simple: **the shortest activity mode is not inherently the best project decision. Its value depends on what else needs the scarce resource.**
+
+These remain narrow proof-of-concept experiments, not production scheduling claims.
+
+Earlier work also produced useful foundations:
 
 - a canonical schedule representation and semantic fixtures;
 - productive calendar arithmetic;
@@ -127,13 +133,13 @@ The Microsoft Project headless-characterisation experiment was closed unmerged. 
 
 ## Next experiment
 
-The strongest Gate 2 candidate is one controlled execution-mode choice: let a
-critical repair use either a longer single-crew mode or a shorter mode that also
-consumes a scarce specialist, then compare the solver's whole-project decision
-with a simple locally-greedy choice. This would test whether the core adds value
-beyond sequencing a fixed set of activities.
+The project now moves to **Gate 3 — Operational reality**.
 
-Do not automatically harden Gate 1 before attempting that experiment.
+The next experiment should add only a small number of operational constraints that are meaningful beyond generic resource capacity. A strong first candidate is a **permit/access window plus one exclusive named equipment or workface restriction**, using a similarly small transparent case.
+
+The question is not whether CP-SAT can express arbitrary constraints. The useful question is whether representing a real operational restriction changes the plan in an understandable and useful way without requiring ridiculous modelling effort.
+
+Do not automatically harden or generalise Gate 1 or Gate 2 before attempting Gate 3.
 
 ## Parallel STO research
 
@@ -159,8 +165,10 @@ python -m unittest \
   tests.phase1.unit.test_canonical_json_and_calendars \
   tests.phase1.unit.test_kernel \
   tests.phase1.unit.test_independent_validator \
-  tests.test_gate1_experiment -v
+  tests.test_gate1_experiment \
+  tests.test_gate2_experiment -v
 python -m deterministic_scheduling_core run-gate1-experiment
+python -m deterministic_scheduling_core.gate2_experiment
 ```
 
 ## Repository map
