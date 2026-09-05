@@ -60,7 +60,7 @@ Do not treat Primavera P6 or Microsoft Project as specifications for this produc
 
 Do not assume OR-Tools, CP-SAT, CPM, a particular AI model or the historical canonical schema is the final architecture. They are tools and experiments unless later evidence makes them part of the product.
 
-The current scheduling hypothesis is also not settled architecture. Treat integrated resource/constraint scheduling, Work–Method–Execution, objective policies and decomposition strategies as hypotheses to test rather than structures to harden prematurely.
+The current scheduling hypothesis is also not settled architecture. Treat integrated resource/constraint scheduling, Work–Method–Execution, objective policies, trusted live state and decomposition strategies as hypotheses to test rather than structures to harden prematurely.
 
 ## Native-model boundary — active rule
 
@@ -111,6 +111,35 @@ Active rule for follow-on work:
 
 The experiment is deliberately isolated in `src/deterministic_scheduling_core/work_method_experiment.py`.
 
+## Execution-state hypothesis — trusted live project state
+
+Targeted research challenged direct field-to-schedule mutation. The bounded falsification experiment now compares incoming reports that immediately mutate authoritative schedule state against an event/provenance boundary that materialises only validated facts and assumptions into trusted project state before calling the unchanged native scheduler.
+
+Observed result on the 20-activity case:
+
+- direct mutation performed 7 authoritative replans, including 4 from unvalidated reports;
+- 3 report-driven states were later corrected;
+- those later-corrected reports caused 22 moved starts and 48h15m of temporary start movement;
+- the trusted-state path performed 4 provisional impact calculations and 4 authoritative replans, with 0 authoritative replans from unvalidated reports;
+- both paths reached the same final 11h30m handover after the same accepted facts were applied;
+- validated actual history remained fixed, remaining duration remained a forecast assumption, emergent repair waited for explicit scope approval, and reordered delivery reproduced the same trusted-state and plan hashes.
+
+The **trusted-live-state hypothesis was not falsified** by this bounded experiment.
+
+Active rule for follow-on work:
+
+- treat the live object as project state, not a schedule database receiving raw field edits;
+- unvalidated reports may drive provisional impact analysis but must not silently become authoritative schedule truth;
+- distinguish historical actuals from current operational facts, forecast assumptions and future planning decisions;
+- validated history may be corrected through explicit superseding/correction information, but the scheduler must not optimise it away;
+- do not infer approved emergent scope merely from an inspection finding;
+- preserve occurrence time separately from receipt time where field information may arrive late/out of order;
+- do not turn the whole application into an event-sourced system;
+- do not promote the experiment's `FieldEvent`/`TrustedProjectState` classes wholesale into the production model merely because the bounded case passed;
+- add native field/provenance concepts only when the next useful experiment needs them.
+
+The experiment is deliberately isolated in `src/deterministic_scheduling_core/trusted_state_experiment.py`.
+
 ## Current position
 
 Gate 1 through Gate 5 are provisionally demonstrated.
@@ -119,14 +148,17 @@ Prototype 1 proved a real MSPDI schedule could expose a real resource decision t
 
 Prototype 2 established a PM-Software-owned native project that can be created, persisted, edited and scheduled without Microsoft Project or P6.
 
-The Work–Method–Execution experiment then showed, on a bounded synthetic case, that integrated selection of authorised execution structure can match the best of exhaustively enumerated fixed networks and react to changed resources/constraints without manual network reconstruction.
+The Work–Method–Execution experiment showed, on a bounded synthetic case, that integrated selection of authorised execution structure can match the best of exhaustively enumerated fixed networks and react to changed resources/constraints without manual network reconstruction.
 
-The next work should continue attacking the core planning architecture rather than defaulting to UI or compatibility work. High-value unresolved questions include:
+The trusted-live-state experiment then showed that provisional field information can remain visible and useful without contaminating the authoritative forecast, while accepted facts reconstruct the same final schedule deterministically.
 
-- **objective architecture:** what makes one feasible executable plan better than another;
-- **solver architecture:** whether CP-SAT remains the best engine or one backend in a hybrid;
-- **scale/decomposition:** how large professional schedules should be partitioned or repaired incrementally;
-- **CPM/criticality semantics:** what analytical role CPM, float and executable flexibility should have after integrated scheduling.
+CP-SAT remains the primary experimental optimisation backend for now, but the native model must remain solver-independent. Classical CP is a future challenger if richer calendar/state semantics become materially difficult to represent cleanly.
+
+The next work should continue attacking the core planning architecture rather than defaulting to UI or compatibility work. The strongest immediate unresolved experiment is:
+
+- **objective policy:** whether an explicit aspiration-bounded policy can select a professionally preferable stable recovery over the mathematically fastest one, for inspectable reasons.
+
+After that, high-value questions include scalable decomposition/incremental repair and, only if needed by real capability, richer calendar/state scheduling semantics.
 
 Prefer one targeted research question or executable experiment at a time.
 
