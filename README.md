@@ -247,12 +247,46 @@ Neighbourhood selection belongs above the solver. Initial expansion semantics sh
 
 This is **not** a production decomposition algorithm, a general dependency framework, or evidence that 120 active activities represents professional-scale performance. Do not hard-code arbitrary percentage/radius thresholds from this experiment.
 
+## Criticality-semantics experiment — Logic Float vs Executable Criticality
+
+Targeted research then challenged whether traditional CPM float and critical-path labels can be treated as authoritative execution criticality once resources and authorised method alternatives are active.
+
+Run:
+
+```bash
+python -m deterministic_scheduling_core.criticality_semantics_experiment
+```
+
+The experiment reuses the approved H60 structure from the adaptive-repair fixture. It computes a precedence-only CPM view of the selected structure, deliberately ignoring resources and method reselection, then perturbs the same activities through the integrated scheduler and existing recovery policy.
+
+Two bounded counterexamples were demonstrated:
+
+| Activity | Logic CPM | Resource/method-aware counterfactual |
+|---|---|---|
+| `P04A07` | 7h logic float | only 3h fixed-structure slack; +4h forces a remote `WP-09=SEGMENTED` method change to preserve H60 |
+| `P09A07` | 0h logic float / logic-critical | +1h makes the approved crane structure infeasible, but authorised `SEGMENTED` method recovery still preserves H60 |
+
+The first case shows that precedence-only float can overstate executable flexibility because a named-resource coupling becomes controlling before the logic float is exhausted. The second shows that zero logic float does not mean the project has no executable recovery: an authorised structural alternative can absorb the disturbance without moving the protected handoff.
+
+A repeated adaptive counterfactual returned the same canonical result.
+
+**Result: not falsified.** Traditional CPM remains useful for dependency analysis of one selected activity structure, but its float is not executable slack and its critical path is not the complete authoritative description of execution criticality when resource coupling and method choice are active.
+
+Working terminology for follow-on experiments:
+
+- **logic float / logic critical:** CPM properties of one selected precedence structure;
+- **fixed-structure executable slack:** perturbation that can be absorbed while retaining the selected method structure under real resource/constraint rules;
+- **counterfactual / policy criticality:** the consequence of a change when authorised recovery choices are allowed, expressed as an impact vector such as protected-commitment/finish effect, method reselection, schedule movement and causal constraint.
+
+Do not force execution criticality into one continuous path merely to preserve conventional terminology. This is bounded synthetic evidence, not a production delay-analysis method or a settled permanent criticality schema.
+
 ## Current research direction
 
 The cumulative architectural hypothesis is now:
 
 - executable resource/constraint-feasible schedules should be authoritative rather than CPM dates followed by post-hoc levelling;
-- CPM/temporal analysis remains useful as an analytical service, not necessarily the authoritative scheduler;
+- CPM remains useful as a **logic-analysis service** over a selected precedence structure, with its output labelled logic float/logic criticality rather than executable slack;
+- execution criticality should be tested counterfactually against resources, constraints, authorised method choices and project policy rather than inferred only from a precedence path;
 - activities remain the language of execution;
 - bounded work packages and finite authorised execution methods may become the language of planning choice;
 - the scheduler may jointly choose authorised method, resource/mode, sequence and timing;
@@ -267,7 +301,7 @@ The cumulative architectural hypothesis is now:
 
 Do not promote these hypotheses into large schemas or frameworks merely because bounded experiments worked.
 
-High-value unresolved questions now include the analytical role of **CPM/float/criticality** after integrated resource/method scheduling, richer **calendar/state scheduling semantics** if real capability requires them, and later genuinely larger-scale performance/decomposition evidence. The exact lower-order objective hierarchy also remains open.
+High-value unresolved questions now include richer **calendar/state scheduling semantics** if real capability requires them, later genuinely larger-scale performance/decomposition evidence, professional semantics of capability/resource substitution, and further evidence on the exact lower-order objective hierarchy.
 
 Do not substitute broad compatibility work, production hardening, a P6/MSP clone, full event sourcing, a generic objective-policy framework, a generic decomposition framework or a large UI framework for the next focused experiment.
 
@@ -295,6 +329,7 @@ python -m deterministic_scheduling_core.work_method_experiment
 python -m deterministic_scheduling_core.trusted_state_experiment
 python -m deterministic_scheduling_core.objective_policy_experiment
 python -m deterministic_scheduling_core.adaptive_repair_experiment
+python -m deterministic_scheduling_core.criticality_semantics_experiment
 ```
 
 ## Parallel STO research
@@ -327,7 +362,8 @@ python -m unittest \
   tests.test_work_method_experiment \
   tests.test_trusted_state_experiment \
   tests.test_objective_policy_experiment \
-  tests.test_adaptive_repair_experiment -v
+  tests.test_adaptive_repair_experiment \
+  tests.test_criticality_semantics_experiment -v
 ```
 
 ## Active repository map
@@ -339,6 +375,7 @@ python -m unittest \
 - `src/deterministic_scheduling_core/trusted_state_experiment.py` — field event → validation → trusted state → replan experiment.
 - `src/deterministic_scheduling_core/objective_policy_experiment.py` — aspiration-bounded recovery experiment.
 - `src/deterministic_scheduling_core/adaptive_repair_experiment.py` — full vs fixed-local vs adaptive-semantic replanning experiment.
+- `src/deterministic_scheduling_core/criticality_semantics_experiment.py` — logic-CPM vs executable-criticality falsification experiment.
 - `src/deterministic_scheduling_core/prototype2_native.py` — first end-to-end native project workflow.
 - `tests/` — focused reference and prototype tests.
 - `docs/` and `docs/archive/` — current direction and historical research.
