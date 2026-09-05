@@ -280,6 +280,51 @@ Working terminology for follow-on experiments:
 
 Do not force execution criticality into one continuous path merely to preserve conventional terminology. This is bounded synthetic evidence, not a production delay-analysis method or a settled permanent criticality schema.
 
+## Working-time experiment — Productive Duration and Joint Availability
+
+Targeted research then challenged the universal elapsed-time rule `finish = start + duration` for ordinary resource-consuming work.
+
+Run:
+
+```bash
+python -m deterministic_scheduling_core.working_time_experiment
+```
+
+The 18-activity experiment used 30-minute resolution, day and selected night mechanical capability, named crane `C04`, inspection availability, a meal break, overnight non-working time, suspendable and continuous work, and finite authorised execution methods. It compared exactly three interpretations:
+
+- **A — elapsed duration:** processing requirement becomes one continuous elapsed span;
+- **B — productive/primary calendar:** work accumulates on the primary activity calendar but ignores other mandatory resource calendars;
+- **C — productive/joint availability:** work accumulates only when the activity and every mandatory resource calendar are open, with capacity allocated separately.
+
+Observed whole-project results:
+
+| Interpretation | Project finish | Invalid activities | Non-working slots counted | Resource-calendar violations | Int / Bool vars | Optional intervals / candidate segments | Constraints |
+|---|---|---:|---:|---:|---:|---:|---:|
+| A | Day 5 17:00 | 15 | 46 | 50 | 36 / 5,521 | 4,863 / 5,184 | 15,945 |
+| B | Day 5 17:30 | 3 | 0 | 4 | 36 / 2,563 | 2,565 / 2,886 | 7,731 |
+| C | Day 6 10:00 | 0 | 0 | 0 | 36 / 2,478 | 2,481 / 2,802 | 7,477 |
+
+The mandatory ten-productive-hour `MECH + C04` sentinel produced:
+
+- A: Day 1 07:00 → Day 1 17:00;
+- B: Day 1 07:00 → Day 1 17:30;
+- C: Day 1 07:00 → Day 2 07:30, using only 07:00–12:00, 12:30–17:00 and Day 2 07:00–07:30.
+
+The C compiler represented those three execution periods separately, so neither `MECH` nor `C04` was reserved across lunch or overnight. A five-hour continuous joint-resource activity was not split across the 12:00–12:30 break; it waited until one complete executable window was available.
+
+A trusted `C04` outage at Day 1 10:00–14:00 preserved the accepted 07:00 start and three productive hours already completed. Remaining work was seven productive hours, executed 14:00–17:00 and Day 2 07:00–11:00. The four-hour outage added no processing work. Only an explicit one-hour rerig requirement raised remaining work to eight hours and moved forecast finish to Day 2 12:00.
+
+The authorised method choice changed for an inspectable reason:
+
+- normal joint calendars: `A15=CRANE`, Day 5 07:00–12:00;
+- trusted Day 5 `C04` unavailability: `A15=SEGMENTED`, using `NIGHT_MECH` Day 5 18:00–Day 6 00:00.
+
+A repeated C solve returned the same canonical plan signature.
+
+**Result: not falsified.** A produced operationally impossible work, B corrected primary working-time counting but still missed mandatory-resource availability, and C produced a physically executable result. For this bounded case, the finite-placement CP-SAT compiler remained small enough to inspect and explain; the evidence does not yet justify a CP Optimizer challenger.
+
+This result does not make calendars a settled permanent schema, prove production scale, justify unrestricted preemption, or establish cross-version/cross-platform reproducibility. Elapsed duration remains legitimate for genuinely clock-driven processes such as the fixture's cure activity.
+
 ## Current research direction
 
 The cumulative architectural hypothesis is now:
@@ -287,6 +332,10 @@ The cumulative architectural hypothesis is now:
 - executable resource/constraint-feasible schedules should be authoritative rather than CPM dates followed by post-hoc levelling;
 - CPM remains useful as a **logic-analysis service** over a selected precedence structure, with its output labelled logic float/logic criticality rather than executable slack;
 - execution criticality should be tested counterfactually against resources, constraints, authorised method choices and project policy rather than inferred only from a precedence path;
+- ordinary resource-consuming duration should provisionally represent productive processing placed into executable time, while genuinely clock-driven processes may retain elapsed-time semantics;
+- suspendable work may cross explicit calendar or trusted-availability gaps without reserving resources through the gap; continuous work must fit one uninterrupted executable window;
+- mandatory-resource calendar eligibility and resource-capacity allocation are separate constraints, and both must hold for productive execution;
+- trusted actual productive work must remain distinct from forecast remaining productive work; availability loss alone does not create work;
 - activities remain the language of execution;
 - bounded work packages and finite authorised execution methods may become the language of planning choice;
 - the scheduler may jointly choose authorised method, resource/mode, sequence and timing;
@@ -301,7 +350,7 @@ The cumulative architectural hypothesis is now:
 
 Do not promote these hypotheses into large schemas or frameworks merely because bounded experiments worked.
 
-High-value unresolved questions now include richer **calendar/state scheduling semantics** if real capability requires them, later genuinely larger-scale performance/decomposition evidence, professional semantics of capability/resource substitution, and further evidence on the exact lower-order objective hierarchy.
+High-value unresolved questions now include professional semantics of capability/resource substitution, later genuinely larger-scale performance/decomposition evidence, further evidence on the exact lower-order objective hierarchy, and richer irregular/calendar-state cases only when a focused capability requires them.
 
 Do not substitute broad compatibility work, production hardening, a P6/MSP clone, full event sourcing, a generic objective-policy framework, a generic decomposition framework or a large UI framework for the next focused experiment.
 
@@ -330,6 +379,7 @@ python -m deterministic_scheduling_core.trusted_state_experiment
 python -m deterministic_scheduling_core.objective_policy_experiment
 python -m deterministic_scheduling_core.adaptive_repair_experiment
 python -m deterministic_scheduling_core.criticality_semantics_experiment
+python -m deterministic_scheduling_core.working_time_experiment
 ```
 
 ## Parallel STO research
@@ -363,7 +413,8 @@ python -m unittest \
   tests.test_trusted_state_experiment \
   tests.test_objective_policy_experiment \
   tests.test_adaptive_repair_experiment \
-  tests.test_criticality_semantics_experiment -v
+  tests.test_criticality_semantics_experiment \
+  tests.test_working_time_experiment -v
 ```
 
 ## Active repository map
@@ -376,6 +427,7 @@ python -m unittest \
 - `src/deterministic_scheduling_core/objective_policy_experiment.py` — aspiration-bounded recovery experiment.
 - `src/deterministic_scheduling_core/adaptive_repair_experiment.py` — full vs fixed-local vs adaptive-semantic replanning experiment.
 - `src/deterministic_scheduling_core/criticality_semantics_experiment.py` — logic-CPM vs executable-criticality falsification experiment.
+- `src/deterministic_scheduling_core/working_time_experiment.py` — elapsed vs productive/joint-calendar falsification experiment.
 - `src/deterministic_scheduling_core/prototype2_native.py` — first end-to-end native project workflow.
 - `tests/` — focused reference and prototype tests.
 - `docs/` and `docs/archive/` — current direction and historical research.

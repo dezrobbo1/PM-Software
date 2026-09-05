@@ -194,6 +194,39 @@ Active rules:
 
 The experiment is deliberately isolated in `src/deterministic_scheduling_core/criticality_semantics_experiment.py`.
 
+### Productive working time and joint availability
+
+The bounded 18-activity experiment tested elapsed spans, productive work on only the primary calendar, and productive work on the intersection of every mandatory resource calendar.
+
+Observed comparison:
+
+- **A — elapsed:** Day 5 17:00 finish, 15 physically invalid activities, 46 non-working slots counted and 50 resource-calendar violations;
+- **B — primary calendar:** Day 5 17:30 finish, no primary non-working time counted, but 3 invalid activities and 4 mandatory-resource-calendar violations;
+- **C — joint availability:** Day 6 10:00 finish and zero physical-validator findings.
+
+The ten-hour `MECH + C04` sentinel finished at Day 1 17:00 under A, Day 1 17:30 under B and Day 2 07:30 under C. The C compiler reserved resources only in actual execution periods, not across the lunch or overnight suspension gaps. Continuous work waited for one complete executable window.
+
+After a trusted Day 1 10:00–14:00 `C04` outage, the accepted 07:00 start and three productive hours remained history. Remaining work was seven productive hours; the outage did not add work. An explicit one-hour rerig requirement, and only that explicit requirement, raised remaining work to eight hours.
+
+The authorised choice changed from the shorter `CRANE` method under normal calendars to the longer `SEGMENTED` night method under trusted `C04` unavailability. Repeated C solving returned the same canonical plan.
+
+The **productive/joint-calendar hypothesis was not falsified** by this bounded experiment.
+
+Active rules for follow-on work:
+
+- treat ordinary duration provisionally as productive processing placed into executable time, not universally as elapsed span;
+- retain elapsed semantics for genuinely clock-driven work such as curing, soak or waiting;
+- distinguish activity-calendar eligibility, every mandatory resource calendar and capacity allocation;
+- suspend only at explicit calendar or trusted-availability gaps; do not allow arbitrary optimiser-selected preemption;
+- do not reserve resources while suspendable work is not executing;
+- continuous work must fit one uninterrupted executable window;
+- preserve trusted actual productive work separately from forecast remaining productive work;
+- resource unavailability removes opportunity but adds work only when rerig, restart, rework or scope is explicit;
+- do not promote the experiment's calendar types or finite-placement compiler wholesale into the permanent native model;
+- CP-SAT remains adequate for this bounded case; a CP Optimizer challenger is not yet justified by evidence.
+
+The experiment is deliberately isolated in `src/deterministic_scheduling_core/working_time_experiment.py`.
+
 ## Current position
 
 Gate 1 through Gate 5 are provisionally demonstrated.
@@ -211,12 +244,13 @@ The following bounded hypotheses have now survived their first executable falsif
 - aspiration-bounded objective policy;
 - adaptive semantic repair;
 - logic CPM as a selected-structure analytical service rather than authoritative executable criticality.
+- productive duration placed into joint executable availability, with separate continuous and suspendable semantics.
 
-CP-SAT remains the primary experimental backend for now, but the project/domain model must remain solver-independent. Classical CP is a future challenger only if richer calendar/state semantics demonstrate a material capability advantage.
+CP-SAT remains the primary experimental backend for now, but the project/domain model must remain solver-independent. The bounded productive-time experiment did not justify a Classical CP challenger; reopen that comparison only if a focused richer-calendar case makes the CP-SAT compiler materially unwieldy or fragile.
 
 The next work should continue to attack one unresolved core question at a time. Strong candidates now are:
 
-- **calendar/state semantics:** only if a real capability requires richer working-time or state-transition modelling;
+- **calendar/state semantics:** only for a focused irregular-calendar or state-transition capability not answered by the bounded productive-time experiment;
 - **professional resource/capability semantics:** how named resources, capability pools and authorised substitutions should be represented without over-modelling;
 - **larger-scale evidence:** only after a focused question is defined; do not launch a generic benchmarking/hardening programme;
 - **objective ordering:** gather further evidence before declaring structural-vs-temporal stability universally settled.
