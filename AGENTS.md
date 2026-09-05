@@ -1,6 +1,6 @@
 # PM-Software working mode
 
-This repository is an exploratory R&D project built around the **deterministic AI core** idea. Read the root `README.md` before substantial work; it defines the current mission and active prototype.
+This repository is an exploratory R&D project built around the **deterministic AI core** idea. Read the root `README.md` before substantial work; it defines the current mission and active experiments.
 
 ## Default working loop
 
@@ -60,6 +60,8 @@ Do not treat Primavera P6 or Microsoft Project as specifications for this produc
 
 Do not assume OR-Tools, CP-SAT, CPM, a particular AI model or the historical canonical schema is the final architecture. They are tools and experiments unless later evidence makes them part of the product.
 
+The current scheduling hypothesis is also not settled architecture. Treat integrated resource/constraint scheduling, Work–Method–Execution, objective policies and decomposition strategies as hypotheses to test rather than structures to harden prematurely.
+
 ## Native-model boundary — active rule
 
 The active product dependency direction is:
@@ -68,7 +70,7 @@ The active product dependency direction is:
 external source -> adapter -> PM-Software native project model -> scheduler/core -> workspace
 ```
 
-This is now a hard directional rule for active prototype work:
+This remains a hard directional rule for active prototype work:
 
 - `project/` owns the product's native project concepts;
 - `scheduling/` consumes the native project model only;
@@ -80,22 +82,58 @@ This is now a hard directional rule for active prototype work:
 
 If an adapter needs source-specific metadata for import/reporting, keep it in the adapter/import context unless a product experiment demonstrates that the concept belongs in the native model independently of that source system.
 
+## Planning-model hypothesis — bounded Work–Method–Execution
+
+Targeted research challenged the assumption that a planner must select one complete activity network before scheduling begins.
+
+The first bounded falsification experiment has now run successfully. It compared all 8 authorised fixed activity networks against one model that held six work packages and finite execution methods. Across three changed-condition scenarios, the candidate matched the exhaustive fixed-network oracle and automatically reselected authorised methods without manual topology edits.
+
+The observed decisions were:
+
+- normal conditions: `SCAFFOLD / CRANE / NORMAL`, finish H37;
+- crane unavailable H10-H18: `SCAFFOLD / SEGMENTED / NORMAL`, finish H41;
+- specialist available earlier plus scaffold limit H09: `ROPE / CRANE / SPECIALIST`, finish H35.
+
+The candidate represented the alternatives with 33 activity facts and 33 relationship facts once, versus 180 activity facts and 176 relationship facts across the eight materialised fixed networks.
+
+This means the **bounded Work–Method–Execution hypothesis was not falsified** by the first experiment. It does not mean the architecture is final.
+
+Active rule for follow-on work:
+
+- activities remain executable primitives;
+- a work package/outcome may have finite, explicitly authorised execution methods where a real choice exists;
+- the engine may choose only among authorised methods, modes, resources, sequence and timing;
+- it must not invent scope or arbitrary work methods;
+- fixed activity networks remain a valid special case;
+- do not introduce unrestricted HTN/PDDL/state-planning semantics;
+- do not promote `work_method_experiment.py` wholesale into the production model merely because the small case passed;
+- add native WorkPackage/ExecutionMethod concepts only when the next useful experiment needs them.
+
+The experiment is deliberately isolated in `src/deterministic_scheduling_core/work_method_experiment.py`.
+
+## Current position
+
+Gate 1 through Gate 5 are provisionally demonstrated.
+
+Prototype 1 proved a real MSPDI schedule could expose a real resource decision to the experimental core; that experiment is complete.
+
+Prototype 2 established a PM-Software-owned native project that can be created, persisted, edited and scheduled without Microsoft Project or P6.
+
+The Work–Method–Execution experiment then showed, on a bounded synthetic case, that integrated selection of authorised execution structure can match the best of exhaustively enumerated fixed networks and react to changed resources/constraints without manual network reconstruction.
+
+The next work should continue attacking the core planning architecture rather than defaulting to UI or compatibility work. High-value unresolved questions include:
+
+- **objective architecture:** what makes one feasible executable plan better than another;
+- **solver architecture:** whether CP-SAT remains the best engine or one backend in a hybrid;
+- **scale/decomposition:** how large professional schedules should be partitioned or repaired incrementally;
+- **CPM/criticality semantics:** what analytical role CPM, float and executable flexibility should have after integrated scheduling.
+
+Prefer one targeted research question or executable experiment at a time.
+
 ## Historical Microsoft Project machinery
 
 Unless explicitly required by a new experiment, do not add or extend the historical `native/msproject`, `native-validation`, protocol, register, manifest or compatibility machinery.
 
 It is retained as research history and possible source material. It is not the architecture to build on.
 
-`prototype1_workspace.py` is a completed real-file bridge. It now routes MSPDI through the native model and scheduler. Do not turn it into a general Microsoft Project importer.
-
-## Current position
-
-Gate 1 through Gate 5 are provisionally demonstrated.
-
-Prototype 1 proved that a real MSPDI schedule could expose a real resource decision to the experimental core. That experiment is complete.
-
-The project is now at **Prototype 2 — Native Project Core**.
-
-Prototype 2 must demonstrate that PM-Software can create, save, reopen, modify and schedule its own project without Microsoft Project or P6 in the workflow. The native scheduler should also remain capable of receiving the same model from an optional MSPDI adapter.
-
-Once that works and focused tests pass, stop. The likely next experiment is a small native project workspace/timeline built on this model, not an expansion of Microsoft Project compatibility.
+`prototype1_workspace.py` is a completed real-file bridge. It routes MSPDI through the native model and scheduler. Do not turn it into a general Microsoft Project importer.
