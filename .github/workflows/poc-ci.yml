@@ -33,6 +33,7 @@ jobs:
           tests.test_native_project_core
           tests.test_work_method_experiment
           tests.test_trusted_state_experiment
+          tests.test_objective_policy_experiment
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment
@@ -50,5 +51,7 @@ jobs:
         run: python -m deterministic_scheduling_core.work_method_experiment
       - name: Run trusted live state falsification experiment
         run: python -m deterministic_scheduling_core.trusted_state_experiment
+      - name: Run objective-policy falsification experiment
+        run: python -m deterministic_scheduling_core.objective_policy_experiment
       - name: Compile active package
         run: python -m compileall -q src
