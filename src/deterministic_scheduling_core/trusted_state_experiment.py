@@ -196,166 +196,102 @@ def build_approved_project() -> tuple[Project, ScheduleResult]:
 
     raw = build_base_project()
     first = schedule_project(raw)
-    activities = tuple(
-        replace(
-            activity,
-            planned_start=first.by_id[activity.id].start,
-            planned_mode_id=first.by_id[activity.id].mode_id,
-        )
-        for activity in raw.activities
+    approved = replace(
+        raw,
+        activities=tuple(
+            replace(
+                activity,
+                planned_start=first.by_id[activity.id].start,
+                planned_mode_id=first.by_id[activity.id].mode_id,
+            )
+            for activity in raw.activities
+        ),
     )
-    approved = replace(raw, activities=activities)
-    approved_schedule = schedule_project(approved)
-    return approved, approved_schedule
+    return approved, schedule_project(approved)
 
 
 def build_field_events(
     approved_project: Project,
     approved_schedule: ScheduleResult,
 ) -> tuple[FieldEvent, ...]:
-    """Create four field circumstances plus the evidence/validation needed to resolve them."""
+    """Create four field circumstances plus evidence/validation events."""
 
     cover_start = approved_schedule.by_id["A05"].start
-    repair_mode = approved_project.activity_by_id["A08"].modes[0]
-    crane_window_start = approved_schedule.by_id["A10"].start + 8
+    repair_duration = approved_project.activity_by_id["A08"].modes[0].duration
+    crane_window_start = approved_schedule.by_id["A10"].start
     crane_window_finish = crane_window_start + (3 * TICKS_PER_HOUR)
     inspection_finish = approved_schedule.by_id["A06"].finish
 
     return (
         FieldEvent(
-            "E01",
-            "A05",
-            "actual_start",
-            cover_start + 3,
-            101,
-            cover_start + 3,
-            "REPORTED",
-            "HISTORICAL_ACTUAL",
-            "field-supervisor",
-            "supervisor",
+            "E01", "A05", "actual_start", cover_start + 3, 101, cover_start + 3,
+            "REPORTED", "HISTORICAL_ACTUAL", "field-supervisor", "supervisor",
         ),
         FieldEvent(
-            "E02",
-            "A05",
-            "actual_start",
-            cover_start + 2,
-            102,
-            cover_start + 2,
-            "VALIDATED",
-            "HISTORICAL_ACTUAL",
-            "access-log",
-            "planner",
+            "E02", "A05", "actual_start", cover_start + 2, 102, cover_start + 2,
+            "VALIDATED", "HISTORICAL_ACTUAL", "access-log", "planner",
             evidence="access log confirms a 30-minute late start",
-            validated_by="planner",
-            supersedes_event_id="E01",
+            validated_by="planner", supersedes_event_id="E01",
         ),
         FieldEvent(
-            "E03",
-            "A08",
-            "remaining_duration",
-            inspection_finish,
-            103,
-            repair_mode.duration + (2 * TICKS_PER_HOUR),
-            "REPORTED",
-            "FORECAST_ASSUMPTION",
-            "field-supervisor",
-            "supervisor",
+            "E03", "A08", "remaining_duration", inspection_finish, 103,
+            repair_duration + (2 * TICKS_PER_HOUR),
+            "REPORTED", "FORECAST_ASSUMPTION", "field-supervisor", "supervisor",
         ),
         FieldEvent(
-            "E04",
-            "A08",
-            "remaining_duration",
-            inspection_finish,
-            104,
-            repair_mode.duration + TICKS_PER_HOUR,
-            "VALIDATED",
-            "FORECAST_ASSUMPTION",
-            "planner-review",
-            "planner",
+            "E04", "A08", "remaining_duration", inspection_finish, 104,
+            repair_duration + TICKS_PER_HOUR,
+            "VALIDATED", "FORECAST_ASSUMPTION", "planner-review", "planner",
             evidence="joint review reduced the estimate to one additional hour",
-            validated_by="planner",
-            supersedes_event_id="E03",
+            validated_by="planner", supersedes_event_id="E03",
         ),
         FieldEvent(
-            "E05",
-            "CRANE",
-            "resource_outage",
-            crane_window_start,
-            106,
+            "E05", "CRANE", "resource_outage", crane_window_start, 106,
             ("CRANE", crane_window_start, crane_window_finish),
-            "REPORTED",
-            "CURRENT_OPERATIONAL_FACT",
-            "crane-operator",
-            "operator",
+            "REPORTED", "CURRENT_OPERATIONAL_FACT", "crane-operator", "operator",
         ),
         FieldEvent(
-            "E06",
-            "CRANE",
-            "resource_outage",
-            crane_window_start,
-            107,
+            "E06", "CRANE", "resource_outage", crane_window_start, 107,
             ("CRANE", crane_window_start, crane_window_finish),
-            "VALIDATED",
-            "CURRENT_OPERATIONAL_FACT",
-            "maintenance-control",
-            "controller",
+            "VALIDATED", "CURRENT_OPERATIONAL_FACT", "maintenance-control", "controller",
             evidence="maintenance control confirmed the outage interval",
-            validated_by="controller",
-            supersedes_event_id="E05",
+            validated_by="controller", supersedes_event_id="E05",
         ),
         FieldEvent(
-            "E07",
-            "A07",
-            "emergent_scope",
-            inspection_finish,
-            105,
+            "E07", "A07", "emergent_scope", inspection_finish, 105,
             6 * TICKS_PER_HOUR,
-            "REPORTED",
-            "PROPOSED_CHANGE",
-            "inspector",
-            "inspector",
+            "REPORTED", "PROPOSED_CHANGE", "inspector", "inspector",
             evidence="damage found during internal inspection",
         ),
         FieldEvent(
-            "E08",
-            "A06",
-            "inspection_result",
-            inspection_finish,
-            108,
+            "E08", "A06", "inspection_result", inspection_finish, 108,
             "damage-confirmed",
-            "VALIDATED",
-            "HISTORICAL_ACTUAL",
-            "inspection-authority",
-            "inspector",
+            "VALIDATED", "HISTORICAL_ACTUAL", "inspection-authority", "inspector",
             evidence="inspection disposition confirms damage",
             validated_by="inspection-authority",
         ),
         FieldEvent(
-            "E09",
-            "A07",
-            "emergent_scope",
-            inspection_finish,
-            109,
+            "E09", "A07", "emergent_scope", inspection_finish, 109,
             2 * TICKS_PER_HOUR,
-            "VALIDATED",
-            "COMMITTED_FUTURE",
-            "scope-approval",
-            "project-manager",
+            "VALIDATED", "COMMITTED_FUTURE", "scope-approval", "project-manager",
             evidence="approved two-hour emergent repair package",
-            validated_by="project-manager",
-            supersedes_event_id="E07",
+            validated_by="project-manager", supersedes_event_id="E07",
         ),
     )
 
 
 def _set_activity(project: Project, activity_id: str, **changes: object) -> Project:
-    activities = tuple(
-        replace(activity, **changes) if activity.id == activity_id else activity
-        for activity in project.activities
-    )
-    if activities == project.activities:
+    found = False
+    activities: list[Activity] = []
+    for activity in project.activities:
+        if activity.id == activity_id:
+            activities.append(replace(activity, **changes))
+            found = True
+        else:
+            activities.append(activity)
+    if not found:
         raise KeyError(activity_id)
-    return replace(project, activities=activities)
+    return replace(project, activities=tuple(activities))
 
 
 def _set_mode_duration(
@@ -364,7 +300,7 @@ def _set_mode_duration(
     mode_id: str,
     duration: int,
 ) -> Project:
-    changed = False
+    found = False
     activities: list[Activity] = []
     for activity in project.activities:
         if activity.id != activity_id:
@@ -374,11 +310,11 @@ def _set_mode_duration(
         for mode in activity.modes:
             if mode.id == mode_id:
                 modes.append(replace(mode, duration=duration))
-                changed = True
+                found = True
             else:
                 modes.append(mode)
         activities.append(replace(activity, modes=tuple(modes)))
-    if not changed:
+    if not found:
         raise KeyError(f"{activity_id}/{mode_id}")
     return replace(project, activities=tuple(activities))
 
@@ -405,40 +341,34 @@ def _upsert_outage(project: Project, resource_id: str, start: int, finish: int) 
 
 
 def apply_field_event_direct(project: Project, event: FieldEvent) -> Project:
-    """Control path: treat every incoming scheduling report as authoritative immediately."""
+    """Control path: every incoming scheduling report mutates authoritative state."""
 
     if event.event_type == "actual_start":
         activity = project.activity_by_id[event.subject_id]
-        mode_id = activity.planned_mode_id or activity.modes[0].id
         return _set_activity(
             project,
             event.subject_id,
             frozen_start=int(event.payload),
-            frozen_mode_id=mode_id,
+            frozen_mode_id=activity.planned_mode_id or activity.modes[0].id,
         )
     if event.event_type == "remaining_duration":
+        activity = project.activity_by_id[event.subject_id]
         return _set_mode_duration(
-            project,
-            event.subject_id,
-            project.activity_by_id[event.subject_id].modes[0].id,
-            int(event.payload),
+            project, event.subject_id, activity.modes[0].id, int(event.payload)
         )
     if event.event_type == "resource_outage":
         resource_id, start, finish = event.payload
         return _upsert_outage(project, resource_id, start, finish)
     if event.event_type == "emergent_scope":
-        project = _set_mode_duration(
-            project,
-            event.subject_id,
-            "REPAIR",
-            int(event.payload),
+        changed = _set_mode_duration(
+            project, event.subject_id, "REPAIR", int(event.payload)
         )
-        return _set_activity(project, event.subject_id, frozen_mode_id="REPAIR")
+        return _set_activity(changed, event.subject_id, frozen_mode_id="REPAIR")
     return project
 
 
 def project_trusted_state(events: tuple[FieldEvent, ...]) -> TrustedProjectState:
-    """Materialise trusted current state from validated events, independent of arrival order."""
+    """Materialise trusted state from validated events, independent of delivery order."""
 
     accepted = sorted(
         (event for event in events if event.epistemic_status == "VALIDATED"),
@@ -468,7 +398,10 @@ def project_trusted_state(events: tuple[FieldEvent, ...]) -> TrustedProjectState
         actual_starts=tuple(sorted(actual_starts.items())),
         remaining_durations=tuple(sorted(remaining_durations.items())),
         resource_outages=tuple(
-            sorted((resource_id, start, finish) for resource_id, (start, finish) in resource_outages.items())
+            sorted(
+                (resource_id, start, finish)
+                for resource_id, (start, finish) in resource_outages.items()
+            )
         ),
         inspection_facts=tuple(sorted(inspection_facts.items())),
         committed_emergent_work=tuple(sorted(emergent_work.items())),
@@ -476,7 +409,7 @@ def project_trusted_state(events: tuple[FieldEvent, ...]) -> TrustedProjectState
 
 
 def compile_trusted_state(base_project: Project, state: TrustedProjectState) -> Project:
-    """Compile the materialised trusted state into the unchanged native scheduling model."""
+    """Compile trusted state into the unchanged native scheduling model."""
 
     project = base_project
     for activity_id, start in state.actual_starts:
@@ -488,12 +421,8 @@ def compile_trusted_state(base_project: Project, state: TrustedProjectState) -> 
             frozen_mode_id=activity.planned_mode_id or activity.modes[0].id,
         )
     for activity_id, duration in state.remaining_durations:
-        project = _set_mode_duration(
-            project,
-            activity_id,
-            project.activity_by_id[activity_id].modes[0].id,
-            duration,
-        )
+        activity = project.activity_by_id[activity_id]
+        project = _set_mode_duration(project, activity_id, activity.modes[0].id, duration)
     for activity_id, duration in state.committed_emergent_work:
         project = _set_mode_duration(project, activity_id, "REPAIR", duration)
         project = _set_activity(project, activity_id, frozen_mode_id="REPAIR")
@@ -565,11 +494,7 @@ def run_direct_mutation(
         moved, movement = _movement(schedule, next_schedule)
         records.append(
             ReplanRecord(
-                event.event_id,
-                True,
-                moved,
-                movement,
-                schedule_hash(next_schedule),
+                event.event_id, True, moved, movement, schedule_hash(next_schedule)
             )
         )
         project = changed
@@ -584,11 +509,14 @@ def run_direct_mutation(
         untrusted_authoritative_replans=sum(
             1
             for record in records
-            if next(event for event in events if event.event_id == record.event_id).epistemic_status
-            != "VALIDATED"
+            if next(
+                event for event in events if event.event_id == record.event_id
+            ).epistemic_status != "VALIDATED"
         ),
         corrected_authoritative_replans=len(corrected_records),
-        corrected_report_moved_activities=sum(record.moved_activities for record in corrected_records),
+        corrected_report_moved_activities=sum(
+            record.moved_activities for record in corrected_records
+        ),
         corrected_report_start_movement=sum(
             record.total_start_movement for record in corrected_records
         ),
@@ -621,7 +549,7 @@ def run_trusted_pipeline(
                         moved,
                         movement,
                         schedule_hash(provisional_schedule),
-                        protective_gate=(event.event_type == "resource_outage"),
+                        protective_gate=event.event_type == "resource_outage",
                     )
                 )
             continue
@@ -633,23 +561,14 @@ def run_trusted_pipeline(
             moved, movement = _movement(current_schedule, next_schedule)
             authoritative_records.append(
                 ReplanRecord(
-                    event.event_id,
-                    True,
-                    moved,
-                    movement,
-                    schedule_hash(next_schedule),
+                    event.event_id, True, moved, movement, schedule_hash(next_schedule)
                 )
             )
             current_project = next_project
             current_schedule = next_schedule
         current_state = next_state
 
-    replay_order = tuple(
-        sorted(
-            ledger,
-            key=lambda event: (event.received_at % 3, -event.received_at, event.event_id),
-        )
-    )
+    replay_order = tuple(reversed(ledger))
     replay_state = project_trusted_state(replay_order)
     replay_project = compile_trusted_state(approved_project, replay_state)
     replay_schedule = schedule_project(replay_project)
@@ -689,16 +608,16 @@ def run_experiment() -> ExperimentResult:
         and schedule_hash(candidate.path.final_schedule) == candidate.replay_plan_hash
     )
     expected_actual = approved_schedule.by_id["A05"].start + 2
-    final_actual_start_is_correct = dict(candidate.trusted_state.actual_starts).get("A05") == expected_actual
+    final_actual_start_is_correct = (
+        dict(candidate.trusted_state.actual_starts).get("A05") == expected_actual
+    )
     forecast_duration_is_not_history = (
         "A08" in dict(candidate.trusted_state.remaining_durations)
         and "A08" not in dict(candidate.trusted_state.actual_starts)
     )
 
     before_scope_approval = run_trusted_pipeline(
-        approved_project,
-        approved_schedule,
-        events[:-1],
+        approved_project, approved_schedule, events[:-1]
     )
     emergent_work_waited_for_approval = (
         before_scope_approval.path.final_schedule.by_id["A07"].mode_id == "NO-WORK"
@@ -733,8 +652,7 @@ def run_experiment() -> ExperimentResult:
 
 def _ticks(value: int) -> str:
     hours, remainder = divmod(value, TICKS_PER_HOUR)
-    minutes = remainder * 15
-    return f"{hours}h{minutes:02d}m"
+    return f"{hours}h{remainder * 15:02d}m"
 
 
 def main() -> int:
@@ -743,7 +661,10 @@ def main() -> int:
     candidate = result.candidate
 
     print("TRUSTED LIVE PROJECT STATE — BOUNDED FALSIFICATION EXPERIMENT")
-    print("Architecture under test: field event -> validation -> trusted state -> unchanged native scheduler")
+    print(
+        "Architecture under test: field event -> validation -> trusted state -> "
+        "unchanged native scheduler"
+    )
     print(f"Approved activities: {len(result.approved_project.activities)}")
     print(f"Approved handover: {_ticks(result.approved_schedule.objective_finish)}")
     print(f"Field/provenance events retained: {len(result.events)}")
@@ -763,7 +684,10 @@ def main() -> int:
     print(f"  provisional impact calculations: {len(candidate.provisional_records)}")
     print(f"  authoritative replans: {len(candidate.path.records)}")
     print(f"  replans from unvalidated reports: {candidate.path.untrusted_authoritative_replans}")
-    print(f"  retained accepted events: {', '.join(candidate.trusted_state.accepted_event_ids)}")
+    print(
+        "  retained accepted events: "
+        f"{', '.join(candidate.trusted_state.accepted_event_ids)}"
+    )
     print(f"  final handover: {_ticks(candidate.path.final_schedule.objective_finish)}")
     print(
         "  actual start A05: "
@@ -788,8 +712,8 @@ def main() -> int:
         return 1
     print("RESULT: trusted-state hypothesis NOT FALSIFIED by this bounded experiment")
     print(
-        "Learning: the project state can stay live while unvalidated reports remain provisional; "
-        "the authoritative schedule is recalculated only from accepted state."
+        "Learning: the project state can stay live while unvalidated reports remain "
+        "provisional; the authoritative schedule is recalculated only from accepted state."
     )
     return 0
 
