@@ -113,7 +113,7 @@ The experiment is deliberately isolated in `src/deterministic_scheduling_core/wo
 
 ## Execution-state hypothesis — trusted live project state
 
-Targeted research challenged direct field-to-schedule mutation. The bounded falsification experiment now compares incoming reports that immediately mutate authoritative schedule state against an event/provenance boundary that materialises only validated facts and assumptions into trusted project state before calling the unchanged native scheduler.
+Targeted research challenged direct field-to-schedule mutation. The bounded falsification experiment compares incoming reports that immediately mutate authoritative schedule state against an event/provenance boundary that materialises only validated facts and assumptions into trusted project state before calling the unchanged native scheduler.
 
 Observed result on the 20-activity case:
 
@@ -140,6 +140,56 @@ Active rule for follow-on work:
 
 The experiment is deliberately isolated in `src/deterministic_scheduling_core/trusted_state_experiment.py`.
 
+## Objective-policy hypothesis — aspiration-bounded recovery
+
+Targeted research challenged the assumption that the mathematically earliest feasible finish should always define the authoritative plan. The bounded falsification experiment now tests an explicit hierarchy on the existing 33-possible-activity Work–Method problem rather than building a generic policy framework first.
+
+The tested stages are:
+
+```text
+protected commitment lateness
+        ↓
+controlling finish → F*
+        ↓
+Finish ≤ F* + Δfinish
+        ↓
+approved execution-method changes
+        ↓
+materially moved activity count
+        ↓
+absolute start movement
+        ↓
+canonical tie-break
+```
+
+The approved plan is `SCAFFOLD / CRANE / NORMAL`, finish H37. A crane outage at H11-H16 creates a recovery trade-off while the protected H42 handoff remains achievable.
+
+Observed result:
+
+- `Δfinish = 0h`: `SCAFFOLD / SEGMENTED / NORMAL`, finish H41, 1 method change, 11 moved starts, 44h total start movement;
+- `Δfinish = 1h`: `SCAFFOLD / CRANE / NORMAL`, finish H42, 0 method changes, 14 moved starts, 70h total start movement;
+- both decisions match exhaustive enumeration of all 8 authorised fixed-network recoveries;
+- all candidate optimisation stages were proven `OPTIMAL`;
+- repeating the 1h policy produced the same canonical result;
+- plausible finish-heavy and stability-heavy weighted scores selected different plans.
+
+The **aspiration-bounded objective-policy hypothesis was not falsified** by this bounded experiment.
+
+Active rule for follow-on work:
+
+- actual history, frozen decisions, physical/logical feasibility and genuinely non-negotiable gates remain constraints, not tradeable objective penalties;
+- protected commitments may sit above ordinary completion objectives when project policy explicitly says so;
+- establish the best controlling finish before applying any authorised completion degradation;
+- represent allowed degradation explicitly as a policy tolerance, not hidden solver weights;
+- structural disruption and temporal movement are different dimensions;
+- the current bounded hypothesis places structural method preservation above temporal movement only after completion is inside the authorised envelope;
+- do not treat that exact lower-order ordering as universal: in this experiment the zero-method-change H42 plan moved more retained activities and more total time than the H41 method-changing plan;
+- objective explanations should come from the stored policy stages and objective vector rather than fabricated narrative;
+- weighted sums may be useful inside coherent tiers but must not silently become the universal project policy;
+- do not promote a large `PlanningPolicy` schema or multi-objective framework merely because this experiment passed.
+
+The experiment is deliberately isolated in `src/deterministic_scheduling_core/objective_policy_experiment.py`.
+
 ## Current position
 
 Gate 1 through Gate 5 are provisionally demonstrated.
@@ -152,13 +202,16 @@ The Work–Method–Execution experiment showed, on a bounded synthetic case, th
 
 The trusted-live-state experiment then showed that provisional field information can remain visible and useful without contaminating the authoritative forecast, while accepted facts reconstruct the same final schedule deterministically.
 
+The objective-policy experiment then showed that one explicit completion-tolerance decision can switch the authoritative recovery between true fastest and structurally stable plans for inspectable reasons, matching exhaustive enumeration in both cases.
+
 CP-SAT remains the primary experimental optimisation backend for now, but the native model must remain solver-independent. Classical CP is a future challenger if richer calendar/state semantics become materially difficult to represent cleanly.
 
-The next work should continue attacking the core planning architecture rather than defaulting to UI or compatibility work. The strongest immediate unresolved experiment is:
+The next work should continue attacking the core planning architecture rather than defaulting to UI or compatibility work. High-value unresolved questions include:
 
-- **objective policy:** whether an explicit aspiration-bounded policy can select a professionally preferable stable recovery over the mathematically fastest one, for inspectable reasons.
-
-After that, high-value questions include scalable decomposition/incremental repair and, only if needed by real capability, richer calendar/state scheduling semantics.
+- **scale/decomposition:** how large professional schedules should be partitioned or repaired incrementally;
+- **CPM/criticality semantics:** what analytical role CPM, float and executable flexibility should have after integrated scheduling;
+- **calendar/state scheduling semantics:** only if richer operational calendars/states become a real capability requirement;
+- **objective ordering:** further evidence may still change the exact ordering between structural and temporal stability.
 
 Prefer one targeted research question or executable experiment at a time.
 

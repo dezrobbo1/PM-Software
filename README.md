@@ -115,7 +115,7 @@ This result does **not** justify unrestricted goal/state planning, automatic inv
 
 ## Execution-state experiment — Trusted Live Project State
 
-The latest targeted research challenged another assumption: **should incoming field reports directly update the authoritative schedule, or should the schedule be derived from trusted live project state?**
+Targeted research then challenged another assumption: **should incoming field reports directly update the authoritative schedule, or should the schedule be derived from trusted live project state?**
 
 The bounded hypothesis is:
 
@@ -161,6 +161,55 @@ Observed result:
 
 This is evidence for the boundary, not a decision to event-source the whole application. The experiment remains isolated in `trusted_state_experiment.py`; the production native `Project` model has not been expanded into a generic field-event/workflow/provenance framework.
 
+## Objective-policy experiment — Aspiration-Bounded Recovery
+
+Targeted research then challenged the definition of **best plan**. The bounded hypothesis is that hard facts and protected commitments should be handled first, controlling completion should establish the best achievable finish `F*`, and an explicit policy tolerance may then admit slightly later plans before structural and temporal stability are compared.
+
+The falsification experiment is runnable with:
+
+```bash
+python -m deterministic_scheduling_core.objective_policy_experiment
+```
+
+It deliberately reuses the 33-possible-activity Work–Method planning case instead of creating a new architecture. An approved reference plan uses `SCAFFOLD / CRANE / NORMAL` and finishes at H37. A crane outage from H11–H16 then creates two materially different recovery choices while the protected H42 handoff remains achievable.
+
+The experiment enumerates all 8 authorised fixed-network recoveries as an oracle and compares them with one integrated CP-SAT model solved in explicit stages:
+
+```text
+protected commitment lateness
+        ↓
+controlling finish → F*
+        ↓
+Finish ≤ F* + Δfinish
+        ↓
+execution-method changes
+        ↓
+materially moved activity count
+        ↓
+absolute start movement
+        ↓
+canonical tie-break
+```
+
+Observed result:
+
+| Policy | Selected recovery | Finish | Method changes | Moved starts | Total start movement |
+|---|---|---:|---:|---:|---:|
+| `Δfinish = 0h` | SCAFFOLD / SEGMENTED / NORMAL | H41 | 1 | 11 | 44h |
+| `Δfinish = 1h` | SCAFFOLD / CRANE / NORMAL | H42 | 0 | 14 | 70h |
+
+Both results matched the exhaustive oracle. Repeating the `Δfinish = 1h` solve produced the same canonical decision, and every optimisation stage was proven `OPTIMAL` in the bounded case.
+
+The important result is the policy transition: **changing only `Δfinish` from 1h to 0h switches from the structurally stable approved method to the true fastest recovery.** The reason is inspectable: H41 is the fastest achievable finish; a 1h tolerance admits H42; within that envelope the current hierarchy protects approved execution structure before temporal movement.
+
+That last point remains deliberately provisional. In this fixture the structurally stable H42 plan actually moves more retained activity starts than the H41 method-changing plan. The experiment therefore demonstrates that the hierarchy is functioning as declared; it does **not** prove that structural stability should universally outrank temporal stability.
+
+Two plausible weighted-score profiles also selected different plans, illustrating that a global weighted sum can hide the same management trade-off inside coefficients.
+
+**Result: the aspiration-bounded objective-policy hypothesis was not falsified by this bounded experiment.**
+
+This does not justify a permanent `PlanningPolicy` schema or a large general multi-objective framework yet. The experiment remains isolated in `objective_policy_experiment.py`.
+
 ## Current research direction
 
 The strongest current architectural hypothesis is now:
@@ -171,14 +220,17 @@ The strongest current architectural hypothesis is now:
 - bounded work packages and finite authorised execution methods may become the language of planning choice;
 - the scheduler may jointly choose authorised method, resource/mode, sequence and timing;
 - the live object should be **trusted project state**, with the schedule derived from accepted facts and assumptions rather than directly mutated by field reports;
+- hard facts and genuinely non-negotiable conditions sit outside the objective function;
+- protected commitments and controlling completion can be followed by explicit aspiration bounds before lower-order stability concerns are optimised;
+- structural disruption and temporal movement are different dimensions, but their exact ordering remains a hypothesis rather than settled policy;
 - CP-SAT remains the primary experimental optimisation backend for now, but it is not the native architecture;
 - human/project rules remain authoritative over required work, admissible methods, validation authority, real constraints, protected commitments and objective policy.
 
 Do not promote these hypotheses into large schemas or product frameworks merely because bounded experiments worked.
 
-High-value unresolved questions include the **objective-policy falsification experiment** (fastest recovery versus stable recovery under explicit aspiration bounds), **scalable decomposition/incremental repair** for large professional schedules, and later **calendar/state semantics** if they become rich enough to challenge CP-SAT materially.
+High-value unresolved questions now include **scalable decomposition/incremental repair** for large professional schedules, the eventual analytical role of **CPM/float/criticality** after integrated scheduling, and later **calendar/state semantics** if they become rich enough to challenge CP-SAT materially. The exact lower-order objective hierarchy also remains open to further evidence.
 
-Do not start a broad compatibility programme, production-hardening phase, P6/MSP clone, full event-sourcing architecture or large UI framework in place of those core experiments.
+Do not start a broad compatibility programme, production-hardening phase, P6/MSP clone, full event-sourcing architecture, generic objective-policy framework or large UI framework in place of those core experiments.
 
 ## Microsoft Project XML remains an adapter
 
@@ -204,6 +256,7 @@ python -m deterministic_scheduling_core.prototype1_workspace /path/to/project.xm
 python -m deterministic_scheduling_core.prototype2_native /tmp/pm-native-project.json
 python -m deterministic_scheduling_core.work_method_experiment
 python -m deterministic_scheduling_core.trusted_state_experiment
+python -m deterministic_scheduling_core.objective_policy_experiment
 ```
 
 ## Parallel STO research
@@ -236,7 +289,8 @@ python -m unittest \
   tests.test_prototype1_workspace \
   tests.test_native_project_core \
   tests.test_work_method_experiment \
-  tests.test_trusted_state_experiment -v
+  tests.test_trusted_state_experiment \
+  tests.test_objective_policy_experiment -v
 ```
 
 ## Active repository map
@@ -246,6 +300,7 @@ python -m unittest \
 - `src/deterministic_scheduling_core/adapters/` — optional external-system translators such as bounded MSPDI import.
 - `src/deterministic_scheduling_core/work_method_experiment.py` — isolated falsification experiment for bounded structural planning choice.
 - `src/deterministic_scheduling_core/trusted_state_experiment.py` — isolated falsification experiment for field event → validation → trusted state → replan.
+- `src/deterministic_scheduling_core/objective_policy_experiment.py` — isolated falsification experiment for aspiration-bounded recovery policy.
 - `src/deterministic_scheduling_core/prototype2_native.py` — first end-to-end native project workflow.
 - `tests/` — focused reference and prototype tests.
 - `docs/` and `docs/archive/` — current direction and historical research.
