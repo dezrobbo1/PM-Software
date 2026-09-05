@@ -122,7 +122,7 @@ Active rules:
 
 ### Adaptive semantic repair
 
-The latest bounded experiment tested how far replanning should propagate after one trusted disturbance.
+The bounded experiment tested how far replanning should propagate after one trusted disturbance.
 
 Fixture:
 
@@ -171,6 +171,29 @@ Active rules for follow-on work:
 
 The experiment is deliberately isolated in `src/deterministic_scheduling_core/adaptive_repair_experiment.py`.
 
+### Logic CPM and executable criticality
+
+The bounded criticality-semantics experiment tested whether traditional CPM float and critical-path labels still describe execution-critical behaviour once resource coupling and authorised structural alternatives are active.
+
+Observed counterexamples on the approved H60 fixture:
+
+- `P04A07` has 7h of precedence-only logic float, but only 3h of fixed-structure executable slack; at +4h its C04 occupancy collides with remote WP-09 and the policy-consistent recovery changes `WP-09` to `SEGMENTED` before its logic float is exhausted;
+- `P09A07` has 0h logic float, and +1h makes the approved crane structure infeasible, yet the authorised `SEGMENTED` method still preserves H60;
+- repeated adaptive counterfactual solving returned the same canonical result.
+
+The **logic-float vs executable-criticality distinction was not falsified** by this bounded experiment.
+
+Active rules:
+
+- reserve **critical path** and **logic float** for CPM analysis of one selected precedence structure;
+- do not present logic float as executable slack when resources, exclusions, operational constraints or method alternatives can become controlling;
+- distinguish fixed-structure executable slack from adaptive recovery flexibility;
+- execution criticality should be counterfactual and policy-aware: report protected-commitment/finish consequence, structural/method reselection, schedule movement and the causal resource/constraint rather than forcing every critical decision into one continuous path;
+- an activity may be logic-noncritical yet resource/decision-critical, or logic-critical yet recoverable through an authorised method change;
+- do not promote this experiment into a permanent generic criticality schema or production delay-analysis framework yet.
+
+The experiment is deliberately isolated in `src/deterministic_scheduling_core/criticality_semantics_experiment.py`.
+
 ## Current position
 
 Gate 1 through Gate 5 are provisionally demonstrated.
@@ -186,14 +209,15 @@ The following bounded hypotheses have now survived their first executable falsif
 - Work–Method–Execution structural choice;
 - trusted live project state;
 - aspiration-bounded objective policy;
-- adaptive semantic repair.
+- adaptive semantic repair;
+- logic CPM as a selected-structure analytical service rather than authoritative executable criticality.
 
 CP-SAT remains the primary experimental backend for now, but the project/domain model must remain solver-independent. Classical CP is a future challenger only if richer calendar/state semantics demonstrate a material capability advantage.
 
 The next work should continue to attack one unresolved core question at a time. Strong candidates now are:
 
-- **CPM/criticality semantics:** what CPM, float and criticality should mean when executable resource/constraint/method scheduling is authoritative;
 - **calendar/state semantics:** only if a real capability requires richer working-time or state-transition modelling;
+- **professional resource/capability semantics:** how named resources, capability pools and authorised substitutions should be represented without over-modelling;
 - **larger-scale evidence:** only after a focused question is defined; do not launch a generic benchmarking/hardening programme;
 - **objective ordering:** gather further evidence before declaring structural-vs-temporal stability universally settled.
 
