@@ -30,6 +30,7 @@ jobs:
           tests.test_gate4_experiment
           tests.test_gate5_experiment
           tests.test_prototype1_workspace
+          tests.test_native_project_core
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment
@@ -41,5 +42,7 @@ jobs:
         run: python -m deterministic_scheduling_core.gate4_experiment
       - name: Run Gate 5 real-world proof experiment
         run: python -m deterministic_scheduling_core.gate5_experiment
+      - name: Run Prototype 2 native project
+        run: python -m deterministic_scheduling_core.prototype2_native /tmp/pm-native-project.json
       - name: Compile active package
         run: python -m compileall -q src

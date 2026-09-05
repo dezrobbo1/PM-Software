@@ -53,12 +53,15 @@ class Prototype1WorkspaceTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.path.unlink(missing_ok=True)
 
-    def test_imports_bounded_summary_and_resources(self) -> None:
+    def test_imports_into_native_project_model(self) -> None:
         workspace = load_workspace(self.path)
         self.assertEqual(workspace.scope_name, DEFAULT_SCOPE)
         self.assertEqual(workspace.handoff_name, DEFAULT_HANDOFF)
-        self.assertEqual(len(workspace.activities), 4)
-        self.assertEqual({resource.name for resource in workspace.resources}, {"WGP-NTP", "WGP-MTP"})
+        self.assertEqual(len(workspace.project.activities) - 1, 4)
+        self.assertEqual(
+            {resource.name for resource in workspace.project.resources},
+            {"WGP-NTP", "WGP-MTP"},
+        )
 
     def test_detects_declared_source_overload(self) -> None:
         workspace = load_workspace(self.path)
@@ -71,13 +74,19 @@ class Prototype1WorkspaceTests(unittest.TestCase):
 
     def test_replan_removes_overload_without_moving_handoff(self) -> None:
         result = run_workspace(self.path)
-        self.assertEqual(result.revised_handoff, result.source.handoff_source)
+        objective = result.source.project.activity_by_id[
+            result.source.project.objective_activity_id
+        ]
+        self.assertEqual(result.revised_handoff, objective.planned_start)
         self.assertEqual(len(result.movements), 1)
-        self.assertEqual(result.movements[0].start - result.movements[0].activity.source_start, 60)
+        moved = result.movements[0]
+        activity = result.source.project.activity_by_id[moved.activity_id]
+        self.assertEqual(moved.start - activity.planned_start, 60)
 
-    def test_output_exposes_conflict_movement_handoff_and_project_impact(self) -> None:
+    def test_output_exposes_native_boundary_and_project_impact(self) -> None:
         output = render_workspace(run_workspace(self.path))
         self.assertIn("REAL SCHEDULE DECISION WORKSPACE", output)
+        self.assertIn("MSPDI adapter -> PM-Software native project -> native scheduler", output)
         self.assertIn("WGP-NTP", output)
         self.assertIn("Required: 3", output)
         self.assertIn("Available: 2", output)

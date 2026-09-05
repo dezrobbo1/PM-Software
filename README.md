@@ -8,9 +8,7 @@ This project investigates whether modern technology can enable a **new, better a
 
 The original technical idea is a **deterministic AI core**: a trustworthy computational core that can reason about project logic, resources, operational constraints, alternatives and changing execution conditions, while modern AI can assist where it adds genuine value.
 
-We are not trying to copy Primavera P6 or Microsoft Project. Existing products are useful sources of knowledge, comparison and potentially future interoperability, but they do not define our architecture or product model.
-
-No final product architecture is assumed. Optimisation, constraint programming, AI, conventional scheduling mathematics, new data models and other approaches may all be researched and tested where useful.
+We are not trying to copy Primavera P6 or Microsoft Project. Existing products are useful sources of knowledge, comparison and future interchange, but they do not define our architecture, semantics or product model.
 
 ## Working loop
 
@@ -22,83 +20,91 @@ Before substantial work, ask:
 
 Research, documentation, tests, refactoring, validation, compatibility work and hardening support the project. They are not progress by themselves.
 
-## Progress gates
-
-These gates measure capability and useful learning, not process completion.
-
-### Gate 1 — Core works
-
-Can the deterministic AI core create a useful schedule?
-
-### Gate 2 — Core adds value
-
-Can it make a useful whole-project decision that a simpler local approach misses or handles less effectively?
-
-### Gate 3 — Operational reality
-
-Can meaningful real-world restrictions such as scarce resources, workfaces, access or permit windows be represented without impractical modelling overhead?
-
-### Gate 4 — Change and replanning
-
-Can the core respond sensibly when execution changes the plan, preserving unaffected work where possible and explaining important consequences?
-
-### Gate 5 — Real-world proof
-
-Does the approach remain useful outside synthetic examples?
-
-Gate 5 passes when representative real or anonymised project information has been tested and an experienced practitioner judges the result useful enough to continue development.
-
-## Current position
+## Progress so far
 
 **Gate 1 through Gate 5 are provisionally demonstrated.**
 
-Gate 1 showed that the core can produce a feasible resource-constrained schedule and beat a fixed-priority baseline.
+- Gate 1: feasible resource-constrained scheduling and a better whole-project sequence than a fixed-priority baseline.
+- Gate 2: context-sensitive execution-mode choice; the locally fastest activity mode is not always the best project decision.
+- Gate 3: permit/access and workface constraints can change a mathematically shorter but non-executable plan into an executable one.
+- Gate 4: a small execution disturbance can be propagated while preserving work that does not need to move and explaining the consequence.
+- Gate 5: a real shutdown schedule slice contained a declared resource overload; the core removed it while preserving `Stage 2 Detag Complete`, and the experienced practitioner accepted the result.
 
-Gate 2 showed that the locally shortest activity mode can be the wrong whole-project decision when a scarce specialist is needed elsewhere.
+These are proof-of-concept results, not production scheduling claims.
 
-Gate 3 showed that a mathematically shorter resource-feasible schedule can still be operationally wrong when permit/access and workface restrictions are missing.
+## Architecture correction after Prototype 1
 
-Gate 4 showed that a small execution disturbance can be propagated through the plan while preserving work that does not need to move and explaining the downstream consequence.
+Prototype 1 proved that a real Microsoft Project XML schedule can expose a real planning problem to the experimental core. That was useful evidence, but Microsoft Project must not become the centre of the product architecture.
 
-Gate 5 used an anonymised derivative of a real shutdown schedule slice. The source contained a declared resource overload. The core removed it while preserving the `Stage 2 Detag Complete` handoff and moving only two activities. The experienced practitioner accepted that result because preserving the Stage 2 detag handoff means the controlling downstream completion is not moved in this schedule context.
+The active dependency direction is now:
 
-These remain proof-of-concept results, not production scheduling claims.
-
-## Prototype 1 — Real Schedule Decision Workspace
-
-The next step is to integrate the useful Gate 1–5 ideas into the first runnable workspace against a real Microsoft Project XML file.
-
-The first Prototype 1 capability is deliberately narrow:
-
-```bash
-python -m deterministic_scheduling_core.prototype1_workspace /path/to/project.xml
+```text
+Microsoft Project XML ─┐
+P6/XER later           ├──> external adapters ──> PM-Software native project ──> native scheduler/core
+manual/native input ───┘
 ```
 
-By default it reads the real decision area:
+External-system fields stop at adapter boundaries. The native project model and scheduling core must not depend on Microsoft Project, P6 or any other scheduling package.
 
-- summary scope: `Remove Calciner Isolation Blanks`;
-- controlling handoff: `Stage 2 Detag Complete`.
+`prototype1_workspace.py` remains as a real-file bridge, but it now follows that dependency direction: MSPDI is translated into the PM-Software native model before scheduling.
 
-Prototype 1 currently:
+## Prototype 2 — Native Project Core
 
-1. reads a real MSPDI XML file directly;
-2. finds the selected summary-task decision area and its leaf activities;
-3. reads source starts/finishes, zero-lag FS links, resource assignments and declared `MaxUnits` capacities;
-4. treats source starts as not-before boundaries so unmodelled external/calendar readiness is not silently pulled earlier;
-5. detects declared resource-capacity conflicts in the source plan;
-6. calculates a capacity-feasible stable revision with CP-SAT;
-7. protects the controlling handoff first, then minimises unnecessary later-start movement;
-8. prints the real resource names, real activity names, proposed movements, handoff impact and project-completion implication.
+Prototype 2 establishes that PM-Software can exist and operate without Microsoft Project in the workflow.
 
-For the validated Calciner case, the expected useful result is the already accepted decision:
+Run:
 
-- detect the `WGP-NTP` overload around the Stage 2 detag work;
-- move `Remove Blank LFS Chute` later;
-- move `Swing ESP to 50H Blank Open` later as required;
-- keep `Stage 2 Detag Complete` unchanged;
-- therefore leave the downstream/project completion unchanged in this validated case.
+```bash
+python -m deterministic_scheduling_core.prototype2_native /tmp/pm-native-project.json
+```
 
-This is **not** a general Microsoft Project importer or compatibility programme. It intentionally supports only what this first real decision workspace needs. Unsupported relationship/calendar behaviour should remain visible rather than triggering a broad architecture exercise.
+The command:
+
+1. creates a project directly in the PM-Software native model;
+2. saves it as PM-Software native JSON;
+3. reopens it;
+4. schedules and optimises it;
+5. changes a project fact;
+6. saves the changed project;
+7. recalculates it;
+8. demonstrates a different whole-project execution-mode decision after the change.
+
+The native model currently has first-class concepts for:
+
+- projects;
+- activities and milestones;
+- finish-to-start predecessors;
+- resources and capacity demand;
+- alternative execution modes;
+- not-before and latest-finish boundaries;
+- workface/SIMOPS-style exclusion groups;
+- planned coordinates for stable replanning objectives;
+- frozen activity coordinates/modes;
+- a controlling objective activity or milestone.
+
+The native scheduler consumes only that model. It has no MSPDI dependency.
+
+## Microsoft Project XML is now an adapter
+
+The bounded adapter lives under:
+
+```text
+src/deterministic_scheduling_core/adapters/msproject_xml.py
+```
+
+It currently imports only the narrow MSPDI subset needed for the validated real decision-area experiment. It translates that source into the same `Project` model used by native JSON and by projects created directly in code.
+
+Do not expand MSPDI compatibility merely because more Microsoft Project fields exist. Add adapter behaviour only when a useful product experiment needs it.
+
+## Current next step
+
+The next useful prototype should build on the **native project model**, not on Microsoft Project semantics.
+
+A likely next capability is a small native project workspace where a user can create or open a PM-Software project, inspect hierarchy/tasks and a simple timeline, change a duration/resource/constraint, recalculate, and understand what changed and why.
+
+XML import can seed that workspace, but it must remain optional input rather than the product model.
+
+Do not start a broad compatibility programme, production hardening phase, P6/MSP clone, or large UI framework before that native workflow is demonstrated.
 
 ## Earlier runnable experiments
 
@@ -108,19 +114,20 @@ python -m deterministic_scheduling_core.gate2_experiment
 python -m deterministic_scheduling_core.gate3_experiment
 python -m deterministic_scheduling_core.gate4_experiment
 python -m deterministic_scheduling_core.gate5_experiment
+python -m deterministic_scheduling_core.prototype1_workspace /path/to/project.xml
 ```
 
 ## Parallel STO research
 
-`dezrobbo1/STO-Scheduler-Tracker-Research` remains a separate STO-focused scheduling and live-execution experiment. It is not subordinate to this repository and should continue productive work in its own direction.
+`dezrobbo1/STO-Scheduler-Tracker-Research` remains a separate STO-focused scheduling and live-execution experiment. It is not subordinate to PM-Software.
 
-The two projects should compare results and selectively reuse useful ideas, tests or code. A future shared core, package or repository merge should be considered only when working experiments show that it would simplify development or improve the product.
+The repositories should exchange useful ideas, tests and code deliberately. A future merge or shared package should happen only if working experiments show that it simplifies development or improves the product.
 
 ## Existing research and history
 
-Earlier Phase 0 material, schemas, registers, semantic work and native-validation work remain available as research references. They are not current acceptance criteria.
+Earlier Phase 0 material, schemas, registers, semantic work and native-validation work remain research references. They are not current acceptance criteria.
 
-See `docs/README.md` and `docs/archive/`.
+The large historical Microsoft Project machinery under `native/`, `native-validation/` and archived documentation is **not an active architecture foundation**. Do not extend it unless a future experiment explicitly reopens that research.
 
 ## Development setup
 
@@ -137,14 +144,15 @@ python -m unittest \
   tests.test_gate3_experiment \
   tests.test_gate4_experiment \
   tests.test_gate5_experiment \
-  tests.test_prototype1_workspace -v
+  tests.test_prototype1_workspace \
+  tests.test_native_project_core -v
 ```
 
-## Repository map
+## Active repository map
 
-- `src/deterministic_scheduling_core/` — current reusable calculation and experimental code.
-- `tests/` — focused reference and experiment tests.
-- `docs/` — current and historical research documentation.
-- `native-validation/` — paused Microsoft Project/P6 research material.
-- `registers/` — historical evidence templates, not active development requirements.
-- `docs/archive/` — superseded protocol snapshots, CI workflows, governance profile and manifest.
+- `src/deterministic_scheduling_core/project/` — PM-Software-owned native project model and JSON persistence.
+- `src/deterministic_scheduling_core/scheduling/` — scheduler/optimiser consuming only the native model.
+- `src/deterministic_scheduling_core/adapters/` — optional external-system translators such as bounded MSPDI import.
+- `src/deterministic_scheduling_core/prototype2_native.py` — first end-to-end native project workflow.
+- `tests/` — focused reference and prototype tests.
+- `docs/` and `docs/archive/` — current direction and historical research.
