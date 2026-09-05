@@ -113,6 +113,54 @@ That is useful evidence, not a settled product architecture. The experiment rema
 
 This result does **not** justify unrestricted goal/state planning, automatic invention of work methods, or treating CP-SAT as the permanent engine.
 
+## Execution-state experiment — Trusted Live Project State
+
+The latest targeted research challenged another assumption: **should incoming field reports directly update the authoritative schedule, or should the schedule be derived from trusted live project state?**
+
+The bounded hypothesis is:
+
+```text
+field reality
+    ↓
+reported event + provenance
+    ↓
+validation / acceptance
+    ↓
+trusted project state
+    ↓
+unchanged deterministic scheduler
+    ↓
+executable plan
+```
+
+Unvalidated reports may be used for provisional impact analysis, but they do not replace authoritative project state. Validated historical facts are non-optimisable; validated future estimates remain forecast assumptions; emergent scope becomes executable only after explicit approval.
+
+The falsification experiment is runnable with:
+
+```bash
+python -m deterministic_scheduling_core.trusted_state_experiment
+```
+
+It uses the same 20-activity native project and compares direct mutation against a bounded event/provenance + trusted-state projection. The event sequence contains an initially wrong actual-start report, a remaining-duration estimate, a three-hour crane outage and inspection-created emergent work.
+
+Observed result:
+
+- approved handover: **8h00m**;
+- direct mutation: **7 authoritative replans**, including **4 from unvalidated reports**;
+- direct mutation later corrected **3** of those report-driven states;
+- those later-corrected reports caused **22 moved starts / 48h15m total start movement** before correction;
+- trusted-state path: **4 provisional impact calculations**, **4 authoritative replans**, **0 authoritative replans from unvalidated reports**;
+- accepted events retained: `E02, E04, E06, E08, E09`;
+- final handover: **11h30m** in both paths once the same accepted facts were applied;
+- validated A05 actual start remained fixed at **2h00m**;
+- A08 remaining duration remained a **3h00m forecast assumption**, not historical fact;
+- emergent repair activated only after explicit scope approval;
+- reordered delivery of the same accepted events reproduced the same trusted-state and execution-plan hashes.
+
+**Result: the trusted-live-state hypothesis was not falsified by this bounded experiment.**
+
+This is evidence for the boundary, not a decision to event-source the whole application. The experiment remains isolated in `trusted_state_experiment.py`; the production native `Project` model has not been expanded into a generic field-event/workflow/provenance framework.
+
 ## Current research direction
 
 The strongest current architectural hypothesis is now:
@@ -122,13 +170,15 @@ The strongest current architectural hypothesis is now:
 - activities remain the language of execution;
 - bounded work packages and finite authorised execution methods may become the language of planning choice;
 - the scheduler may jointly choose authorised method, resource/mode, sequence and timing;
-- human/project rules remain authoritative over required work, admissible methods, real constraints and protected commitments.
+- the live object should be **trusted project state**, with the schedule derived from accepted facts and assumptions rather than directly mutated by field reports;
+- CP-SAT remains the primary experimental optimisation backend for now, but it is not the native architecture;
+- human/project rules remain authoritative over required work, admissible methods, validation authority, real constraints, protected commitments and objective policy.
 
-Do not promote this hypothesis into a large schema or product framework merely because the small experiment worked. The next work should attack another important assumption with a focused research question or executable test.
+Do not promote these hypotheses into large schemas or product frameworks merely because bounded experiments worked.
 
-High-value unresolved questions include the **objective architecture** (what makes one feasible executable plan better than another), the **solver architecture** (CP-SAT versus alternatives/hybrids), and **scalable decomposition/incremental repair** for large professional schedules.
+High-value unresolved questions include the **objective-policy falsification experiment** (fastest recovery versus stable recovery under explicit aspiration bounds), **scalable decomposition/incremental repair** for large professional schedules, and later **calendar/state semantics** if they become rich enough to challenge CP-SAT materially.
 
-Do not start a broad compatibility programme, production-hardening phase, P6/MSP clone, or large UI framework in place of those core planning experiments.
+Do not start a broad compatibility programme, production-hardening phase, P6/MSP clone, full event-sourcing architecture or large UI framework in place of those core experiments.
 
 ## Microsoft Project XML remains an adapter
 
@@ -153,6 +203,7 @@ python -m deterministic_scheduling_core.gate5_experiment
 python -m deterministic_scheduling_core.prototype1_workspace /path/to/project.xml
 python -m deterministic_scheduling_core.prototype2_native /tmp/pm-native-project.json
 python -m deterministic_scheduling_core.work_method_experiment
+python -m deterministic_scheduling_core.trusted_state_experiment
 ```
 
 ## Parallel STO research
@@ -184,7 +235,8 @@ python -m unittest \
   tests.test_gate5_experiment \
   tests.test_prototype1_workspace \
   tests.test_native_project_core \
-  tests.test_work_method_experiment -v
+  tests.test_work_method_experiment \
+  tests.test_trusted_state_experiment -v
 ```
 
 ## Active repository map
@@ -193,6 +245,7 @@ python -m unittest \
 - `src/deterministic_scheduling_core/scheduling/` — current scheduler/optimiser consuming only that native model.
 - `src/deterministic_scheduling_core/adapters/` — optional external-system translators such as bounded MSPDI import.
 - `src/deterministic_scheduling_core/work_method_experiment.py` — isolated falsification experiment for bounded structural planning choice.
+- `src/deterministic_scheduling_core/trusted_state_experiment.py` — isolated falsification experiment for field event → validation → trusted state → replan.
 - `src/deterministic_scheduling_core/prototype2_native.py` — first end-to-end native project workflow.
 - `tests/` — focused reference and prototype tests.
 - `docs/` and `docs/archive/` — current direction and historical research.
