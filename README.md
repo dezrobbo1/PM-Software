@@ -20,23 +20,23 @@ Before substantial work, ask:
 
 Research, documentation, tests, refactoring, validation, compatibility work and hardening support the project. They are not progress by themselves.
 
-## Progress so far
+## Cumulative evidence
+
+New experiments refine the project; they do not erase earlier evidence unless they directly contradict it.
 
 **Gate 1 through Gate 5 are provisionally demonstrated.**
 
 - Gate 1: feasible resource-constrained scheduling and a better whole-project sequence than a fixed-priority baseline.
 - Gate 2: context-sensitive execution-mode choice; the locally fastest activity mode is not always the best project decision.
-- Gate 3: permit/access and workface constraints can change a mathematically shorter but non-executable plan into an executable one.
-- Gate 4: a small execution disturbance can be propagated while preserving work that does not need to move and explaining the consequence.
-- Gate 5: a real shutdown schedule slice contained a declared resource overload; the core removed it while preserving `Stage 2 Detag Complete`, and the experienced practitioner accepted the result.
+- Gate 3: permit/access and workface constraints can turn a mathematically shorter resource-feasible plan into a non-executable one.
+- Gate 4: a small execution disturbance can propagate through the plan while unaffected work is preserved and the cause remains explicit.
+- Gate 5: an anonymised slice derived from a real shutdown schedule contained a declared resource overload; the core removed it while preserving the controlling handoff, and the experienced practitioner accepted the result.
 
 These are proof-of-concept results, not production scheduling claims.
 
 ## Native product boundary
 
-Prototype 1 proved that a real Microsoft Project XML schedule can expose a real planning problem to the experimental core. That was useful evidence, but Microsoft Project must not become the centre of the product architecture.
-
-The active dependency direction is:
+Prototype 1 proved that a real Microsoft Project XML schedule can expose a real planning problem to the experimental core. It also established the architectural boundary:
 
 ```text
 Microsoft Project XML ─┐
@@ -44,29 +44,17 @@ P6/XER later           ├──> external adapters ──> PM-Software native p
 manual/native input ───┘
 ```
 
-External-system fields stop at adapter boundaries. The native project model and scheduling core must not depend on Microsoft Project, P6 or any other scheduling package.
+External-system fields stop at adapter boundaries. The native project model and scheduling core must not depend on Microsoft Project, P6 or another scheduling package.
 
-`prototype1_workspace.py` remains as a completed real-file bridge: MSPDI is translated into the PM-Software native model before scheduling.
+Prototype 2 then established that PM-Software can create, persist, reopen, edit and optimise its own native project without Microsoft Project or P6 in the workflow.
 
-## Prototype 2 — Native Project Core
-
-Prototype 2 established that PM-Software can exist and operate without Microsoft Project in the workflow.
-
-```bash
-python -m deterministic_scheduling_core.prototype2_native /tmp/pm-native-project.json
-```
-
-It creates a native PM-Software project, saves and reopens it, optimises it, changes a project fact and recalculates a different whole-project execution-mode decision.
-
-The current native model has first-class concepts for projects, activities/milestones, finish-to-start precedence, resources/capacity demand, alternative activity execution modes, not-before/latest-finish boundaries, workface-style exclusion groups, planned/frozen coordinates and a controlling objective activity.
-
-The native scheduler consumes only that model. It has no MSPDI dependency.
+The current native model contains projects, activities/milestones, finish-to-start precedence, resources/capacity demand, alternative activity execution modes, not-before/latest-finish boundaries, workface-style exclusion groups, planned/frozen coordinates and a controlling objective activity. The scheduler consumes that native model only.
 
 ## Planning-model experiment — Work–Method–Execution
 
-Targeted research then challenged a deeper assumption: **must the planner completely choose one activity network before the scheduling engine can reason about the project?**
+Targeted research challenged the assumption that a planner must completely select one activity network before the scheduling engine can reason about the project.
 
-The bounded working hypothesis is:
+The bounded hypothesis is:
 
 ```text
 required work / outcome
@@ -80,44 +68,31 @@ integrated method + resource + sequence + timing decision
 explicit execution plan
 ```
 
-Activities remain the executable primitives. The engine is not allowed to invent scope or arbitrary work methods; it may choose only among explicit authorised alternatives.
+Activities remain executable primitives. The engine may choose only among explicit authorised alternatives; it must not invent scope or arbitrary methods.
 
-The first falsification experiment is runnable with:
+Run:
 
 ```bash
 python -m deterministic_scheduling_core.work_method_experiment
 ```
 
-It compares the same six-work-package planning problem two ways:
+The six-work-package case contains 33 possible activities and 8 authorised fixed-network structures. The integrated candidate matched exhaustive fixed-network enumeration in all three changed-condition scenarios:
 
-1. **Control oracle:** materialise and solve all 8 authorised fixed activity-network structures with the existing native scheduler.
-2. **Candidate:** hold all authorised methods once and select method + activity mode + timing jointly in one bounded model.
-
-The case contains 33 possible activities, pooled and named resources, alternative qualified inspectors, a named crane, one workface exclusion, a protected handoff, a crane outage, a specialist-availability change and a narrowed access/permit condition.
-
-The candidate matched the exhaustive fixed-network oracle in all three scenarios:
-
-| Scenario | Best fixed-network oracle | Work–Method candidate | Structural decision |
+| Scenario | Oracle | Integrated candidate | Selected structural choices |
 |---|---:|---:|---|
-| A — normal conditions | H37 | H37 | SCAFFOLD / CRANE / NORMAL |
-| B — crane unavailable H10–H18 | H41 | H41 | SCAFFOLD / SEGMENTED / NORMAL |
-| C — specialist earlier, scaffold limit H09 | H35 | H35 | ROPE / CRANE / SPECIALIST |
+| Normal | H37 | H37 | SCAFFOLD / CRANE / NORMAL |
+| Crane unavailable H10–H18 | H41 | H41 | SCAFFOLD / SEGMENTED / NORMAL |
+| Specialist earlier + scaffold limit H09 | H35 | H35 | ROPE / CRANE / SPECIALIST |
 
-The changed conditions caused three authorised method reselections without a human editing activity topology. Scenario B replaced four crane-method activities with four segmented-removal activities. Scenario C replaced seven baseline activities with six activities from the rope-access and specialist methods.
+The bounded representation held 33 activity facts and 33 relationship facts once, compared with 180 activity facts and 176 relationship facts across the eight materialised networks.
 
-The bounded representation held **33 activity facts and 33 relationship facts** once, compared with **180 activity facts and 176 relationship facts** across the eight materialised fixed networks.
-
-**Result: the Work–Method–Execution hypothesis was not falsified by this bounded experiment.**
-
-That is useful evidence, not a settled product architecture. The experiment remains isolated in `work_method_experiment.py`; the production `Project` model has not yet been expanded into a general WorkPackage/ExecutionMethod ontology.
-
-This result does **not** justify unrestricted goal/state planning, automatic invention of work methods, or treating CP-SAT as the permanent engine.
+**Result: not falsified.** The result supports bounded authorised structural choice; it does not justify unrestricted goal/state planning or make CP-SAT the product architecture.
 
 ## Execution-state experiment — Trusted Live Project State
 
-Targeted research then challenged another assumption: **should incoming field reports directly update the authoritative schedule, or should the schedule be derived from trusted live project state?**
+Targeted research challenged direct field-to-schedule mutation.
 
-The bounded hypothesis is:
+The tested boundary is:
 
 ```text
 field reality
@@ -133,47 +108,40 @@ unchanged deterministic scheduler
 executable plan
 ```
 
-Unvalidated reports may be used for provisional impact analysis, but they do not replace authoritative project state. Validated historical facts are non-optimisable; validated future estimates remain forecast assumptions; emergent scope becomes executable only after explicit approval.
-
-The falsification experiment is runnable with:
+Run:
 
 ```bash
 python -m deterministic_scheduling_core.trusted_state_experiment
 ```
 
-It uses the same 20-activity native project and compares direct mutation against a bounded event/provenance + trusted-state projection. The event sequence contains an initially wrong actual-start report, a remaining-duration estimate, a three-hour crane outage and inspection-created emergent work.
+The 20-activity experiment compared direct mutation with a bounded event/provenance + trusted-state projection.
 
 Observed result:
 
-- approved handover: **8h00m**;
-- direct mutation: **7 authoritative replans**, including **4 from unvalidated reports**;
-- direct mutation later corrected **3** of those report-driven states;
-- those later-corrected reports caused **22 moved starts / 48h15m total start movement** before correction;
-- trusted-state path: **4 provisional impact calculations**, **4 authoritative replans**, **0 authoritative replans from unvalidated reports**;
-- accepted events retained: `E02, E04, E06, E08, E09`;
-- final handover: **11h30m** in both paths once the same accepted facts were applied;
-- validated A05 actual start remained fixed at **2h00m**;
-- A08 remaining duration remained a **3h00m forecast assumption**, not historical fact;
+- approved handover: 8h00m;
+- direct mutation: 7 authoritative replans, 4 from unvalidated reports;
+- 3 direct-mutation states were later corrected;
+- those temporary states caused 22 moved starts / 48h15m aggregate start movement;
+- trusted-state path: 4 provisional impact calculations, 4 authoritative replans, 0 from unvalidated reports;
+- both paths reached the same final 11h30m handover after the same accepted facts were applied;
+- validated actual history remained fixed;
+- remaining duration remained a forecast assumption rather than historical fact;
 - emergent repair activated only after explicit scope approval;
 - reordered delivery of the same accepted events reproduced the same trusted-state and execution-plan hashes.
 
-**Result: the trusted-live-state hypothesis was not falsified by this bounded experiment.**
-
-This is evidence for the boundary, not a decision to event-source the whole application. The experiment remains isolated in `trusted_state_experiment.py`; the production native `Project` model has not been expanded into a generic field-event/workflow/provenance framework.
+**Result: not falsified.** This supports a trusted live project-state boundary, not event-sourcing the whole application.
 
 ## Objective-policy experiment — Aspiration-Bounded Recovery
 
-Targeted research then challenged the definition of **best plan**. The bounded hypothesis is that hard facts and protected commitments should be handled first, controlling completion should establish the best achievable finish `F*`, and an explicit policy tolerance may then admit slightly later plans before structural and temporal stability are compared.
+Targeted research then challenged the assumption that the mathematically earliest feasible finish should always define the authoritative recovery.
 
-The falsification experiment is runnable with:
+Run:
 
 ```bash
 python -m deterministic_scheduling_core.objective_policy_experiment
 ```
 
-It deliberately reuses the 33-possible-activity Work–Method planning case instead of creating a new architecture. An approved reference plan uses `SCAFFOLD / CRANE / NORMAL` and finishes at H37. A crane outage from H11–H16 then creates two materially different recovery choices while the protected H42 handoff remains achievable.
-
-The experiment enumerates all 8 authorised fixed-network recoveries as an oracle and compares them with one integrated CP-SAT model solved in explicit stages:
+The bounded policy stages are:
 
 ```text
 protected commitment lateness
@@ -191,60 +159,129 @@ absolute start movement
 canonical tie-break
 ```
 
-Observed result:
+The approved `SCAFFOLD / CRANE / NORMAL` plan finishes H37. A crane outage H11–H16 creates two recovery choices while H42 remains an achievable protected handoff.
 
-| Policy | Selected recovery | Finish | Method changes | Moved starts | Total start movement |
+| Policy | Selected recovery | Finish | Method changes | Moved starts | Start movement |
 |---|---|---:|---:|---:|---:|
 | `Δfinish = 0h` | SCAFFOLD / SEGMENTED / NORMAL | H41 | 1 | 11 | 44h |
 | `Δfinish = 1h` | SCAFFOLD / CRANE / NORMAL | H42 | 0 | 14 | 70h |
 
-Both results matched the exhaustive oracle. Repeating the `Δfinish = 1h` solve produced the same canonical decision, and every optimisation stage was proven `OPTIMAL` in the bounded case.
+Both matched exhaustive enumeration, every staged optimisation was proven `OPTIMAL`, and the repeated 1h solve returned the same canonical plan.
 
-The important result is the policy transition: **changing only `Δfinish` from 1h to 0h switches from the structurally stable approved method to the true fastest recovery.** The reason is inspectable: H41 is the fastest achievable finish; a 1h tolerance admits H42; within that envelope the current hierarchy protects approved execution structure before temporal movement.
+**Result: not falsified.** Explicit aspiration bounds can change the preferred recovery for inspectable reasons. The exact lower-order ordering is still provisional: in this fixture structural preservation produces more temporal movement, so the experiment does not prove structural stability should always outrank temporal stability.
 
-That last point remains deliberately provisional. In this fixture the structurally stable H42 plan actually moves more retained activity starts than the H41 method-changing plan. The experiment therefore demonstrates that the hierarchy is functioning as declared; it does **not** prove that structural stability should universally outrank temporal stability.
+## Replanning-propagation experiment — Adaptive Semantic Repair
 
-Two plausible weighted-score profiles also selected different plans, illustrating that a global weighted sum can hide the same management trade-off inside coefficients.
+The latest targeted research asked whether a local trusted-state change should cause full remaining-project optimisation, a permanently fixed local repair, or a local repair boundary that expands only through explicit project semantics.
 
-**Result: the aspiration-bounded objective-policy hypothesis was not falsified by this bounded experiment.**
+Run:
 
-This does not justify a permanent `PlanningPolicy` schema or a large general multi-objective framework yet. The experiment remains isolated in `objective_policy_experiment.py`.
+```bash
+python -m deterministic_scheduling_core.adaptive_repair_experiment
+```
+
+The bounded fixture contains:
+
+- 12 work packages;
+- 160 possible activities;
+- 120 activities in the approved fixed plan;
+- 4 flexible Work–Method packages / 16 authorised method combinations;
+- pooled MECH/ELEC/QA resources;
+- named crane `C04`;
+- two workface exclusion groups;
+- protected handoff H60.
+
+A single trusted outage makes `C04` unavailable H38–H43. The local WP-04 crane activity `P04A07`, approved H38–H41, is displaced to H43–H46. That overlaps remote `P09A07`, approved H44–H47, even though WP-04 and WP-09 have no precedence relationship.
+
+Three strategies were run against the same changed state and policy:
+
+| Strategy | Result | Finish | WP-09 method | Free approved activities | Free method decisions | Solver calls |
+|---|---|---:|---|---:|---:|---:|
+| A — full remaining-project optimisation | feasible | H60 | SEGMENTED | 120 | 4 | 16 |
+| B — fixed local repair | infeasible | — | fixed CRANE | 5 | 0 | 1 |
+| C — adaptive semantic repair | feasible | H60 | SEGMENTED | 14 | 1 | 4 |
+
+Full and adaptive produced the same policy vector: 1 method change, 4 materially moved activities, maximum 5h shift and 20h aggregate start movement.
+
+Adaptive expansion was explicit and deterministic:
+
+```text
+N0
+P04A07 shifts because C04 is unavailable
+↓
+P09A07 enters because its approved C04 occupancy overlaps the shifted interval
+↓
+N1
+P09A08/P09A09/P09A10 enter because they are fixed precedence successors
+↓
+N2
+complete WP-09 Work–Method decision enters because the approved crane method
+cannot clear the protected H60 handover and an authorised no-crane method exists
+↓
+WP-09 = SEGMENTED
+↓
+H60 handover preserved
+```
+
+A repeated adaptive run returned the same canonical result.
+
+**Result: not falsified.** In this bounded case, adaptive semantic repair found the same policy-consistent recovery as full optimisation while freeing 14 rather than 120 approved activities and 1 rather than 4 method decisions. The fixed local boundary could not recover.
+
+This supports the following replanning hypothesis:
+
+```text
+trusted state change
+        ↓
+small semantic repair neighbourhood
+        ↓
+fix unaffected approved decisions
+        ↓
+optimise + validate globally
+        ↓
+expand only through explicit boundary causes
+        ↓
+full remaining-project optimisation only when locality effectively breaks down
+```
+
+Neighbourhood selection belongs above the solver. Initial expansion semantics should remain limited to concepts PM-Software already understands: precedence, pooled/named resources, workface/exclusion, Work–Method structure and protected commitments.
+
+This is **not** a production decomposition algorithm, a general dependency framework, or evidence that 120 active activities represents professional-scale performance. Do not hard-code arbitrary percentage/radius thresholds from this experiment.
 
 ## Current research direction
 
-The strongest current architectural hypothesis is now:
+The cumulative architectural hypothesis is now:
 
 - executable resource/constraint-feasible schedules should be authoritative rather than CPM dates followed by post-hoc levelling;
-- CPM/temporal analysis remains useful as an analytical layer;
+- CPM/temporal analysis remains useful as an analytical service, not necessarily the authoritative scheduler;
 - activities remain the language of execution;
 - bounded work packages and finite authorised execution methods may become the language of planning choice;
 - the scheduler may jointly choose authorised method, resource/mode, sequence and timing;
-- the live object should be **trusted project state**, with the schedule derived from accepted facts and assumptions rather than directly mutated by field reports;
-- hard facts and genuinely non-negotiable conditions sit outside the objective function;
-- protected commitments and controlling completion can be followed by explicit aspiration bounds before lower-order stability concerns are optimised;
-- structural disruption and temporal movement are different dimensions, but their exact ordering remains a hypothesis rather than settled policy;
-- CP-SAT remains the primary experimental optimisation backend for now, but it is not the native architecture;
-- human/project rules remain authoritative over required work, admissible methods, validation authority, real constraints, protected commitments and objective policy.
+- the live object should be **trusted project state**, with schedules derived from accepted facts/assumptions rather than directly mutated by field reports;
+- hard facts and genuinely non-negotiable conditions sit outside tradeable objective penalties;
+- protected commitments and controlling completion can be followed by explicit aspiration bounds before lower-order stability concerns;
+- structural and temporal disruption are distinct dimensions and their exact ordering remains open to evidence;
+- routine replanning should provisionally preserve approved decisions and expand an optimisation neighbourhood through explicit causal constraints only when needed;
+- full remaining-project optimisation remains an escalation and experimental quality benchmark;
+- CP-SAT remains the primary experimental backend for now, but it is not the native architecture;
+- human/project rules remain authoritative over required work, admissible methods, validation authority, constraints, protected commitments and objective policy.
 
-Do not promote these hypotheses into large schemas or product frameworks merely because bounded experiments worked.
+Do not promote these hypotheses into large schemas or frameworks merely because bounded experiments worked.
 
-High-value unresolved questions now include **scalable decomposition/incremental repair** for large professional schedules, the eventual analytical role of **CPM/float/criticality** after integrated scheduling, and later **calendar/state semantics** if they become rich enough to challenge CP-SAT materially. The exact lower-order objective hierarchy also remains open to further evidence.
+High-value unresolved questions now include the analytical role of **CPM/float/criticality** after integrated resource/method scheduling, richer **calendar/state scheduling semantics** if real capability requires them, and later genuinely larger-scale performance/decomposition evidence. The exact lower-order objective hierarchy also remains open.
 
-Do not start a broad compatibility programme, production-hardening phase, P6/MSP clone, full event-sourcing architecture, generic objective-policy framework or large UI framework in place of those core experiments.
+Do not substitute broad compatibility work, production hardening, a P6/MSP clone, full event sourcing, a generic objective-policy framework, a generic decomposition framework or a large UI framework for the next focused experiment.
 
-## Microsoft Project XML remains an adapter
+## External-format adapter boundary
 
-The bounded adapter lives under:
+The bounded MSPDI adapter lives under:
 
 ```text
 src/deterministic_scheduling_core/adapters/msproject_xml.py
 ```
 
-It imports only the narrow MSPDI subset needed for the validated real decision-area experiment and translates that source into the same `Project` model used by native projects.
+It imports only the subset needed by the validated real decision-area experiment and translates that source into the native `Project` model. Do not expand compatibility merely because more external fields exist.
 
-Do not expand MSPDI compatibility merely because more Microsoft Project fields exist. Add adapter behaviour only when a useful product experiment needs it.
-
-## Earlier runnable experiments
+## Runnable experiments
 
 ```bash
 python -m deterministic_scheduling_core run-gate1-experiment
@@ -257,19 +294,18 @@ python -m deterministic_scheduling_core.prototype2_native /tmp/pm-native-project
 python -m deterministic_scheduling_core.work_method_experiment
 python -m deterministic_scheduling_core.trusted_state_experiment
 python -m deterministic_scheduling_core.objective_policy_experiment
+python -m deterministic_scheduling_core.adaptive_repair_experiment
 ```
 
 ## Parallel STO research
 
-`dezrobbo1/STO-Scheduler-Tracker-Research` remains a separate STO-focused scheduling and live-execution experiment. It is not subordinate to PM-Software.
-
-The repositories should exchange useful ideas, tests and code deliberately. A future merge or shared package should happen only if working experiments show that it simplifies development or improves the product.
+`dezrobbo1/STO-Scheduler-Tracker-Research` remains a separate STO-focused scheduling and live-execution experiment. It is not subordinate to PM-Software. Reuse useful ideas/tests/code deliberately; merge only if experiments later show that doing so simplifies development or improves the product.
 
 ## Existing research and history
 
 Earlier Phase 0 material, schemas, registers, semantic work and native-validation work remain research references. They are not current acceptance criteria.
 
-The large historical Microsoft Project machinery under `native/`, `native-validation/` and archived documentation is **not an active architecture foundation**. Do not extend it unless a future experiment explicitly reopens that research.
+The large historical Microsoft Project machinery under `native/`, `native-validation/` and archived documentation is not an active architecture foundation. Do not extend it unless a future experiment explicitly reopens that research.
 
 ## Development setup
 
@@ -290,17 +326,19 @@ python -m unittest \
   tests.test_native_project_core \
   tests.test_work_method_experiment \
   tests.test_trusted_state_experiment \
-  tests.test_objective_policy_experiment -v
+  tests.test_objective_policy_experiment \
+  tests.test_adaptive_repair_experiment -v
 ```
 
 ## Active repository map
 
-- `src/deterministic_scheduling_core/project/` — PM-Software-owned current native activity project model and JSON persistence.
-- `src/deterministic_scheduling_core/scheduling/` — current scheduler/optimiser consuming only that native model.
-- `src/deterministic_scheduling_core/adapters/` — optional external-system translators such as bounded MSPDI import.
-- `src/deterministic_scheduling_core/work_method_experiment.py` — isolated falsification experiment for bounded structural planning choice.
-- `src/deterministic_scheduling_core/trusted_state_experiment.py` — isolated falsification experiment for field event → validation → trusted state → replan.
-- `src/deterministic_scheduling_core/objective_policy_experiment.py` — isolated falsification experiment for aspiration-bounded recovery policy.
+- `src/deterministic_scheduling_core/project/` — current PM-Software-owned native activity project model and JSON persistence.
+- `src/deterministic_scheduling_core/scheduling/` — current scheduler/optimiser consuming only the native model.
+- `src/deterministic_scheduling_core/adapters/` — optional external-system translators.
+- `src/deterministic_scheduling_core/work_method_experiment.py` — bounded structural-planning-choice experiment.
+- `src/deterministic_scheduling_core/trusted_state_experiment.py` — field event → validation → trusted state → replan experiment.
+- `src/deterministic_scheduling_core/objective_policy_experiment.py` — aspiration-bounded recovery experiment.
+- `src/deterministic_scheduling_core/adaptive_repair_experiment.py` — full vs fixed-local vs adaptive-semantic replanning experiment.
 - `src/deterministic_scheduling_core/prototype2_native.py` — first end-to-end native project workflow.
 - `tests/` — focused reference and prototype tests.
 - `docs/` and `docs/archive/` — current direction and historical research.
