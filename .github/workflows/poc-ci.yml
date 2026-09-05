@@ -34,6 +34,7 @@ jobs:
           tests.test_work_method_experiment
           tests.test_trusted_state_experiment
           tests.test_objective_policy_experiment
+          tests.test_adaptive_repair_experiment
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment
@@ -53,5 +54,7 @@ jobs:
         run: python -m deterministic_scheduling_core.trusted_state_experiment
       - name: Run objective-policy falsification experiment
         run: python -m deterministic_scheduling_core.objective_policy_experiment
+      - name: Run adaptive semantic repair falsification experiment
+        run: python -m deterministic_scheduling_core.adaptive_repair_experiment
       - name: Compile active package
         run: python -m compileall -q src
