@@ -16,12 +16,6 @@ No final product architecture is assumed. Optimisation, constraint programming, 
 
 **Research → Idea → Prototype → Test → Learn → Next experiment**
 
-Research and ideas are valuable when they lead toward something testable. A failed experiment is useful progress when it tells us an approach does not work or what to try next.
-
-### Forward Progress Principle
-
-Everything we do should either increase working capability, test a promising idea, answer an important question that changes what we build next, or remove a real blocker to one of those things.
-
 Before substantial work, ask:
 
 > **What will we be able to do, demonstrate or know after this that we cannot do or know now?**
@@ -52,80 +46,69 @@ Can the core respond sensibly when execution changes the plan, preserving unaffe
 
 Does the approach remain useful outside synthetic examples?
 
-Gate 5 passes only when representative real or anonymised project information has been tested **and an experienced practitioner judges the result useful enough to continue development**.
-
-### Later — Productisation
-
-Production hardening, comprehensive security, broad compatibility, deployment, large-scale performance guarantees and exhaustive validation belong later, if the experiments justify building a product.
+Gate 5 passes when representative real or anonymised project information has been tested and an experienced practitioner judges the result useful enough to continue development.
 
 ## Current position
 
-**Gate 1 through Gate 4 are provisionally demonstrated by working experiments. Gate 5 now has a successful technical trial but remains pending practitioner judgement.**
+**Gate 1 through Gate 5 are provisionally demonstrated.**
 
-### Gate 1
+Gate 1 showed that the core can produce a feasible resource-constrained schedule and beat a fixed-priority baseline.
+
+Gate 2 showed that the locally shortest activity mode can be the wrong whole-project decision when a scarce specialist is needed elsewhere.
+
+Gate 3 showed that a mathematically shorter resource-feasible schedule can still be operationally wrong when permit/access and workface restrictions are missing.
+
+Gate 4 showed that a small execution disturbance can be propagated through the plan while preserving work that does not need to move and explaining the downstream consequence.
+
+Gate 5 used an anonymised derivative of a real shutdown schedule slice. The source contained a declared resource overload. The core removed it while preserving the `Stage 2 Detag Complete` handoff and moving only two activities. The experienced practitioner accepted that result because preserving the Stage 2 detag handoff means the controlling downstream completion is not moved in this schedule context.
+
+These remain proof-of-concept results, not production scheduling claims.
+
+## Prototype 1 — Real Schedule Decision Workspace
+
+The next step is to integrate the useful Gate 1–5 ideas into the first runnable workspace against a real Microsoft Project XML file.
+
+The first Prototype 1 capability is deliberately narrow:
+
+```bash
+python -m deterministic_scheduling_core.prototype1_workspace /path/to/project.xml
+```
+
+By default it reads the real decision area:
+
+- summary scope: `Remove Calciner Isolation Blanks`;
+- controlling handoff: `Stage 2 Detag Complete`.
+
+Prototype 1 currently:
+
+1. reads a real MSPDI XML file directly;
+2. finds the selected summary-task decision area and its leaf activities;
+3. reads source starts/finishes, zero-lag FS links, resource assignments and declared `MaxUnits` capacities;
+4. treats source starts as not-before boundaries so unmodelled external/calendar readiness is not silently pulled earlier;
+5. detects declared resource-capacity conflicts in the source plan;
+6. calculates a capacity-feasible stable revision with CP-SAT;
+7. protects the controlling handoff first, then minimises unnecessary later-start movement;
+8. prints the real resource names, real activity names, proposed movements, handoff impact and project-completion implication.
+
+For the validated Calciner case, the expected useful result is the already accepted decision:
+
+- detect the `WGP-NTP` overload around the Stage 2 detag work;
+- move `Remove Blank LFS Chute` later;
+- move `Swing ESP to 50H Blank Open` later as required;
+- keep `Stage 2 Detag Complete` unchanged;
+- therefore leave the downstream/project completion unchanged in this validated case.
+
+This is **not** a general Microsoft Project importer or compatibility programme. It intentionally supports only what this first real decision workspace needs. Unsupported relationship/calendar behaviour should remain visible rather than triggering a broad architecture exercise.
+
+## Earlier runnable experiments
 
 ```bash
 python -m deterministic_scheduling_core run-gate1-experiment
-```
-
-An 18-activity resource-constrained sample produces a 48-hour fixed-priority baseline and a 38-hour CP-SAT schedule. The core advances the long branch so non-resource work can overlap other work, reducing makespan by 10 hours without breaking precedence or double-booking constrained resources.
-
-### Gate 2
-
-```bash
 python -m deterministic_scheduling_core.gate2_experiment
-```
-
-The same repair can use a locally faster specialist-assisted mode or a slower normal mode. In one context acceleration is correct. In another, the optimiser deliberately selects the slower activity mode because preserving the scarce specialist lets the whole project finish three hours earlier.
-
-### Gate 3
-
-```bash
 python -m deterministic_scheduling_core.gate3_experiment
-```
-
-A 16-hour resource-feasible optimum becomes non-executable when an access/permit window and workface exclusion are considered. Adding only those two operational facts produces a sensible executable 17-hour plan.
-
-### Gate 4
-
-```bash
 python -m deterministic_scheduling_core.gate4_experiment
-```
-
-A one-hour named-crane outage is introduced after execution has started. The core moves the directly affected lift and its downstream chain by one hour, preserves unrelated future work, and explains the direct and propagated consequences.
-
-### Gate 5 technical trial
-
-```bash
 python -m deterministic_scheduling_core.gate5_experiment
 ```
-
-The Gate 5 fixture is an **anonymised 19-node derivative of a real shutdown schedule slice**. The raw Microsoft Project XML and identifying task/resource names are not committed to this public repository.
-
-The source starts are treated as not-before boundaries so calendar and external-readiness facts that are outside the bounded slice are not silently pulled earlier.
-
-The published slice contains a declared resource-capacity overload:
-
-- `RES-B`: demand 3 against capacity 2 from M240 to M360.
-
-The stable revision removes that overload while preserving the existing handoff at M600. Only two activities move:
-
-- `R12`: M240 → M420 (+180 minutes);
-- `R11`: M480 → M540 (+60 minutes).
-
-Total later-start movement is 240 minutes. All other source coordinates remain unchanged, precedence is respected, and the handoff does not move.
-
-This demonstrates that the core can process a bounded piece of less-curated real schedule structure and produce a technically feasible revision. **It does not by itself pass Gate 5.** The proposed movement still requires practitioner judgement about whether it makes operational sense.
-
-## Gate 5 decision point
-
-The next step is not another synthetic experiment or another hardening cycle.
-
-An experienced practitioner should review the two proposed real-world movements in their original operational context and decide whether the result is sensible enough to continue.
-
-If the result is sensible, Gate 5 can be provisionally passed and the next development phase should be chosen from what we learned rather than automatically starting production hardening.
-
-If the result is not sensible, that is useful evidence: identify the missing operational fact, add the smallest representation needed for it, and rerun the real-world experiment.
 
 ## Parallel STO research
 
@@ -153,18 +136,13 @@ python -m unittest \
   tests.test_gate2_experiment \
   tests.test_gate3_experiment \
   tests.test_gate4_experiment \
-  tests.test_gate5_experiment -v
-python -m deterministic_scheduling_core run-gate1-experiment
-python -m deterministic_scheduling_core.gate2_experiment
-python -m deterministic_scheduling_core.gate3_experiment
-python -m deterministic_scheduling_core.gate4_experiment
-python -m deterministic_scheduling_core.gate5_experiment
+  tests.test_gate5_experiment \
+  tests.test_prototype1_workspace -v
 ```
 
 ## Repository map
 
 - `src/deterministic_scheduling_core/` — current reusable calculation and experimental code.
-- `benchmarks/semantic/` — existing small semantic cases.
 - `tests/` — focused reference and experiment tests.
 - `docs/` — current and historical research documentation.
 - `native-validation/` — paused Microsoft Project/P6 research material.
