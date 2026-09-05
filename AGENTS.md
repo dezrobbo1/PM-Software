@@ -1,12 +1,10 @@
 # PM-Software working mode
 
-This repository is an exploratory R&D project built around the **deterministic AI core** idea. Read the root `README.md` before substantial work; it defines the current mission and progress gates.
+This repository is an exploratory R&D project built around the **deterministic AI core** idea. Read the root `README.md` before substantial work; it defines the current mission and active prototype.
 
 ## Default working loop
 
 **Research → Idea → Prototype → Test → Learn → Next experiment**
-
-Research and new ideas are encouraged, including unconventional approaches. When an idea can be tested cheaply, prefer a small working experiment over extended theoretical preparation.
 
 Before substantial work, ask:
 
@@ -42,56 +40,62 @@ If the requested capability works and the focused tests needed to trust the expe
 
 Do not improve unrelated code while completing a capability task. Do not convert discovered technical debt into immediate scope. Do not redesign architecture unless the current design prevents the experiment from working or prevents the next useful experiment.
 
-When choosing between extending a working experiment and making the current implementation more complete or robust, prefer the next useful experiment unless the extra robustness is necessary to trust the result.
-
 ### POC code may be temporary
 
-Proof-of-concept code does not need to be the architecture we would ship.
-
-Throwaway scripts, hard-coded experimental data, narrow assumptions, small duplicated paths and intentionally limited implementations are acceptable when they are understandable and let us test an idea quickly.
+Proof-of-concept code does not need to be the architecture we would ship. Throwaway scripts, hard-coded experimental data, narrow assumptions, small duplicated paths and intentionally limited implementations are acceptable when they are understandable and let us test an idea quickly.
 
 Do not generalise experimental code solely to make it reusable. Generalise or refactor when repeated experiments demonstrate that doing so will make useful development faster or when the existing implementation is blocking progress.
 
-A limitation that is visible and understood is acceptable during R&D. The goal is to learn whether the idea works before investing in making it complete.
-
 ## Automated review policy
 
-Automated review, including Codex review, is **advisory during proof-of-concept development**. A review comment is not automatically a blocker and does not automatically expand the task.
+Automated review, including Codex review, is advisory during proof-of-concept development.
 
-For each finding, make one decision:
+Fix a finding immediately only if it makes the current experiment materially wrong, unusable, destructive, insecure in a realistic way, or prevents the next useful experiment. Defer maintainability, broader validation, compatibility, speculative edge-case and future-proofing work that does not affect the current learning.
 
-- **Fix now** only if it makes the current experiment materially wrong, unusable, destructive, insecure in a realistic way, or prevents the next useful experiment.
-- **Defer** if it is a maintainability improvement, broader validation request, compatibility concern, speculative edge case, production-hardening issue or future-proofing suggestion that does not affect the current experiment.
-- **Reject** if it conflicts with the current research goal or would add complexity without useful learning.
-
-Do not enter an automatic `review → fix everything → review again → harden → review again` loop.
-
-Normal rule: **one automated review pass per meaningful capability change**. After that pass, fix only findings that meet the "Fix now" test above. Do not request another automated review solely to obtain a clean review unless the fixes materially changed the capability or the user explicitly asks for another review cycle.
-
-A PR may be merged with deferred automated-review findings during proof-of-concept work when the implemented experiment works, the focused tests pass, and the deferred findings do not invalidate what the experiment is intended to teach us.
-
-Review quality is not measured by the number of findings resolved. Project progress is measured by capability and useful learning.
+Do not enter an automatic `review → fix everything → review again → harden → review again` loop. One automated review pass per meaningful capability change is normally enough.
 
 ## Product direction
 
-Do not treat Primavera P6 or Microsoft Project as specifications for this product. We are researching something new. Existing products may be studied, compared with, imported from or exported to later, but their semantics and architecture do not define ours.
+Do not treat Primavera P6 or Microsoft Project as specifications for this product. Existing products may be studied, compared with, imported from or exported to later, but their semantics and architecture do not define ours.
 
-Do not assume OR-Tools, CP-SAT, CPM, a particular AI model or the current canonical schema is the final architecture. They are tools and experiments unless later evidence makes them part of the product.
+Do not assume OR-Tools, CP-SAT, CPM, a particular AI model or the historical canonical schema is the final architecture. They are tools and experiments unless later evidence makes them part of the product.
 
-## Historical machinery
+## Native-model boundary — active rule
 
-Unless explicitly required by the current experiment, do not add or extend protocol versions, evidence registers, whole-repository manifests, native Microsoft Project/P6 automation, compatibility programmes, provenance frameworks, production hardening or speculative edge-case handling.
+The active product dependency direction is:
 
-The numbered Phase 0 documents, registers, native-validation material and archived workflows are historical research references. They do not block proof-of-concept development.
+```text
+external source -> adapter -> PM-Software native project model -> scheduler/core -> workspace
+```
+
+This is now a hard directional rule for active prototype work:
+
+- `project/` owns the product's native project concepts;
+- `scheduling/` consumes the native project model only;
+- `adapters/` translate external formats into the native model;
+- external-system types, field names and semantics must not leak into the scheduling engine merely for compatibility;
+- do not add a Microsoft Project or P6 field to the native model just because that field exists externally;
+- do not make the native workflow require MSPDI, MPP, XER or any other external scheduling format;
+- native projects must remain creatable, persistable, editable and schedulable without Microsoft Project or P6.
+
+If an adapter needs source-specific metadata for import/reporting, keep it in the adapter/import context unless a product experiment demonstrates that the concept belongs in the native model independently of that source system.
+
+## Historical Microsoft Project machinery
+
+Unless explicitly required by a new experiment, do not add or extend the historical `native/msproject`, `native-validation`, protocol, register, manifest or compatibility machinery.
+
+It is retained as research history and possible source material. It is not the architecture to build on.
+
+`prototype1_workspace.py` is a completed real-file bridge. It now routes MSPDI through the native model and scheduler. Do not turn it into a general Microsoft Project importer.
 
 ## Current position
 
-Gate 1 through Gate 5 are provisionally demonstrated. Gate 5 was accepted after the practitioner confirmed that preserving the Stage 2 Detag Complete handoff means the proposed resource-conflict resolution does not move the controlling downstream completion in that real schedule context.
+Gate 1 through Gate 5 are provisionally demonstrated.
 
-The project is now building **Prototype 1 — Real Schedule Decision Workspace**.
+Prototype 1 proved that a real MSPDI schedule could expose a real resource decision to the experimental core. That experiment is complete.
 
-Prototype 1 should take a real Microsoft Project MSPDI XML file, read one bounded decision area, identify an actual declared-resource conflict, calculate a stable capacity-feasible revision, and show the real activity names, movements, controlling handoff impact and project-completion implication.
+The project is now at **Prototype 2 — Native Project Core**.
 
-The first target is deliberately narrow: the real `Remove Calciner Isolation Blanks` decision area feeding `Stage 2 Detag Complete`.
+Prototype 2 must demonstrate that PM-Software can create, save, reopen, modify and schedule its own project without Microsoft Project or P6 in the workflow. The native scheduler should also remain capable of receiving the same model from an optional MSPDI adapter.
 
-Do not turn Prototype 1 into a broad MSPDI compatibility programme, a full Microsoft Project replacement, a production UI, a general import architecture or a hardening phase. Once one command against the real XML reproduces the sensible decision already validated by the practitioner, stop and choose the next useful prototype capability.
+Once that works and focused tests pass, stop. The likely next experiment is a small native project workspace/timeline built on this model, not an expansion of Microsoft Project compatibility.
