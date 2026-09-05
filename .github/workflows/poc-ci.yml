@@ -32,6 +32,7 @@ jobs:
           tests.test_prototype1_workspace
           tests.test_native_project_core
           tests.test_work_method_experiment
+          tests.test_trusted_state_experiment
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment
@@ -47,5 +48,7 @@ jobs:
         run: python -m deterministic_scheduling_core.prototype2_native /tmp/pm-native-project.json
       - name: Run Work-Method-Execution falsification experiment
         run: python -m deterministic_scheduling_core.work_method_experiment
+      - name: Run trusted live state falsification experiment
+        run: python -m deterministic_scheduling_core.trusted_state_experiment
       - name: Compile active package
         run: python -m compileall -q src
