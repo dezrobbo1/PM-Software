@@ -29,6 +29,7 @@ jobs:
           tests.test_gate3_experiment
           tests.test_gate4_experiment
           tests.test_gate5_experiment
+          tests.test_prototype1_workspace
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment

@@ -84,16 +84,14 @@ Unless explicitly required by the current experiment, do not add or extend proto
 
 The numbered Phase 0 documents, registers, native-validation material and archived workflows are historical research references. They do not block proof-of-concept development.
 
-## Current gate
+## Current position
 
-Gate 1 through Gate 4 are provisionally demonstrated by working experiments.
+Gate 1 through Gate 5 are provisionally demonstrated. Gate 5 was accepted after the practitioner confirmed that preserving the Stage 2 Detag Complete handoff means the proposed resource-conflict resolution does not move the controlling downstream completion in that real schedule context.
 
-Gate 5 now has a successful **technical** real-world trial using an anonymised 19-node derivative of a real shutdown schedule slice. The source slice contains a declared capacity overload; the core removes it while preserving the existing handoff and moves only two activities.
+The project is now building **Prototype 1 — Real Schedule Decision Workspace**.
 
-**Gate 5 is not yet passed.** Its remaining requirement is practitioner judgement about whether those movements are operationally sensible in the original context.
+Prototype 1 should take a real Microsoft Project MSPDI XML file, read one bounded decision area, identify an actual declared-resource conflict, calculate a stable capacity-feasible revision, and show the real activity names, movements, controlling handoff impact and project-completion implication.
 
-Do not turn this pause into a hardening phase. Do not add more synthetic cases, generic import architecture, compatibility work or broad refactoring while waiting for that judgement.
+The first target is deliberately narrow: the real `Remove Calciner Isolation Blanks` decision area feeding `Stage 2 Detag Complete`.
 
-If the practitioner accepts the result, record Gate 5 as provisionally passed and choose the next capability/research question from the evidence gathered so far.
-
-If the practitioner rejects the result, identify the specific missing operational fact that makes it wrong, add the smallest representation needed for that fact, and rerun the real-world experiment.
+Do not turn Prototype 1 into a broad MSPDI compatibility programme, a full Microsoft Project replacement, a production UI, a general import architecture or a hardening phase. Once one command against the real XML reproduces the sensible decision already validated by the practitioner, stop and choose the next useful prototype capability.
