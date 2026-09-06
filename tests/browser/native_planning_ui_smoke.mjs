@@ -108,7 +108,7 @@ async function exampleLifecycle(browser, url) {
 
   await page.getByRole("button", {name: "Accept selected report"}).click();
   await page.locator("#reports-list .badge").getByText("ACCEPTED", {exact: true}).waitFor();
-  assert((await page.locator("#approved-state").innerText()).includes("stale"), "accepted availability makes the old approval visibly stale");
+  assert((await page.locator("#approved-state").innerText()).toLowerCase().includes("stale"), "accepted availability makes the old approval visibly stale");
   await calculate(page);
   const recovery = await page.evaluate(() => window.__pmTrialState.workspace.proposal);
   assert(recovery.selected_modes.A03 === "NORMAL", "recovery changes A03 to NORMAL");
