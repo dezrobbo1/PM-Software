@@ -61,6 +61,8 @@ python -m deterministic_scheduling_core.native_planning_ui
 
 Open `http://127.0.0.1:8765`. The practitioner walkthrough, save/reopen workflow, test command and current limitations are in [`docs/native-planning-ui.md`](docs/native-planning-ui.md).
 
+The retained Chromium trial reproduced the native example (`A03` `SPECIALIST`, Day 1 15:00), kept an unaccepted M2 outage outside trusted inputs, then produced the existing `NORMAL` recovery at Day 2 08:30 with the Day 2 11:30 specialist alternative. A separate browser-entered project was physically feasible, selected its authorised `QUICK` mode and finished Day 1 15:00. These are interface/workflow observations over the existing engine, not new scheduling evidence.
+
 ## Planning-model experiment — Work–Method–Execution
 
 Targeted research challenged the assumption that a planner must completely select one activity network before the scheduling engine can reason about the project.

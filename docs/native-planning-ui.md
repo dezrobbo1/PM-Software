@@ -67,6 +67,19 @@ npm run browser:smoke
 
 The browser harness starts its own loopback Python service and exercises the original example, a duration edit, a second project entered through controls, invalid input, accepted infeasibility, downloads/reopens and both required desktop viewports. Set `PM_UI_EVIDENCE_DIR` to retain screenshots, trace, workspaces and the observed result log in a chosen directory. CI stores these as the `native-planning-ui-browser` artifact.
 
+The completed trial used Playwright with Headless Chrome 151.0.7922.34 on Linux x86_64 at 1366×900 and 1920×1080. Observed results were:
+
+- the original example selected `A03` `SPECIALIST`, finished Day 1 15:00, passed the exact physical check and drew two A03 segments across lunch;
+- reporting M2 unavailable on Day 1 10:00–17:00 changed neither the trusted-input hash nor approval until acceptance;
+- the accepted recovery selected `A03` `NORMAL`, finished Day 2 08:30 and retained the evaluated `SPECIALIST` alternative at Day 2 11:30;
+- changing A01 from one to two productive hours through the form was received by Python and moved the observed finish from Day 1 15:00 to Day 1 16:00; a subsequent edit disabled stale approval;
+- the independently entered project finished Day 1 15:00, chose `N06` `QUICK`, assigned parallel mechanical work to distinct M1/M2 resources and split pooled rigging across 11:00–12:00 and 12:30–13:30;
+- invalid cyclic input and accepted full-horizon M2 infeasibility remained visible without losing the previous approval or accepted report;
+- save/reopen retained approval history, accepted reports and pending-vs-approved distinctions without recalculation;
+- neither desktop viewport had page-level horizontal overflow, and no unexpected console error occurred. Chromium logged the expected failed-resource diagnostics for the deliberately exercised HTTP 400 and 422 responses.
+
+The exact retained evidence location and artifact inventory are in [`evidence/native-planning-ui/README.md`](../evidence/native-planning-ui/README.md).
+
 ## Current limitations
 
 This is a bounded practitioner trial, not a production application. It has an in-memory single-process session store, local actor strings rather than authentication, repeated daily calendars only, capacity-one physical resources, finish-to-start precedence, at most 16 authorised mode combinations, and 8–15 activities in the browser profile. It has no drag scheduling, partial progress/actual history, structural Work–Method subgraphs, adaptive-neighbourhood integration, external schedule import/export, database, collaboration, permissions, cloud deployment, mobile/touch validation or general workforce/calendar language.

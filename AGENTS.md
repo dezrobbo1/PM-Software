@@ -255,6 +255,10 @@ Active rules for follow-on work:
 
 The experiment is deliberately isolated in `src/deterministic_scheduling_core/resource_assignment_experiment.py`.
 
+### Native planning trial interface
+
+The bounded loopback browser trial demonstrated that a planner can edit an 8–15 activity native project, calculate and inspect productive segments and physical assignments, separately report/accept availability, compare and approve a recovery, and download/reopen the complete workspace without editing Python or JSON. Chromium replay preserved the original example results (`SPECIALIST` at Day 1 15:00; accepted M2 outage recovery using `NORMAL` at Day 2 08:30) and solved a separately entered project at Day 1 15:00 with distinct mechanics and a lunch-suspended pooled-rigging activity. This is usability/integration evidence only: it does not expand the native schema, scheduler, resource architecture or production-readiness claim. The UI remains a local in-memory trial over the existing workflow.
+
 ## Current position
 
 Gate 1 through Gate 5 are provisionally demonstrated.
