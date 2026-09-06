@@ -15,7 +15,7 @@ from ortools.sat.python import cp_model
 
 from deterministic_scheduling_core.errors import SchedulingError
 from deterministic_scheduling_core.project.planning_workspace import (
-    POLICY, Workspace, digest, now, state_hash, trusted_input, validate,
+    POLICY, SCHEMA, Workspace, digest, now, state_hash, trusted_input, validate,
 )
 from deterministic_scheduling_core import resource_assignment_experiment as ra
 from deterministic_scheduling_core.working_time_experiment import SUSPENDABLE, WorkCalendar
@@ -205,6 +205,15 @@ def validate_plan(workspace: Workspace, plan: dict) -> None:
     for entry in plan["entries"]:
         periods = tuple(tuple(p) for p in entry["periods"])
         activity = case.activity_by_id[entry["activity_id"]]
+        if any(type(tick) is not int for tick in (entry["start"], entry["finish"], *(tick for period in periods for tick in period))):
+            raise ValueError("execution times must be integer 30-minute ticks")
+        assignments = entry["assignments"]
+        if sorted(slot for slot, _ in assignments) != sorted(r.id for r in activity.requirements):
+            raise ValueError("assignments must cover each requirement slot exactly")
+        submitted = dict(assignments)
+        for requirement in activity.requirements:
+            if submitted[requirement.id] is None and not (plan["pooled_riggers"] and requirement.pool_ids == ("RIGGER",) and _can_pool(case, True)):
+                raise ValueError("only interchangeable RIGGER slots may be deferred")
         if entry["start"] < activity.not_before or entry["finish"] > case.horizon:
             raise ValueError("plan lies outside native time boundaries")
         if periods and (entry["start"] != periods[0][0] or entry["finish"] != periods[-1][1]):
@@ -213,6 +222,10 @@ def validate_plan(workspace: Workspace, plan: dict) -> None:
             raise ValueError("milestone has nonzero elapsed span")
         if any(start >= end for start, end in periods) or any(a[1] > b[0] for a, b in zip(periods, periods[1:])):
             raise ValueError("invalid execution periods")
+        eligible = ra._eligible_execution_slots(case, activity, "C" if plan["pooled_riggers"] else "B",
+                                                tuple(submitted[r.id] for r in activity.requirements))
+        if periods != ra._periods_from_start(entry["start"], activity.processing_ticks, eligible, activity.continuity, case.horizon):
+            raise ValueError("execution periods disagree with productive work and permitted calendar suspension")
         entries.append(ra.ScheduledEntry(entry["activity_id"], entry["start"], entry["finish"], periods,
                                         tuple(tuple(a) for a in entry["assignments"])))
     check = ra.check_fixed_schedule(case, tuple(entries))
@@ -220,6 +233,65 @@ def validate_plan(workspace: Workspace, plan: dict) -> None:
         raise ValueError(f"proposal is not physically assignable: {check.reason}")
     if plan["project_finish"] != next(e.finish for e in entries if e.activity_id == case.objective_activity_id):
         raise ValueError("controlling finish disagrees with execution")
+
+
+def validate_stored_plans(workspace: Workspace) -> None:
+    """Validate persisted output against its own inputs, never optimise or rebase.
+
+    Integrity is independent of whether current inputs still match. Approval
+    provenance is retained; the existing hash deliberately excludes its metadata.
+    """
+    if not isinstance(workspace["plan_history"], list):
+        raise ValueError("stored plan_history must be a list")
+    records = [("approved_plan", workspace["approved_plan"]), ("proposal", workspace["proposal"])]
+    records.extend((f"plan_history[{index}]", plan) for index, plan in enumerate(workspace["plan_history"]))
+    for label, plan in records:
+        if plan is None and label in {"approved_plan", "proposal"}:
+            continue
+        try:
+            if not isinstance(plan, dict):
+                raise ValueError("plan must be an object")
+            for key, kind in {"source_snapshot": dict, "source_state_hash": str, "plan_hash": str,
+                              "selected_modes": dict, "entries": list, "alternatives": list,
+                              "allocation_witness": list, "objective": list, "solver": dict,
+                              "physical_status": str, "pooled_riggers": bool}.items():
+                if not isinstance(plan[key], kind):
+                    raise ValueError(f"{key} has an invalid shape")
+            snapshot = plan["source_snapshot"]
+            historical = {"schema": SCHEMA, "project": snapshot["project"], "reports": snapshot["accepted_reports"],
+                          "approved_plan": None, "proposal": None, "plan_history": []}
+            validate_plan(historical, plan)
+            if plan["policy"] != POLICY or not plan["objective"] or plan["objective"][0] != plan["project_finish"]:
+                raise ValueError("policy or objective finish disagrees with the stored plan")
+            if plan["physical_status"] != ra.EXACT_FEASIBLE:
+                raise ValueError("physical status disagrees with the successful physical check")
+            # Validate the displayed deferred-allocation witness as submitted too.
+            witnessed = deepcopy(plan)
+            witness = {(a, slot): resource for a, slot, resource in plan["allocation_witness"]}
+            expected = {(e["activity_id"], slot) for e in plan["entries"] for slot, _ in e["assignments"]}
+            if set(witness) != expected or len(witness) != len(plan["allocation_witness"]):
+                raise ValueError("allocation witness must cover every slot exactly")
+            for entry in witnessed["entries"]:
+                for assignment in entry["assignments"]:
+                    resource = witness[(entry["activity_id"], assignment[0])]
+                    if resource is None or assignment[1] not in (None, resource):
+                        raise ValueError("allocation witness contradicts a named assignment")
+                    assignment[1] = resource
+            witness_entries = tuple(ra.ScheduledEntry(e["activity_id"], e["start"], e["finish"],
+                                    tuple(tuple(p) for p in e["periods"]), tuple(tuple(a) for a in e["assignments"]))
+                                    for e in witnessed["entries"])
+            witness_check = ra.check_fixed_schedule(_case(historical, plan["selected_modes"]), witness_entries)
+            if not witness_check.physically_assignable:
+                raise ValueError(f"invalid allocation witness: {witness_check.reason}")
+            for alternative in plan["alternatives"]:
+                if not isinstance(alternative["modes"], dict) or alternative["status"] not in {"OPTIMAL", "INFEASIBLE"}:
+                    raise ValueError("invalid evaluated alternative")
+                if alternative["status"] == "OPTIMAL" and (not isinstance(alternative["objective"], list) or not alternative["objective"] or type(alternative["objective"][0]) is not int):
+                    raise ValueError("invalid alternative objective")
+            if label != "proposal" and (not isinstance(plan["approved_by"], str) or not plan["approved_by"].strip() or not isinstance(plan["approved_at"], str) or not plan["approved_at"]):
+                raise ValueError("approval actor and timestamp are required")
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"stored {label}: {exc}") from exc
 
 
 def approve(workspace: Workspace, actor: str) -> None:

@@ -101,7 +101,9 @@ jobs:
       - name: Run real-browser native planning workflow
         env:
           PM_UI_EVIDENCE_DIR: /tmp/native-planning-ui-browser
-        run: npm run browser:smoke
+        run: |
+          node --test tests/browser/native_planning_ui_draft.test.mjs
+          npm run browser:smoke
       - name: Save browser screenshots, trace and workspaces
         if: always()
         uses: actions/upload-artifact@v4

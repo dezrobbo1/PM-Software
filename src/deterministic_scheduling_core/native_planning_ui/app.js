@@ -5,7 +5,10 @@ let draft = null;
 let selectedActivityId = null;
 let displayedPlanKind = "proposal";
 let draftDirty = false;
+let draftRevision = null;
+let draftConflict = false;
 let busy = false;
+let invalidating = false;
 let pendingInvalidation = Promise.resolve();
 
 const $ = (selector) => document.querySelector(selector);
@@ -102,6 +105,8 @@ async function request(path, payload = {}) {
     throw new Error(`The local service returned HTTP ${response.status} without a JSON response.`);
   }
   if (!response.ok) {
+    if (response.status === 409) draftConflict = true;
+    else if (data.state && JSON.stringify(data.state.workspace.project) === JSON.stringify(current.workspace.project)) draftRevision = data.state.revision;
     if (data.state) adoptState(data.state, false);
     throw new Error(data.error || `Request failed with HTTP ${response.status}.`);
   }
@@ -113,12 +118,19 @@ function adoptState(state, replaceDraft) {
   if (replaceDraft || !draft) {
     draft = clone(state.workspace.project);
     draftDirty = false;
+    draftRevision = state.revision;
+    draftConflict = false;
     selectedActivityId = draft.activities[0]?.id ?? null;
+  } else if (draftRevision !== state.revision) {
+    draftConflict = true;
   }
   if (state.workspace.proposal) displayedPlanKind = "proposal";
   else if (state.workspace.approved_plan) displayedPlanKind = "approved";
   window.__pmTrialState = clone(state);
-  render();
+  if (replaceDraft || !draft) render();
+  else {
+    renderStatus(); renderWorkflow(); renderResults(); renderHistory(); syncActions();
+  }
 }
 
 function setBusy(value) {
@@ -128,10 +140,19 @@ function setBusy(value) {
 }
 
 async function perform(path, payload, message, replaceDraft = false) {
+  await pendingInvalidation;
+  if (draftConflict) {
+    const error = new Error("Draft conflict: reload current inputs explicitly before applying or saving. Your draft is retained.");
+    showMessage(error.message, "error");
+    throw error;
+  }
   clearMessage();
   setBusy(true);
   try {
     const data = await request(path, payload);
+    // This response belongs to our own serialized mutation, not an unrelated
+    // refresh. Project inputs remain the draft's base unless Apply replaces it.
+    draftRevision = data.state.revision;
     adoptState(data.state, replaceDraft);
     if (message) showMessage(message);
     return data;
@@ -151,12 +172,14 @@ function discardNeedsConfirmation() {
 function markDraftDirty() {
   if (!draftDirty) {
     draftDirty = true;
-    if (current.workspace.proposal) {
+    if (current.workspace.proposal && !draftConflict) {
+      invalidating = true;
+      const baseRevision = draftRevision;
       pendingInvalidation = (async () => {
-        setBusy(true);
         try {
-          const data = await request("/api/invalidate-proposal");
+          const data = await request("/api/invalidate-proposal", {revision: baseRevision});
           current = data.state;
+          draftRevision = data.state.revision;
           window.__pmTrialState = clone(current);
           showMessage("The prior proposal was invalidated. Apply the edited inputs, then calculate again.");
           renderStatus();
@@ -165,7 +188,8 @@ function markDraftDirty() {
         } catch (error) {
           showMessage(error.message, "error");
         } finally {
-          setBusy(false);
+          invalidating = false;
+          syncActions();
         }
       })();
     }
@@ -209,7 +233,8 @@ function renderStatus() {
   $("#proposal-state").className = `badge ${current.proposal_status.toLowerCase()}`;
   $("#trusted-hash").textContent = `Trusted input ${current.trusted_input_hash.slice(0, 12)}…`;
   $("#trusted-hash").title = current.trusted_input_hash;
-  $("#draft-state").textContent = draftDirty ? "Unapplied edits — calculation and approval paused" : "Inputs applied";
+  $("#draft-state").textContent = draftConflict ? "Draft conflict — draft retained; reload current inputs to continue" : draftDirty ? "Unapplied edits — calculation and approval paused" : "Inputs applied";
+  $("#reload-inputs").hidden = !draftConflict;
 }
 
 function renderProjectSettings() {
@@ -282,6 +307,7 @@ function renderActivityEditor() {
 
 function modeCard(activity, mode, modeIndex) {
   const continuity = mode.continuity || "SUSPENDABLE_AT_AVAILABILITY_GAPS";
+  const requirements = mode.requirements || [];
   return `<article class="mode-card" data-mode-card="${modeIndex}">
     <div class="mode-fields">
       <label>Mode ID<input data-mode-id="${modeIndex}" value="${escapeHtml(mode.id)}" maxlength="20"></label>
@@ -292,7 +318,7 @@ function modeCard(activity, mode, modeIndex) {
     </div>
     <div class="requirements">
       <div class="subheading-row"><strong>Simultaneous requirement slots</strong><button type="button" data-add-requirement="${modeIndex}">Add slot</button></div>
-      ${mode.requirements.length ? mode.requirements.map((requirement, requirementIndex) => requirementRow(requirement, modeIndex, requirementIndex)).join("") : '<p class="slot-note">No resource slot: this mode currently consumes productive time without a physical resource.</p>'}
+      ${requirements.length ? requirements.map((requirement, requirementIndex) => requirementRow(requirement, modeIndex, requirementIndex)).join("") : '<p class="slot-note">No resource slot: this mode currently consumes productive time without a physical resource.</p>'}
       <p class="slot-note">One row is one physical slot. Checked resources are alternatives for that slot. Multiple rows are required simultaneously.</p>
     </div>
   </article>`;
@@ -365,6 +391,7 @@ function addMode(activity) {
 
 function addRequirement(activity, modeIndex) {
   const mode = activity.modes[modeIndex];
+  mode.requirements ??= [];
   let suffix = mode.requirements.length + 1;
   while (mode.requirements.some((requirement) => requirement.id === `SLOT${suffix}`)) suffix += 1;
   const resource = draft.resources[0];
@@ -404,7 +431,7 @@ function renderResources() {
 
 function removeResource(index) {
   const id = draft.resources[index].id;
-  for (const activity of draft.activities) for (const mode of activity.modes) for (const requirement of mode.requirements) {
+  for (const activity of draft.activities) for (const mode of activity.modes) for (const requirement of mode.requirements || []) {
     if (requirement.eligible_resource_ids.includes(id)) return showMessage(`${id} is still eligible for ${activity.id}/${mode.id}/${requirement.id}. Remove that reference first.`, "error");
   }
   if (current.workspace.reports.some((report) => report.resource_id === id)) return showMessage(`${id} has retained availability reports and cannot be removed from this workspace.`, "error");
@@ -482,9 +509,14 @@ function renderComparison() {
     <div class="comparison-grid">
       <div class="change-box"><h4>Changed modes</h4>${listOrNone(comparison.changed_modes, (item) => `${escapeHtml(item.activity_id)}: ${escapeHtml(item.old ?? "not present")} → ${escapeHtml(item.new ?? "not present")}`)}</div>
       <div class="change-box"><h4>Changed assignments</h4>${listOrNone(comparison.changed_assignments, (item) => escapeHtml(item.activity_id))}</div>
-      <div class="change-box"><h4>Changed execution periods</h4>${listOrNone(comparison.changed_periods, (item) => escapeHtml(item.activity_id))}</div>
+      <div class="change-box"><h4>Changed timing / execution periods</h4>${listOrNone(comparison.changed_periods, (item) => `${escapeHtml(item.activity_id)}: ${timingChangeLabel(item.old_start, item.old_finish)} → ${timingChangeLabel(item.new_start, item.new_finish)}`)}</div>
       <div class="change-box"><h4>Unchanged activities</h4>${listOrNone(comparison.unchanged_activity_ids, (item) => escapeHtml(item))}</div>
     </div><p class="guidance">These are computed changes and evaluated alternatives, not a causal explanation.</p>`;
+}
+
+function timingChangeLabel(start, finish) {
+  if (start === null) return "not present";
+  return start === finish ? tickLabel(start) : `${tickLabel(start)}–${tickLabel(finish)}`;
 }
 
 function renderAlternatives() {
@@ -556,25 +588,32 @@ function syncActions() {
   $$(".project-panel input, .project-panel select, .project-panel button, .workflow-panel input, .workflow-panel select, .workflow-panel button").forEach((control) => {
     control.disabled = busy;
   });
-  $("#apply-project").disabled = busy || !draftDirty;
-  $("#calculate").disabled = busy || draftDirty;
-  $("#approve").disabled = busy || draftDirty || current.proposal_status !== "CURRENT" || displayedPlanKind !== "proposal";
-  $("#load-example").disabled = busy;
-  $("#new-project").disabled = busy;
-  $("#save-workspace").disabled = busy;
-  $("#open-file").disabled = busy;
-  $$('[data-accept-report]').forEach((button) => { button.disabled = busy; });
+  const blocked = busy || invalidating || draftConflict;
+  $("#apply-project").disabled = blocked || !draftDirty;
+  $("#calculate").disabled = blocked || draftDirty;
+  $("#approve").disabled = blocked || draftDirty || current.proposal_status !== "CURRENT" || displayedPlanKind !== "proposal";
+  $("#load-example").disabled = blocked;
+  $("#new-project").disabled = blocked;
+  $("#save-workspace").disabled = blocked;
+  $("#open-file").disabled = blocked;
+  $("#reload-inputs").disabled = busy || invalidating;
+  $$('.workflow-panel button').forEach((button) => { if (button.id !== "calculate" && button.id !== "approve") button.disabled = blocked; });
 }
 
 async function applyDraft(message = "Trusted project inputs applied. Calculate a new proposal.") {
   await pendingInvalidation;
-  const data = await perform("/api/project", {project: draft}, message, true);
+  const data = await perform("/api/project", {project: draft, revision: draftRevision}, message, true);
   return data;
 }
 
 $("#apply-project").addEventListener("click", async () => {
   try { await applyDraft(); }
   catch (_error) { /* last valid state and visible draft remain intact */ }
+});
+
+$("#reload-inputs").addEventListener("click", async () => {
+  if (!window.confirm("Discard this tab's retained draft and reload the current server inputs? Copy any unsent edits you want to keep first.")) return;
+  await start();
 });
 
 $("#calculate").addEventListener("click", async () => {

@@ -26,7 +26,7 @@ from deterministic_scheduling_core.project.planning_workspace import (
     trusted_input,
     validate,
 )
-from deterministic_scheduling_core.scheduling.planning_workspace import approve, propose
+from deterministic_scheduling_core.scheduling.planning_workspace import approve, propose, validate_stored_plans
 
 MAX_BODY_BYTES = 2 * 1024 * 1024
 ASSET_DIR = Path(__file__).parent
@@ -52,7 +52,7 @@ def _comparison(workspace: Workspace) -> dict[str, Any] | None:
         old_entry, new_entry = old_entries.get(activity_id), new_entries.get(activity_id)
         mode_changed = old["selected_modes"].get(activity_id) != new["selected_modes"].get(activity_id)
         assignment_changed = old_entry != new_entry and (old_entry is None or new_entry is None or old_entry["assignments"] != new_entry["assignments"])
-        period_changed = old_entry != new_entry and (old_entry is None or new_entry is None or old_entry["periods"] != new_entry["periods"])
+        period_changed = old_entry != new_entry and (old_entry is None or new_entry is None or any(old_entry[key] != new_entry[key] for key in ("start", "finish", "periods")))
         if mode_changed:
             changed_modes.append({"activity_id": activity_id, "old": old["selected_modes"].get(activity_id), "new": new["selected_modes"].get(activity_id)})
         if assignment_changed:
@@ -66,6 +66,10 @@ def _comparison(workspace: Workspace) -> dict[str, Any] | None:
                 "activity_id": activity_id,
                 "old": old_entry["periods"] if old_entry else None,
                 "new": new_entry["periods"] if new_entry else None,
+                "old_start": old_entry["start"] if old_entry else None,
+                "old_finish": old_entry["finish"] if old_entry else None,
+                "new_start": new_entry["start"] if new_entry else None,
+                "new_finish": new_entry["finish"] if new_entry else None,
             })
         if old_entry is not None and new_entry is not None and not mode_changed and not assignment_changed and not period_changed:
             unchanged.append(activity_id)
@@ -168,13 +172,32 @@ class TrialHandler(BaseHTTPRequestHandler):
         self._json(value, status, session_id)
 
     def _safe_request(self) -> bool:
-        host = self.headers.get("Host", "").split(":", 1)[0].strip("[]")
-        if host not in {"127.0.0.1", "localhost"}:
-            self._error("this trial server accepts loopback requests only", HTTPStatus.FORBIDDEN)
+        # This service is plain HTTP on IPv4 loopback. Origin-less JSON clients
+        # are allowed, but supplied browser origins must match this exact Host.
+        host = self.headers.get("Host", "")
+        allowed_hosts = {f"{name}:{self.server.server_port}" for name in ("127.0.0.1", "localhost")}
+        if self.server.server_port == 80:
+            allowed_hosts.update({"127.0.0.1", "localhost"})
+        if len(self.headers.get_all("Host", [])) != 1 or host not in allowed_hosts:
+            self._error("Host must identify this loopback service and port", HTTPStatus.FORBIDDEN)
             return False
         origin = self.headers.get("Origin")
-        if origin and urlsplit(origin).hostname not in {"127.0.0.1", "localhost"}:
-            self._error("cross-origin requests are not accepted", HTTPStatus.FORBIDDEN)
+        if origin is not None:
+            try:
+                parsed = urlsplit(origin)
+                serving = urlsplit("http://" + host)
+                valid = (len(self.headers.get_all("Origin", [])) == 1
+                         and origin == f"{parsed.scheme}://{parsed.netloc}"
+                         and parsed.scheme == "http" and parsed.username is None and parsed.password is None
+                         and parsed.hostname == serving.hostname
+                         and (parsed.port or 80) == self.server.server_port)
+            except ValueError:
+                valid = False
+            if not valid:
+                self._error("Origin must match this service's scheme, hostname and port", HTTPStatus.FORBIDDEN)
+                return False
+        if self.command == "POST" and self.headers.get_content_type() != "application/json":
+            self._error("JSON mutations require Content-Type application/json", HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
             return False
         return True
 
@@ -265,8 +288,12 @@ class TrialHandler(BaseHTTPRequestHandler):
             session.source = "New unsaved project"
         elif path == "/api/open":
             workspace = deepcopy(body["workspace"])
-            validate(workspace)
-            _validate_trial_size(workspace)
+            try:
+                validate(workspace)
+                _validate_trial_size(workspace)
+                validate_stored_plans(workspace)
+            except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
+                raise ValueError(f"Cannot open stored workspace: {exc}") from exc
             session.workspace = workspace
             session.source = str(body.get("filename") or "Opened workspace")[:120]
             dirty = False

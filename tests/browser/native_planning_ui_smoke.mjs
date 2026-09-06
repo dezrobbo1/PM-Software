@@ -2,6 +2,7 @@ import {spawn} from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import {correctionRegressions} from "./native_planning_ui_corrections.mjs";
 
 const playwrightImport = process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES
   ? path.join(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES, "playwright", "index.mjs")
@@ -156,6 +157,7 @@ async function durationEdit(browser, url) {
   const state = await page.evaluate(() => window.__pmTrialState);
   const entry = state.workspace.proposal.entries.find((item) => item.activity_id === "A01");
   assert(entry.periods.reduce((total, period) => total + period[1] - period[0], 0) === 4, "duration form sends A01's changed two productive hours to the Python scheduler");
+  assert(state.workspace.proposal.project_finish === 32, "duration edit preserves the Day 1 16:00 regression result");
   observations.push(`OBSERVED: duration edit proposal finish ${state.workspace.proposal.project_finish} (${state.workspace.proposal.project_finish === 30 ? "unchanged controlling finish" : "changed controlling finish"})`);
   await fillAndBlur(page.locator("#activity-name"), "Prepare workfront — edited after calculation");
   assert(await page.getByRole("button", {name: "Approve displayed proposal"}).isDisabled(), "a later name edit also blocks approval of the calculated proposal");
@@ -326,6 +328,7 @@ try {
   await durationEdit(browser, server.url);
   await independentCase(browser, server.url);
   await failurePaths(browser, server.url);
+  await correctionRegressions(browser, server.url, evidenceDir, assert, observations);
   const unexpectedConsoleErrors = consoleErrors.filter((message) => !/failure: Failed to load resource: the server responded with a status of (400|422)/.test(message));
   observations.push(`OBSERVED: ${consoleErrors.length - unexpectedConsoleErrors.length} expected console network diagnostics from the deliberately exercised HTTP 400/422 responses`);
   assert(unexpectedConsoleErrors.length === 0, `browser console has no unexpected errors (${unexpectedConsoleErrors.length})`);

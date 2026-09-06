@@ -14,13 +14,14 @@ function editor() {
     return nodes.get(selector);
   };
   const context = vm.createContext({structuredClone, console, URL, Blob,
-    window: {confirm: () => false}, document: {querySelector: node, querySelectorAll: () => [node("active-editor")], body: node("body")},
+    window: {confirm: () => false}, document: {querySelector: node, querySelectorAll: (selector) => selector.startsWith(".project-panel") ? [node("active-editor")] : [], body: node("body")},
     fetch: async () => { throw new Error("unexpected fetch"); }});
   vm.runInContext(readFileSync("src/deterministic_scheduling_core/native_planning_ui/app.js", "utf8").replace(/start\(\);\s*$/, ""), context);
   vm.runInContext(`render = () => {}; renderStatus = () => {}; renderWorkflow = () => {}; renderResults = () => {};
-    renderActivityEditor = () => {}; renderResources = () => {}; renderCalendars = () => {};
+    renderActivityEditor = () => {}; renderResources = () => {}; renderCalendars = () => {}; renderHistory = () => {};
     current = {revision: 0, workspace: {project: {id: 'base'}, proposal: null, reports: []}};
-    draft = {id: 'draft', activities: [], resources: []}; draftDirty = true;`, context);
+    draft = {id: 'draft', activities: [], resources: []}; draftDirty = true;
+    if (typeof draftRevision !== 'undefined') draftRevision = 0;`, context);
   return {context, node, run: (code) => vm.runInContext(code, context)};
 }
 
