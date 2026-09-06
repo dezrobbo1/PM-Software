@@ -480,7 +480,7 @@ function renderComparison() {
   $("#comparison").innerHTML = `<h3>Computed recovery comparison</h3>
     <div class="metric-row"><div class="metric"><strong>${tickLabel(comparison.old_finish)}</strong><span>Approved finish</span></div><div class="metric"><strong>${tickLabel(comparison.new_finish)}</strong><span>Proposed finish</span></div></div>
     <div class="comparison-grid">
-      <div class="change-box"><h4>Changed modes</h4>${listOrNone(comparison.changed_modes, (item) => `${escapeHtml(item.activity_id)}: ${escapeHtml(item.old)} → ${escapeHtml(item.new)}`)}</div>
+      <div class="change-box"><h4>Changed modes</h4>${listOrNone(comparison.changed_modes, (item) => `${escapeHtml(item.activity_id)}: ${escapeHtml(item.old ?? "not present")} → ${escapeHtml(item.new ?? "not present")}`)}</div>
       <div class="change-box"><h4>Changed assignments</h4>${listOrNone(comparison.changed_assignments, (item) => escapeHtml(item.activity_id))}</div>
       <div class="change-box"><h4>Changed execution periods</h4>${listOrNone(comparison.changed_periods, (item) => escapeHtml(item.activity_id))}</div>
       <div class="change-box"><h4>Unchanged activities</h4>${listOrNone(comparison.unchanged_activity_ids, (item) => escapeHtml(item))}</div>

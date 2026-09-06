@@ -166,6 +166,30 @@ class NativePlanningUiTests(unittest.TestCase):
         self.assertIsNone(second["workspace"]["proposal"])
         self.assertIsNone(second["workspace"]["approved_plan"])
 
+    def test_comparison_tolerates_activities_added_then_removed_after_approval(self):
+        self.post("/api/new")
+        project = deepcopy(self.state["workspace"]["project"])
+        project["activities"].append({
+            "id": "N09", "name": "Temporary approved activity", "predecessors": ["N07"], "not_before": 0,
+            "modes": [{
+                "id": "FIXED", "processing_ticks": 2, "calendar_id": "DAY",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS", "requirements": [],
+            }],
+        })
+        next(a for a in project["activities"] if a["id"] == "N08")["predecessors"] = ["N09"]
+        self.post("/api/project", {"project": project})
+        self.post("/api/calculate")
+        self.post("/api/approve", {"actor": "browser-planner"})
+
+        project = deepcopy(self.state["workspace"]["project"])
+        project["activities"] = [a for a in project["activities"] if a["id"] != "N09"]
+        next(a for a in project["activities"] if a["id"] == "N08")["predecessors"] = ["N07"]
+        self.post("/api/project", {"project": project})
+        status, _ = self.post("/api/calculate")
+        self.assertEqual(status, 200)
+        removed = next(item for item in self.state["comparison"]["changed_modes"] if item["activity_id"] == "N09")
+        self.assertEqual(removed, {"activity_id": "N09", "old": "FIXED", "new": None})
+
 
 if __name__ == "__main__":
     unittest.main()

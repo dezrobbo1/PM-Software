@@ -56,9 +56,17 @@ def _comparison(workspace: Workspace) -> dict[str, Any] | None:
         if mode_changed:
             changed_modes.append({"activity_id": activity_id, "old": old["selected_modes"].get(activity_id), "new": new["selected_modes"].get(activity_id)})
         if assignment_changed:
-            changed_assignments.append({"activity_id": activity_id, "old": old_entry["assignments"], "new": new_entry["assignments"]})
+            changed_assignments.append({
+                "activity_id": activity_id,
+                "old": old_entry["assignments"] if old_entry else None,
+                "new": new_entry["assignments"] if new_entry else None,
+            })
         if period_changed:
-            changed_periods.append({"activity_id": activity_id, "old": old_entry["periods"], "new": new_entry["periods"]})
+            changed_periods.append({
+                "activity_id": activity_id,
+                "old": old_entry["periods"] if old_entry else None,
+                "new": new_entry["periods"] if new_entry else None,
+            })
         if old_entry is not None and new_entry is not None and not mode_changed and not assignment_changed and not period_changed:
             unchanged.append(activity_id)
     return {
