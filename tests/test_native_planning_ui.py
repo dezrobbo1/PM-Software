@@ -67,8 +67,13 @@ class NativePlanningUiTests(unittest.TestCase):
         self.assertEqual(proposal["project_finish"], 30)
         self.assertEqual(proposal["physical_status"], "PROVEN_FEASIBLE")
 
+        calculated_revision = self.state["revision"]
         self.post("/api/approve", {"actor": "browser-planner"})
         approved_before = deepcopy(self.state["workspace"]["approved_plan"])
+        status, _ = self.post("/api/approve", {"actor": "browser-planner"}, revision=calculated_revision)
+        self.assertEqual(status, 409)
+        self.assertEqual(self.state["workspace"]["approved_plan"], approved_before)
+        self.assertEqual(self.state["workspace"]["plan_history"], [])
         trusted_before = self.state["trusted_input_hash"]
         self.post("/api/report", {
             "resource_id": "M2", "start": 20, "finish": 34,
@@ -151,6 +156,15 @@ class NativePlanningUiTests(unittest.TestCase):
         status, result = self.post("/api/project", {"project": project})
         self.assertEqual(status, 400)
         self.assertIn("8 to 15", result["error"])
+
+    def test_refresh_reads_state_without_calculating_or_approving(self):
+        initial_revision = self.state["revision"]
+        first = self.get_json("/api/state")["state"]
+        second = self.get_json("/api/state")["state"]
+        self.assertEqual(first, second)
+        self.assertEqual(second["revision"], initial_revision)
+        self.assertIsNone(second["workspace"]["proposal"])
+        self.assertIsNone(second["workspace"]["approved_plan"])
 
 
 if __name__ == "__main__":

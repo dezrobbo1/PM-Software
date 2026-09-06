@@ -552,6 +552,9 @@ function renderHistory() {
 
 function syncActions() {
   if (!current) return;
+  $$(".project-panel input, .project-panel select, .project-panel button, .workflow-panel input, .workflow-panel select, .workflow-panel button").forEach((control) => {
+    control.disabled = busy;
+  });
   $("#apply-project").disabled = busy || !draftDirty;
   $("#calculate").disabled = busy || draftDirty;
   $("#approve").disabled = busy || draftDirty || current.proposal_status !== "CURRENT";

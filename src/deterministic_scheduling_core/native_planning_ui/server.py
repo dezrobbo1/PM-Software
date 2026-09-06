@@ -90,6 +90,13 @@ def _validate_trial_size(workspace: Workspace) -> None:
         raise ValueError("the browser trial supports projects with 8 to 15 activities")
 
 
+def _body_integer(body: dict[str, Any], key: str) -> int:
+    value = body[key]
+    if type(value) is not int:
+        raise ValueError(f"{key} must be an integer number of 30-minute ticks")
+    return value
+
+
 @dataclass
 class BrowserSession:
     workspace: Workspace = field(default_factory=new_demo_workspace)
@@ -272,8 +279,8 @@ class TrialHandler(BaseHTTPRequestHandler):
             report_id = report_unavailable(
                 session.workspace,
                 str(body["resource_id"]),
-                int(body["start"]),
-                int(body["finish"]),
+                _body_integer(body, "start"),
+                _body_integer(body, "finish"),
                 str(body.get("reporter", "")),
                 str(body.get("reason", "")),
             )

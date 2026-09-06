@@ -83,6 +83,7 @@ async function exampleLifecycle(browser, url) {
   assert(await page.getByRole("heading", {name: "Native planning trial"}).isVisible(), "application loads with meaningful planning content");
   assert(await page.locator("#activity-list .activity-row").count() === 8, "built-in example exposes eight activities");
   assert(await page.locator("body").getAttribute("aria-busy") === "false", "no loading overlay blocks the initial workspace");
+  assert(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth), "1366px layout has no page-level horizontal overflow");
 
   await calculate(page);
   const baseline = await page.evaluate(() => window.__pmTrialState.workspace.proposal);
@@ -256,6 +257,7 @@ async function independentCase(browser, url) {
   assert(reopened.project.activities[1].name === names.N02, "independent project reopens with browser-entered names");
   assert(reopened.proposal?.selected_modes.N06 === "QUICK", "independent project reopens with its pending calculated proposal, without recalculation");
   await page.setViewportSize({width: 1920, height: 1080});
+  assert(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth), "1920px layout has no page-level horizontal overflow");
   await page.screenshot({path: path.join(evidenceDir, "06-independent-reopened-1920x1080.png"), fullPage: true});
   await context.close();
 }
@@ -303,7 +305,9 @@ try {
   await durationEdit(browser, server.url);
   await independentCase(browser, server.url);
   await failurePaths(browser, server.url);
-  assert(consoleErrors.length === 0, `browser console has no errors (${consoleErrors.length})`);
+  const unexpectedConsoleErrors = consoleErrors.filter((message) => !/failure: Failed to load resource: the server responded with a status of (400|422)/.test(message));
+  observations.push(`OBSERVED: ${consoleErrors.length - unexpectedConsoleErrors.length} expected console network diagnostics from the deliberately exercised HTTP 400/422 responses`);
+  assert(unexpectedConsoleErrors.length === 0, `browser console has no unexpected errors (${unexpectedConsoleErrors.length})`);
   const platformContext = await browser.newContext();
   const platformPage = await platformContext.newPage();
   const platform = await platformPage.evaluate(() => ({userAgent: navigator.userAgent, platform: navigator.platform}));
