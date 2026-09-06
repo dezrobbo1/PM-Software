@@ -306,7 +306,7 @@ function requirementRow(requirement, modeIndex, requirementIndex) {
   return `<div class="requirement-row">
     <label>Slot ID<input data-requirement-id="${modeIndex}:${requirementIndex}" value="${escapeHtml(requirement.id)}" maxlength="20"></label>
     <label>Qualifications<input data-requirement-pools="${modeIndex}:${requirementIndex}" value="${escapeHtml(requirement.pool_ids.join(", "))}" placeholder="MECH"></label>
-    <div><span class="field-label">Alternative eligible resources</span><div class="eligibility">${draft.resources.map((resource) => `<label class="checkbox-label"><input type="checkbox" data-eligible="${modeIndex}:${requirementIndex}:${escapeHtml(resource.id)}" ${requirement.eligible_resource_ids.includes(resource.id) ? "checked" : ""}> ${escapeHtml(resource.id)}</label>`).join("")}</div></div>
+    <div><span class="field-label">Alternative eligible resources</span><div class="eligibility">${draft.resources.map((resource) => `<label class="checkbox-label"><input type="checkbox" data-eligible data-mode-index="${modeIndex}" data-requirement-index="${requirementIndex}" data-resource-id="${escapeHtml(resource.id)}" ${requirement.eligible_resource_ids.includes(resource.id) ? "checked" : ""}> ${escapeHtml(resource.id)}</label>`).join("")}</div></div>
     <button type="button" class="danger" data-remove-requirement="${modeIndex}:${requirementIndex}">Remove slot</button>
   </div>`;
 }
@@ -341,7 +341,7 @@ function bindModeEditors(activity) {
     markDraftDirty();
   }));
   $$('[data-eligible]').forEach((input) => input.addEventListener("change", () => {
-    const [modeIndex, requirementIndex, resourceId] = input.dataset.eligible.split(":");
+    const {modeIndex, requirementIndex, resourceId} = input.dataset;
     const eligible = activity.modes[Number(modeIndex)].requirements[Number(requirementIndex)].eligible_resource_ids;
     if (input.checked && !eligible.includes(resourceId)) eligible.push(resourceId);
     if (!input.checked) activity.modes[Number(modeIndex)].requirements[Number(requirementIndex)].eligible_resource_ids = eligible.filter((id) => id !== resourceId);
@@ -519,13 +519,14 @@ function renderResults() {
   if (current.workspace.approved_plan) choices.push(`<button type="button" data-plan-kind="approved" class="${kind === "approved" ? "active" : ""}">Approved</button>`);
   if (current.workspace.proposal) choices.push(`<button type="button" data-plan-kind="proposal" class="${kind === "proposal" ? "active" : ""}">Proposal</button>`);
   $("#plan-picker").innerHTML = choices.join("");
-  $$('[data-plan-kind]').forEach((button) => button.addEventListener("click", () => { displayedPlanKind = button.dataset.planKind; renderResults(); }));
+  $$('[data-plan-kind]').forEach((button) => button.addEventListener("click", () => { displayedPlanKind = button.dataset.planKind; renderResults(); syncActions(); }));
   if (!plan) {
     $("#plan-table").innerHTML = '<tr><td colspan="6" class="empty">Calculate a proposal to inspect actual scheduled results.</td></tr>';
     $("#timeline").innerHTML = '<p class="empty">No calculated productive periods.</p>';
     return;
   }
-  const activities = Object.fromEntries(current.workspace.project.activities.map((activity) => [activity.id, activity]));
+  const sourceActivities = plan.source_snapshot?.project?.activities || current.workspace.project.activities;
+  const activities = Object.fromEntries(sourceActivities.map((activity) => [activity.id, activity]));
   $("#plan-table").innerHTML = plan.entries.map((entry) => {
     const activity = activities[entry.activity_id];
     const periods = entry.periods.length ? entry.periods.map(([start, finish]) => `${compactTick(start)}–${compactTick(finish)}`).join("; ") : "Milestone";
@@ -557,7 +558,7 @@ function syncActions() {
   });
   $("#apply-project").disabled = busy || !draftDirty;
   $("#calculate").disabled = busy || draftDirty;
-  $("#approve").disabled = busy || draftDirty || current.proposal_status !== "CURRENT";
+  $("#approve").disabled = busy || draftDirty || current.proposal_status !== "CURRENT" || displayedPlanKind !== "proposal";
   $("#load-example").disabled = busy;
   $("#new-project").disabled = busy;
   $("#save-workspace").disabled = busy;

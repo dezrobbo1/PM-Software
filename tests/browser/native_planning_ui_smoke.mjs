@@ -118,6 +118,9 @@ async function exampleLifecycle(browser, url) {
   assert(specialist?.objective?.[0] === 71, "SPECIALIST alternative is evaluated at Day 2 11:30");
   assert(!recovery.approved_by, "recovery remains a proposal until a separate approval action");
   assert(await page.getByText("A03: SPECIALIST → NORMAL").isVisible(), "before/after comparison shows the computed A03 mode change");
+  await page.locator('[data-plan-kind="approved"]').click();
+  assert(await page.getByRole("button", {name: "Approve displayed proposal"}).isDisabled(), "approval is disabled while the retained approved plan is displayed");
+  await page.locator('[data-plan-kind="proposal"]').click();
   await page.screenshot({path: path.join(evidenceDir, "02-example-recovery-1366x900.png"), fullPage: true});
 
   await approve(page);
@@ -173,7 +176,7 @@ async function addSlot(page, activityId, capability, eligibleIds) {
   await page.getByRole("button", {name: "Add slot"}).click();
   await fillAndBlur(page.locator('[data-requirement-pools="0:0"]'), capability);
   for (const resourceId of ["M1", "M2", "N1", "R1", "R2"]) {
-    await page.locator(`[data-eligible="0:0:${resourceId}"]`).setChecked(eligibleIds.includes(resourceId));
+    await page.locator(`[data-eligible][data-mode-index="0"][data-requirement-index="0"][data-resource-id="${resourceId}"]`).setChecked(eligibleIds.includes(resourceId));
   }
 }
 
@@ -256,6 +259,24 @@ async function independentCase(browser, url) {
   const reopened = await page.evaluate(() => window.__pmTrialState.workspace);
   assert(reopened.project.activities[1].name === names.N02, "independent project reopens with browser-entered names");
   assert(reopened.proposal?.selected_modes.N06 === "QUICK", "independent project reopens with its pending calculated proposal, without recalculation");
+
+  await approve(page);
+  await fillAndBlur(page.locator("#new-activity-id"), "N09");
+  await fillAndBlur(page.locator("#new-activity-name"), "Temporary approved activity");
+  await page.getByRole("button", {name: "Add activity"}).click();
+  await clickActivity(page, "N08");
+  await page.locator('[data-predecessor="N09"]').check();
+  await page.getByRole("button", {name: "Apply input changes"}).click();
+  await page.getByText(/Trusted project inputs applied/).waitFor();
+  await calculate(page); await approve(page);
+  await clickActivity(page, "N08");
+  await page.locator('[data-predecessor="N09"]').uncheck();
+  await clickActivity(page, "N09");
+  await page.getByRole("button", {name: "Remove activity"}).click();
+  await page.getByRole("button", {name: "Apply input changes"}).click();
+  await page.getByText(/Trusted project inputs applied/).waitFor();
+  assert((await page.locator("#approved-state").innerText()).toLowerCase().includes("stale"), "activity removal leaves the retained approval visibly stale");
+  assert(await page.locator("#plan-table").getByText(/N09 · Temporary approved activity/).isVisible(), "stale approval still renders the removed activity from its source snapshot");
   await page.setViewportSize({width: 1920, height: 1080});
   assert(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth), "1920px layout has no page-level horizontal overflow");
   await page.screenshot({path: path.join(evidenceDir, "06-independent-reopened-1920x1080.png"), fullPage: true});
