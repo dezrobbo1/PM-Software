@@ -5,13 +5,28 @@ from http.cookiejar import CookieJar
 import json
 from threading import Thread
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 
-from deterministic_scheduling_core.native_planning_ui.server import create_server
+from deterministic_scheduling_core.native_planning_ui.server import create_server, _comparison
+from deterministic_scheduling_core.project.planning_workspace import new_demo_workspace, accept_report, report_unavailable
+from deterministic_scheduling_core.scheduling.planning_workspace import propose, approve, _plan_hash
 
 
 class NativePlanningUiTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.saved = new_demo_workspace()
+        propose(cls.saved)
+        approve(cls.saved, "original-planner")
+        cls.stale = deepcopy(cls.saved)
+        event = report_unavailable(cls.stale, "M2", 20, 34, "supervisor", "synthetic outage")
+        accept_report(cls.stale, event, "accepting-planner")
+        cls.recovery = deepcopy(cls.stale)
+        propose(cls.recovery)
+        approve(cls.recovery, "recovery-planner")
+
     def setUp(self):
         self.server = create_server(0)
         self.thread = Thread(target=self.server.serve_forever, daemon=True)
@@ -189,6 +204,108 @@ class NativePlanningUiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         removed = next(item for item in self.state["comparison"]["changed_modes"] if item["activity_id"] == "N09")
         self.assertEqual(removed, {"activity_id": "N09", "old": "FIXED", "new": None})
+
+    def test_moved_empty_milestone_is_a_timing_change(self):
+        old = {"selected_modes": {"HANDOFF": "FIXED"}, "project_finish": 30,
+               "entries": [{"activity_id": "HANDOFF", "start": 30, "finish": 30, "periods": [], "assignments": []}]}
+        new = deepcopy(old)
+        new["entries"][0].update(start=65, finish=65)
+        new["project_finish"] = 65
+        comparison = _comparison({"approved_plan": old, "proposal": new})
+        self.assertNotIn("HANDOFF", comparison["unchanged_activity_ids"])
+        change = comparison["changed_periods"][0]
+        self.assertEqual((change["old_start"], change["old_finish"], change["new_start"], change["new_finish"]), (30, 30, 65, 65))
+        self.assertEqual((change["old"], change["new"]), ([], []))
+        self.assertEqual(_comparison({"approved_plan": old, "proposal": deepcopy(old)})["unchanged_activity_ids"], ["HANDOFF"])
+
+    def test_valid_recovery_history_and_stale_approval_open_without_solving(self):
+        for saved, status in [(self.recovery, "CURRENT"), (self.stale, "STALE")]:
+            with self.subTest(status=status), patch("deterministic_scheduling_core.native_planning_ui.server.propose", side_effect=AssertionError("open must not solve")), patch("deterministic_scheduling_core.scheduling.planning_workspace._solve_case", side_effect=AssertionError("open must not optimise")):
+                code, _ = self.post("/api/open", {"workspace": saved})
+                self.assertEqual(code, 200)
+                self.assertEqual(self.state["workspace"], saved)
+                self.assertEqual(self.state["approved_status"], status)
+
+    def assert_upload_rejected(self, saved):
+        before = deepcopy(self.get_json("/api/state")["state"])
+        code, result = self.post("/api/open", {"workspace": saved})
+        self.assertEqual(code, 400, result)
+        self.assertIn("stored", result["error"].lower())
+        self.assertEqual(self.get_json("/api/state")["state"], before)
+        code, _ = self.post("/api/export")
+        self.assertEqual(code, 200, "previous workspace remains usable")
+
+    def test_upload_rejects_changed_finish_without_replacing_dirty_session(self):
+        self.post("/api/new")
+        saved = deepcopy(self.saved)
+        saved["approved_plan"]["project_finish"] += 1
+        self.assert_upload_rejected(saved)
+
+    def test_upload_rejects_malformed_stored_records_atomically(self):
+        for location in ("approved_plan", "proposal", "plan_history"):
+            for malformed in ([], {"entries": None}, "damaged"):
+                with self.subTest(location=location, malformed=malformed):
+                    saved = deepcopy(self.saved)
+                    saved[location] = [malformed] if location == "plan_history" else malformed
+                    self.assert_upload_rejected(saved)
+
+    def test_upload_checks_physical_allocation_even_with_recomputed_hash(self):
+        saved = deepcopy(self.saved)
+        plan = saved["approved_plan"]
+        entry = next(e for e in plan["entries"] if e["activity_id"] == "A03")
+        entry["assignments"] = [["MECH", "M2"], ["SPECIALIST", "M2"]]
+        plan["plan_hash"] = _plan_hash(plan)
+        self.assert_upload_rejected(saved)
+
+    def test_upload_rejects_invalid_history_and_snapshot_hash(self):
+        for corruption in ("history", "snapshot"):
+            with self.subTest(corruption=corruption):
+                saved = deepcopy(self.recovery)
+                if corruption == "history":
+                    saved["plan_history"][0]["project_finish"] += 1
+                else:
+                    saved["approved_plan"]["source_state_hash"] = "wrong"
+                    saved["approved_plan"]["plan_hash"] = _plan_hash(saved["approved_plan"])
+                self.assert_upload_rejected(saved)
+
+    def test_valid_stale_proposal_is_not_approvable_after_open(self):
+        saved = deepcopy(self.stale)
+        saved["proposal"] = deepcopy(self.saved["approved_plan"])
+        saved["proposal"].pop("approved_by")
+        saved["proposal"].pop("approved_at")
+        code, _ = self.post("/api/open", {"workspace": saved})
+        self.assertEqual(code, 200)
+        self.assertEqual(self.state["proposal_status"], "STALE")
+        code, _ = self.post("/api/approve", {"actor": "planner"})
+        self.assertEqual(code, 400)
+
+    def test_mutation_origin_host_and_content_type_are_exact_and_atomic(self):
+        cases = [
+            ({"Origin": self.base}, 200),
+            ({}, 200),  # Explicit local non-browser policy: Origin may be absent.
+            ({"Origin": f"http://127.0.0.1:{self.server.server_port + 1}"}, 403),
+            ({"Origin": "null"}, 403),
+            ({"Origin": self.base + "/path"}, 403),
+            ({"Origin": self.base + ":bad"}, 403),
+            ({"Origin": self.base.replace("http:", "https:")}, 403),
+            ({"Host": "127.0.0.1:1"}, 403),
+            ({"Host": "evil.example"}, 403),
+            ({"Origin": self.base, "Content-Type": "text/plain"}, 415),
+        ]
+        for headers, expected in cases:
+            with self.subTest(headers=headers):
+                before = self.get_json("/api/state")["state"]
+                request = Request(self.base + "/api/new", data=json.dumps({"revision": before["revision"]}).encode(),
+                                  headers={"Content-Type": "application/json", **headers}, method="POST")
+                try:
+                    with self.opener.open(request, timeout=10) as response:
+                        actual = response.status
+                except HTTPError as error:
+                    actual = error.code
+                self.assertEqual(actual, expected)
+                after = self.get_json("/api/state")["state"]
+                if expected != 200:
+                    self.assertEqual(after, before)
 
 
 if __name__ == "__main__":
