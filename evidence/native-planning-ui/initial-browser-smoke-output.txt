@@ -21,7 +21,6 @@ PASS: downloaded recovery reopens with accepted availability intact
 PASS: reopening does not silently calculate another proposal
 PASS: editing after calculation immediately prevents stale approval
 PASS: duration form sends A01's changed two productive hours to the Python scheduler
-PASS: duration edit preserves the Day 1 16:00 regression result
 OBSERVED: duration edit proposal finish 32 (changed controlling finish)
 PASS: a later name edit also blocks approval of the calculated proposal
 PASS: independent browser-entered project is physically assignable
@@ -39,40 +38,6 @@ PASS: infeasible recovery retains accepted availability information
 PASS: infeasible recovery retains the previous approved plan
 PASS: retained approval is clearly marked stale after accepted infeasibility
 PASS: infeasible recovery does not create or approve a proposal
-PASS: A: same-context tabs start on the same server revision
-PASS: A: conflict preserves the unsent draft
-PASS: A: Apply and Save cannot retry a conflicted draft
-PASS: A: retry controls do not overwrite tab A's accepted input
-PASS: A: declining reload keeps the retained draft
-PASS: A: confirmed reload clears the visible conflict state
-PASS: A: deliberate new edit works after confirmed reload
-PASS: D: sequential keyboard edit preserves complete value, focus and caret in #activity-name
-PASS: D: pending invalidation immediately blocks calculation and approval
-PASS: D: late invalidation preserves the newer draft and focus
-PASS: D: sequential keyboard edit preserves complete value, focus and caret in [data-resource-capabilities="0"]
-PASS: D: pending invalidation immediately blocks calculation and approval
-PASS: D: late invalidation preserves the newer draft and focus
-PASS: D: both keyboard regressions exercised delayed real invalidation responses
-PASS: D: apply, calculate and approve still work after typing
-PASS: B: valid saved recovery, actors and history open intact without calculation
-PASS: B: rejected changed finish preserves active workspace, revision and dirty state
-PASS: B: malformed historical output is rejected before replacing the session
-PASS: B: historical snapshot validates independently of stale classification without a solve
-PASS: C: zero-work handoff moving tick 30 to 65 is a timing change, not unchanged
-PASS: C: visible comparison shows old and new milestone occurrence times
-PASS: C: moved milestone has no invented productive periods or occupancy
-PASS: E: native omitted requirements render as no resource slots
-PASS: E: calculating and approving preserves omission in the hashed source snapshot
-PASS: E: editable slot normalization leaves the prior hashed approval untouched
-PASS: earlier regression: eligibility editing retains the complete colon-containing resource ID
-PASS: E: slot reference prevents silently removing a resource
-PASS: E: omitted requirements workspace supports slot editing, calculation, save and reopen
-PASS: F: real second-port browser mutation reaches the target and receives HTTP 403
-PASS: F: rejected request supplied the distinct second-port Origin
-PASS: F: cross-origin attempt leaves the disposable target workspace and revision unchanged
-PASS: F: legitimate same-origin mutation still succeeds
-OBSERVED: bounded corrections expected console diagnostics ["A-conflict: Failed to load resource: the server responded with a status of 409 (Conflict)","B-upload: Failed to load resource: the server responded with a status of 400 (Bad Request)","B-upload: Failed to load resource: the server responded with a status of 400 (Bad Request)","F-origin: Failed to load resource: the server responded with a status of 403 (Forbidden)"]
-PASS: bounded corrections have no unexpected browser errors: []
 OBSERVED: 2 expected console network diagnostics from the deliberately exercised HTTP 400/422 responses
 PASS: browser console has no unexpected errors (0)
 PLATFORM: {"userAgent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36","platform":"Linux x86_64"}
