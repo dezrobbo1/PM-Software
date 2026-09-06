@@ -194,6 +194,9 @@ class TrialHandler(BaseHTTPRequestHandler):
             with session.lock:
                 self._json({"ok": True, "state": _view(session)}, session_id=session_id if created else None)
             return
+        if path == "/favicon.ico":
+            self._headers(HTTPStatus.NO_CONTENT, "image/x-icon", 0, session_id if created else None)
+            return
         assets = {
             "/": ("index.html", "text/html; charset=utf-8"),
             "/index.html": ("index.html", "text/html; charset=utf-8"),

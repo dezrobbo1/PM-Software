@@ -101,13 +101,13 @@ async function exampleLifecycle(browser, url) {
   await fillAndBlur(page.locator("#outage-start"), "1@10:00");
   await fillAndBlur(page.locator("#outage-finish"), "1@17:00");
   await page.getByRole("button", {name: "Report unavailable"}).click();
-  await page.locator("#reports-list").getByText("REPORTED").waitFor();
+  await page.locator("#reports-list .badge").getByText("REPORTED", {exact: true}).waitFor();
   const reported = await page.evaluate(() => window.__pmTrialState);
   assert(reported.trusted_input_hash === hashBefore, "unaccepted report leaves the trusted-input hash unchanged");
   assert(reported.workspace.approved_plan.plan_hash === approvedBefore, "unaccepted report leaves the approved plan unchanged");
 
   await page.getByRole("button", {name: "Accept selected report"}).click();
-  await page.locator("#reports-list").getByText("ACCEPTED").waitFor();
+  await page.locator("#reports-list .badge").getByText("ACCEPTED", {exact: true}).waitFor();
   assert((await page.locator("#approved-state").innerText()).includes("stale"), "accepted availability makes the old approval visibly stale");
   await calculate(page);
   const recovery = await page.evaluate(() => window.__pmTrialState.workspace.proposal);
