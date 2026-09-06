@@ -227,6 +227,34 @@ Active rules for follow-on work:
 
 The experiment is deliberately isolated in `src/deterministic_scheduling_core/working_time_experiment.py`.
 
+### Pooled capacity and executable assignment
+
+The bounded 14-activity experiment held one physical roster, calendars, work requirements, precedence and finish-first policy constant across independent capability pools, explicit assignment and selective assignment.
+
+Observed comparison:
+
+- **A — independent pools:** Day 2 13:30, objective `(75, 4250)`, but exact global checking proved the Day 1 three-way `MECH`/`MECH`/`INSPECT` concurrency unassignable to `M1`/`M2`;
+- **B — explicit assignment:** Day 2 13:30, objective `(75, 4349)`, physically executable, 11 identity-level requirements and 23 assignment variables;
+- **C — selective assignment:** the same executable objective as B, 9 identity-level requirements and 19 assignment variables, with two interchangeable rigging slots retained as a pool;
+- **A + one shared M1/M2 capacity diagnostic:** the same executable objective as B/C with no scheduling-time identity decisions in this fixture.
+
+The scarce-specialist branch was assignable when `M1` took ordinary work and `M2` took specialist work even though a deliberately poor greedy attempt failed. Night work selected `N1`; `M2`'s synthetic Day 2 08:00–10:00 exception split productive execution without consuming capacity in the gap. A separate exact-checker regression proved that per-time-slice feasibility is insufficient when an activity may not hand over its assigned resource.
+
+The result is mixed: independent overlapping capability pools are unsafe, and C avoids unnecessary rigger naming while matching B, but the fixture does not prove that selective assignment must be part of the scheduling master. A pooled master plus exact assignment checking remains a live architectural alternative.
+
+Active rules for follow-on work:
+
+- one requirement with multiple qualifications is one physical slot, not multiple people;
+- multiple requirement slots are distinct simultaneous people;
+- an alternative eligible set does not imply simultaneous use of every candidate calendar;
+- selected resources remain assigned through all productive periods for this experiment, while capacity is consumed only during execution;
+- independent capability counts must not be treated as proof of physical assignability where pools overlap;
+- detailed roster and eligibility facts needed by an independent checker still count as planner-maintained data;
+- fewer assignment variables alone do not prove less planner work;
+- do not promote this fixture's classes into a permanent workforce model or start a generic decomposition programme.
+
+The experiment is deliberately isolated in `src/deterministic_scheduling_core/resource_assignment_experiment.py`.
+
 ## Current position
 
 Gate 1 through Gate 5 are provisionally demonstrated.
@@ -245,13 +273,14 @@ The following bounded hypotheses have now survived their first executable falsif
 - adaptive semantic repair;
 - logic CPM as a selected-structure analytical service rather than authoritative executable criticality.
 - productive duration placed into joint executable availability, with separate continuous and suspendable semantics.
+- selective physical assignment can match full assignment while retaining a genuinely interchangeable pool, but pooled scheduling plus exact assignment checking has not been ruled out.
 
 CP-SAT remains the primary experimental backend for now, but the project/domain model must remain solver-independent. The bounded productive-time experiment did not justify a Classical CP challenger; reopen that comparison only if a focused richer-calendar case makes the CP-SAT compiler materially unwieldy or fragile.
 
 The next work should continue to attack one unresolved core question at a time. Strong candidates now are:
 
 - **calendar/state semantics:** only for a focused irregular-calendar or state-transition capability not answered by the bounded productive-time experiment;
-- **professional resource/capability semantics:** how named resources, capability pools and authorised substitutions should be represented without over-modelling;
+- **resource architecture:** whether pooled scheduling plus exact allocation checking remains sufficient when a fixed pooled schedule must be repaired, or selective identity decisions must enter the scheduling master;
 - **larger-scale evidence:** only after a focused question is defined; do not launch a generic benchmarking/hardening programme;
 - **objective ordering:** gather further evidence before declaring structural-vs-temporal stability universally settled.
 
