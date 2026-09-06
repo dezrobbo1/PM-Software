@@ -178,3 +178,5 @@ footer { color: var(--muted); font-size: 11px; margin: 0 auto; max-width: 1680px
   .project-settings { grid-template-columns: 1fr 1fr; }
   .form-grid { grid-template-columns: 1fr 1fr; }
 }
+/* Keep explicit conflict-only controls hidden despite button display rules. */
+[hidden] { display: none !important; }

@@ -67,6 +67,7 @@ export async function correctionRegressions(browser, url, evidenceDir, assert, o
     b.once("dialog", (dialog) => dialog.accept());
     await b.locator("#reload-inputs").click();
     await b.waitForFunction(() => document.querySelector("#activity-name").value === "Tab A retained edit");
+    assert(await b.locator("#reload-inputs").isHidden(), "A: confirmed reload clears the visible conflict state");
     await b.locator("#activity-name").fill("Deliberate reconciled edit"); await apply(b);
     assert((await actual(context)).workspace.project.activities[0].name === "Deliberate reconciled edit", "A: deliberate new edit works after confirmed reload");
     await close();
@@ -158,10 +159,14 @@ export async function correctionRegressions(browser, url, evidenceDir, assert, o
     await upload(page, workspace, "optional-requirements.json");
     await page.locator("#message").filter({hasText: "Opened optional"}).waitFor();
     assert(await page.getByText(/No resource slot: this mode/).isVisible(), "E: native omitted requirements render as no resource slots");
+    await calculate(page); await approve(page);
+    const historical = (await state(page)).workspace.approved_plan;
+    assert(!("requirements" in historical.source_snapshot.project.activities[0].modes[0]), "E: calculating and approving preserves omission in the hashed source snapshot");
     await page.getByRole("button", {name: "Add slot", exact: true}).click();
     const crew = page.locator('[data-resource-id="crew:1"]');
     await crew.check(); await crew.uncheck(); await crew.check();
     await apply(page);
+    assert(JSON.stringify((await state(page)).workspace.approved_plan) === JSON.stringify(historical), "E: editable slot normalization leaves the prior hashed approval untouched");
     assert((await state(page)).workspace.project.activities[0].modes[0].requirements[0].eligible_resource_ids.includes("crew:1"), "earlier regression: eligibility editing retains the complete colon-containing resource ID");
     await page.locator("summary").filter({hasText: "Resources and calendars"}).click();
     await page.locator('[data-remove-resource="5"]').click();

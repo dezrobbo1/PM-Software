@@ -47,9 +47,15 @@ Relative times use `day@HH:MM`, for example `1@07:00` or `2@08:30`. Days are pro
 
 Each browser session has a monotonic revision. Mutating requests must submit the revision they read; an older response cannot overwrite newer state. The interface disables conflicting actions during a calculation, and a second acceptance/approval request fails after the first transition advances the revision. Rendering and refresh only read current state—they do not solve or approve.
 
+Each editor draft retains its base revision. If another tab in the same browser session changes the workspace, a conflict keeps the unsent draft visible and blocks both Apply and Save. Copy any edits you want to retain, then choose **Reload current inputs** and confirm discarding the old draft before making a deliberate new edit. No automatic merge or silent rebasing occurs. Proposal invalidation runs without disabling the active editor; calculation and approval remain blocked while inputs are unapplied.
+
 Unapplied form edits are visibly marked and block calculation/approval. Editing a displayed proposal immediately invalidates it. Applying a project edit is atomic: validation succeeds before trusted project inputs are replaced. Accepted infeasibility keeps the accepted report and previous approval, labels that approval stale and leaves no proposal.
 
 Loading another source with unsaved or unapplied changes requires confirmation. The server never accepts a browser-supplied server filesystem path or shell command. Persistence is download/upload only, and static assets are packaged locally without fonts or CDNs.
+
+Opening validates every stored approval, proposal and history record against its own source snapshot and existing hashes, including execution periods and actual physical assignment checking. Valid historical approvals may remain stale relative to current inputs. Rejection leaves the existing workspace, revision and saved/dirty state intact. Import never optimises, repairs dates, recalculates hashes to bless changed output, or changes approval provenance. Integrity hashes are not signatures or proof of authorship or optimality. Optional native requirements remain optional; editor changes do not normalise historical snapshots. Moved milestones appear under **Changed timing / execution periods** with old/new occurrence times, without productive occupancy.
+
+HTTP access is limited to `127.0.0.1` or `localhost` at the actual serving port. Any supplied Origin must match the serving HTTP scheme, hostname and effective port; null, malformed and foreign-port origins are rejected. Mutation endpoints require `Content-Type: application/json`. Origin-less local non-browser JSON clients are intentionally accepted with the same Host, session and revision checks. This is not an authentication boundary against other local processes. Use `--port 8766` (or another available port) to change the launch port; binding remains loopback-only.
 
 ## Tests and browser evidence
 
@@ -57,6 +63,7 @@ Backend and HTTP integration:
 
 ```bash
 python -m unittest tests.test_native_planning_ui tests.test_native_planning_workflow -v
+node --test tests/browser/native_planning_ui_draft.test.mjs
 ```
 
 Repeatable real-browser acceptance (after `npm install` and `npx playwright install chromium`):
@@ -79,6 +86,8 @@ The completed trial used Playwright with Headless Chrome 151.0.7922.34 on Linux 
 - neither desktop viewport had page-level horizontal overflow, and no unexpected console error occurred. Chromium logged the expected failed-resource diagnostics for the deliberately exercised HTTP 400 and 422 responses.
 
 The exact retained evidence location and artifact inventory are in [`evidence/native-planning-ui/README.md`](../evidence/native-planning-ui/README.md).
+
+The bounded PR #26 corrections also exercise same-session two-tab conflicts, keyboard typing during delayed real invalidation responses, stored-plan rejection without replacement, tick-30-to-65 zero-work handoff movement, omitted requirements and colon-containing resource IDs, and a real second-port browser mutation attempt. See the evidence index for measured counts and the tested commit/run, rather than treating the earlier 39-assertion trial as a fresh result.
 
 ## Current limitations
 

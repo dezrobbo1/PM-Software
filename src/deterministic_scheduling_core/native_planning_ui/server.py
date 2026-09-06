@@ -190,7 +190,7 @@ class TrialHandler(BaseHTTPRequestHandler):
                          and origin == f"{parsed.scheme}://{parsed.netloc}"
                          and parsed.scheme == "http" and parsed.username is None and parsed.password is None
                          and parsed.hostname == serving.hostname
-                         and (parsed.port or 80) == self.server.server_port)
+                         and (parsed.port if parsed.port is not None else 80) == self.server.server_port)
             except ValueError:
                 valid = False
             if not valid:
@@ -262,7 +262,7 @@ class TrialHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         with session.lock:
             if body.get("revision") != session.revision:
-                self._error("workspace changed in another request; review the current state and try again", HTTPStatus.CONFLICT, session, session_id if created else None)
+                self._error("workspace changed in another request; draft retained — reload current inputs before applying or saving", HTTPStatus.CONFLICT, session, session_id if created else None)
                 return
             before = digest(session.workspace)
             try:
