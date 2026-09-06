@@ -36,6 +36,7 @@ jobs:
           tests.test_objective_policy_experiment
           tests.test_adaptive_repair_experiment
           tests.test_criticality_semantics_experiment
+          tests.test_working_time_experiment
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment
@@ -59,5 +60,7 @@ jobs:
         run: python -m deterministic_scheduling_core.adaptive_repair_experiment
       - name: Run criticality semantics falsification experiment
         run: python -m deterministic_scheduling_core.criticality_semantics_experiment
+      - name: Run productive working-time falsification experiment
+        run: python -m deterministic_scheduling_core.working_time_experiment
       - name: Compile active package
         run: python -m compileall -q src
