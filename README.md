@@ -325,6 +325,36 @@ A repeated C solve returned the same canonical plan signature.
 
 This result does not make calendars a settled permanent schema, prove production scale, justify unrestricted preemption, or establish cross-version/cross-platform reproducibility. Elapsed duration remains legitimate for genuinely clock-driven processes such as the fixture's cure activity.
 
+## Resource experiment — Pooled Capacity vs Executable Assignment
+
+Targeted pooled-resource research next tested whether PM-Software can retain pools where identity adds no scheduling value without producing dates that cannot be staffed.
+
+Run and explain the complete comparison:
+
+```bash
+python -m deterministic_scheduling_core.resource_assignment_experiment
+```
+
+The isolated fixture has 14 activities at 30-minute resolution and one physical roster: day mechanics `M1`/`M2`, night mechanic `N1`, and interchangeable day riggers `R1`/`R2`. `M2` is the only `SPECIALIST` and is synthetically unavailable on Day 2 from 08:00–10:00. Every physical requirement keeps one resource through all of its productive periods; calendar suspension consumes no capacity. The controlling handoff finish is minimised first, followed by the same weighted activity-start tie-break in every approach. Resource names do not enter the objective.
+
+Measured model and checker results:
+
+| Approach | Objective result (finish tick, timing tie-break) | Exact physical check | Identity-level requirements | Assignment vars | Optional intervals | Constraints |
+|---|---:|---|---:|---:|---:|---:|
+| A — independent capability pools | `(75, 4250)` / Day 2 13:30 | proven infeasible | 0 of 11 | 0 | 0 | 2,357 |
+| B — explicit physical assignment | `(75, 4349)` / Day 2 13:30 | proven feasible | 11 of 11 | 23 | 996 | 3,614 |
+| C — selective assignment | `(75, 4349)` / Day 2 13:30 | proven feasible | 9 of 11 | 19 | 872 | 3,315 |
+
+A scheduled two `MECH` requirements and one `INSPECT` requirement together at Day 1 07:00 because its independent pools reported enough capacity. Exact global search proved that those three slots cannot be assigned to the only two available eligible people, `M1` and `M2`. B and C delayed one mechanical activity and produced valid allocations. Both preserved the valid scarce-specialist pairing (`M1` ordinary work, `M2` specialist work), selected `N1` for night work, and suspended `M2`'s Day 2 dual-qualified work across the disclosed exception.
+
+B named `R1` and `R2`; C left both rigging slots pooled and reached exactly the same policy result. C repeated with the same canonical signature. The independent checker also rejects a separate X/Y/Z case where every time slice can be staffed only by changing X's resource midway, which the experiment forbids. It verifies B/C assignments as submitted and fills only deferred assignments.
+
+A small diagnostic added one shared M1/M2 physical head-count constraint to A. It removed the false concurrency and reached the same executable `(75, 4349)` result with 2,414 constraints and no scheduling-time identity decisions. This fixes the fixture's overlapping-pool relaxation; it does not express general eligibility, qualifications or assignment continuity.
+
+**Result: mixed.** C matches B's executable policy result while avoiding unnecessary rigging identities, but the shared-capacity diagnostic shows that selective assignment inside the scheduling master is not yet proven necessary. A pooled master plus exact assignment-feasibility checking remains a credible simpler architecture for a later experiment. All approaches still require the same detailed roster, capability, calendar, exception and eligibility facts because the independent checker cannot validate a schedule without them. Fewer Boolean variables therefore do not establish lower planner workload.
+
+This bounded fixture does not establish production scale, a permanent workforce schema, crew handovers, arbitrary preemption, general multi-skill eligibility propagation or a decomposition framework. The code remains isolated in `resource_assignment_experiment.py`.
+
 ## Current research direction
 
 The cumulative architectural hypothesis is now:
@@ -335,6 +365,8 @@ The cumulative architectural hypothesis is now:
 - ordinary resource-consuming duration should provisionally represent productive processing placed into executable time, while genuinely clock-driven processes may retain elapsed-time semantics;
 - suspendable work may cross explicit calendar or trusted-availability gaps without reserving resources through the gap; continuous work must fit one uninterrupted executable window;
 - mandatory-resource calendar eligibility and resource-capacity allocation are separate constraints, and both must hold for productive execution;
+- overlapping capability pools require a physical-coupling or exact assignment-feasibility layer; independent capability counts alone are insufficient;
+- retain identity-free capacity where resources are genuinely interchangeable, but do not yet assume selective assignment must live inside the scheduling master;
 - trusted actual productive work must remain distinct from forecast remaining productive work; availability loss alone does not create work;
 - activities remain the language of execution;
 - bounded work packages and finite authorised execution methods may become the language of planning choice;
@@ -350,7 +382,7 @@ The cumulative architectural hypothesis is now:
 
 Do not promote these hypotheses into large schemas or frameworks merely because bounded experiments worked.
 
-High-value unresolved questions now include professional semantics of capability/resource substitution, later genuinely larger-scale performance/decomposition evidence, further evidence on the exact lower-order objective hierarchy, and richer irregular/calendar-state cases only when a focused capability requires them.
+High-value unresolved questions now include whether pooled scheduling plus an exact allocation check can repair or reschedule larger realistic cases as cleanly as selective assignment, later genuinely larger-scale performance/decomposition evidence, further evidence on the exact lower-order objective hierarchy, and richer irregular/calendar-state cases only when a focused capability requires them.
 
 Do not substitute broad compatibility work, production hardening, a P6/MSP clone, full event sourcing, a generic objective-policy framework, a generic decomposition framework or a large UI framework for the next focused experiment.
 
@@ -380,6 +412,7 @@ python -m deterministic_scheduling_core.objective_policy_experiment
 python -m deterministic_scheduling_core.adaptive_repair_experiment
 python -m deterministic_scheduling_core.criticality_semantics_experiment
 python -m deterministic_scheduling_core.working_time_experiment
+python -m deterministic_scheduling_core.resource_assignment_experiment
 ```
 
 ## Parallel STO research
@@ -414,7 +447,8 @@ python -m unittest \
   tests.test_objective_policy_experiment \
   tests.test_adaptive_repair_experiment \
   tests.test_criticality_semantics_experiment \
-  tests.test_working_time_experiment -v
+  tests.test_working_time_experiment \
+  tests.test_resource_assignment_experiment -v
 ```
 
 ## Active repository map
@@ -428,6 +462,7 @@ python -m unittest \
 - `src/deterministic_scheduling_core/adaptive_repair_experiment.py` — full vs fixed-local vs adaptive-semantic replanning experiment.
 - `src/deterministic_scheduling_core/criticality_semantics_experiment.py` — logic-CPM vs executable-criticality falsification experiment.
 - `src/deterministic_scheduling_core/working_time_experiment.py` — elapsed vs productive/joint-calendar falsification experiment.
+- `src/deterministic_scheduling_core/resource_assignment_experiment.py` — pooled vs explicit/selective physical-assignment experiment and exact no-handover checker.
 - `src/deterministic_scheduling_core/prototype2_native.py` — first end-to-end native project workflow.
 - `tests/` — focused reference and prototype tests.
 - `docs/` and `docs/archive/` — current direction and historical research.
