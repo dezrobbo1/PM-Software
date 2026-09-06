@@ -265,7 +265,10 @@ function renderActivityList() {
       <td>${activity.modes.length}</td>
     </tr>`).join("");
   $$(".activity-row").forEach((row) => {
-    const select = () => { selectedActivityId = row.dataset.activityId; renderActivityList(); renderActivityEditor(); };
+    const select = () => {
+      if (busy) return; // Rebuilding the editor must not bypass calculation locking.
+      selectedActivityId = row.dataset.activityId; renderActivityList(); renderActivityEditor();
+    };
     row.addEventListener("click", select);
     row.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(); } });
   });

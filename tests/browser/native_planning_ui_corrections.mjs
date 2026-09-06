@@ -96,6 +96,15 @@ export async function correctionRegressions(browser, url, evidenceDir, assert, o
       await apply(page); await calculate(page);
     }
     assert(delayCount === 2, "D: both keyboard regressions exercised delayed real invalidation responses");
+    await page.route("**/api/calculate", async (route) => {
+      const response = await route.fetch();
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      await route.fulfill({response});
+    });
+    await page.locator("#calculate").click();
+    await page.locator('[data-activity-id="A02"]').click();
+    assert(await page.locator("#activity-name").isDisabled(), "D: selecting another row cannot recreate an enabled editor during an actual calculation");
+    await page.waitForFunction(() => document.body.getAttribute("aria-busy") === "false");
     await approve(page);
     assert((await state(page)).approved_status === "CURRENT", "D: apply, calculate and approve still work after typing");
     await page.screenshot({path: path.join(evidenceDir, "09-typing-approved-1366x900.png"), fullPage: true});
