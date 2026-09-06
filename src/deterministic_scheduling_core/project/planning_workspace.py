@@ -184,6 +184,64 @@ def set_processing(workspace: Workspace, activity_id: str, mode_id: str, ticks: 
     raise ValueError("unknown activity/mode")
 
 
+def replace_project(workspace: Workspace, project: dict) -> None:
+    """Apply edited native inputs atomically and invalidate any old proposal."""
+    candidate = deepcopy(workspace)
+    candidate["project"] = deepcopy(project)
+    candidate["proposal"] = None
+    validate(candidate)
+    workspace["project"] = candidate["project"]
+    workspace["proposal"] = None
+
+
+def new_blank_workspace() -> Workspace:
+    """Return an eight-activity native starter that is editable without JSON."""
+    activities = []
+    for index in range(1, 9):
+        identifier = f"N{index:02d}"
+        activities.append({
+            "id": identifier,
+            "name": "Controlling handoff" if index == 8 else f"Activity {index}",
+            "predecessors": [] if index == 1 else [f"N{index - 1:02d}"],
+            "not_before": 0,
+            "modes": [{
+                "id": "FIXED",
+                "processing_ticks": 0 if index == 8 else 2,
+                "calendar_id": "DAY",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                "requirements": [],
+            }],
+        })
+    workspace = {
+        "schema": SCHEMA,
+        "project": {
+            "id": "new-native-project",
+            "name": "New native project",
+            "horizon_ticks": 144,
+            "objective_activity_id": "N08",
+            "pool_riggers": True,
+            "calendars": [
+                {"id": "DAY", "daily_windows": [[14, 24], [25, 34]]},
+                {"id": "NIGHT", "daily_windows": [[36, 48]]},
+            ],
+            "resources": [
+                {"id": "M1", "capabilities": ["MECH"], "calendar_id": "DAY"},
+                {"id": "M2", "capabilities": ["MECH", "INSPECT"], "calendar_id": "DAY"},
+                {"id": "N1", "capabilities": ["MECH"], "calendar_id": "NIGHT"},
+                {"id": "R1", "capabilities": ["RIGGER"], "calendar_id": "DAY"},
+                {"id": "R2", "capabilities": ["RIGGER"], "calendar_id": "DAY"},
+            ],
+            "activities": activities,
+        },
+        "reports": [],
+        "approved_plan": None,
+        "proposal": None,
+        "plan_history": [],
+    }
+    validate(workspace)
+    return workspace
+
+
 def new_demo_workspace() -> Workspace:
     """Example inputs only. Dates, allocations and selected modes are calculated."""
     def slot(identifier: str, capability: str, eligible: list[str]) -> dict:

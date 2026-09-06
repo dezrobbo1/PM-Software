@@ -39,6 +39,7 @@ jobs:
           tests.test_working_time_experiment
           tests.test_resource_assignment_experiment
           tests.test_native_planning_workflow
+          tests.test_native_planning_ui
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment
@@ -79,3 +80,31 @@ jobs:
           path: |
             /tmp/pm-native-planning-workspace.json
             /tmp/pm-native-planning-workflow.log
+
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install native planner
+        run: python -m pip install -e .
+      - name: Install browser harness
+        run: |
+          npm install --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Run real-browser native planning workflow
+        env:
+          PM_UI_EVIDENCE_DIR: /tmp/native-planning-ui-browser
+        run: npm run browser:smoke
+      - name: Save browser screenshots, trace and workspaces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-planning-ui-browser
+          path: /tmp/native-planning-ui-browser

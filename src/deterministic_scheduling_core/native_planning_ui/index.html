@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PM-Software Native Planning Trial</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">PM-Software</p>
+      <h1>Native planning trial</h1>
+      <p class="subtitle">30-minute relative project time · capacity-one physical resources</p>
+    </div>
+    <div class="file-actions" aria-label="Workspace file actions">
+      <button id="load-example" type="button">Load example</button>
+      <button id="new-project" type="button">New project</button>
+      <label class="button" for="open-file">Open workspace</label>
+      <input id="open-file" type="file" accept="application/json,.json" hidden>
+      <button id="save-workspace" type="button">Save workspace</button>
+    </div>
+  </header>
+
+  <div class="status-strip" aria-label="Workspace status">
+    <span id="source-label"></span>
+    <span id="save-state" class="badge"></span>
+    <span id="approved-state" class="badge"></span>
+    <span id="proposal-state" class="badge"></span>
+    <span id="trusted-hash" class="hash"></span>
+  </div>
+  <div id="message" class="message" role="status" aria-live="polite"></div>
+
+  <main>
+    <section class="panel project-panel" aria-labelledby="project-heading">
+      <div class="section-heading">
+        <div>
+          <p class="step">1 · Define trusted inputs</p>
+          <h2 id="project-heading">Project inputs</h2>
+        </div>
+        <div class="heading-actions">
+          <span id="draft-state" class="draft-state"></span>
+          <button id="apply-project" class="primary" type="button">Apply input changes</button>
+        </div>
+      </div>
+      <div id="project-settings" class="project-settings"></div>
+
+      <div class="workspace-grid">
+        <div class="activity-list-region">
+          <div class="subheading-row">
+            <h3>Activities</h3>
+            <span id="activity-count"></span>
+          </div>
+          <div class="table-scroll compact-table">
+            <table>
+              <thead><tr><th>ID</th><th>Name</th><th>Pred.</th><th>Modes</th></tr></thead>
+              <tbody id="activity-list"></tbody>
+            </table>
+          </div>
+          <div class="add-row">
+            <label>New ID <input id="new-activity-id" maxlength="20" placeholder="N09"></label>
+            <label>Name <input id="new-activity-name" maxlength="80" placeholder="Activity name"></label>
+            <button id="add-activity" type="button">Add activity</button>
+          </div>
+        </div>
+        <div id="activity-editor" class="editor-region"></div>
+      </div>
+
+      <details class="input-details">
+        <summary>Resources and calendars</summary>
+        <p class="guidance">Capabilities are explicit facts. Eligibility is set per requirement slot; it is never inferred from a resource name.</p>
+        <div class="resource-calendar-grid">
+          <div>
+            <div class="subheading-row"><h3>Physical resources</h3><span>capacity 1 each</span></div>
+            <div id="resource-editor"></div>
+            <div class="add-row">
+              <label>Resource ID <input id="new-resource-id" maxlength="20" placeholder="M3"></label>
+              <label>Capabilities <input id="new-resource-capabilities" placeholder="MECH, INSPECT"></label>
+              <button id="add-resource" type="button">Add resource</button>
+            </div>
+          </div>
+          <div>
+            <div class="subheading-row"><h3>Calendars</h3><span>repeats each relative day</span></div>
+            <div id="calendar-editor"></div>
+            <div class="add-row">
+              <label>Calendar ID <input id="new-calendar-id" maxlength="20" placeholder="LATE"></label>
+              <label>Windows <input id="new-calendar-windows" placeholder="14:00-17:00"></label>
+              <button id="add-calendar" type="button">Add calendar</button>
+            </div>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel workflow-panel" aria-labelledby="workflow-heading">
+      <div class="section-heading">
+        <div>
+          <p class="step">2 · Calculate, accept facts, approve proposals</p>
+          <h2 id="workflow-heading">Planning workflow</h2>
+        </div>
+        <div class="heading-actions">
+          <button id="calculate" class="primary" type="button">Calculate plan / recovery</button>
+          <label>Approval actor <input id="approval-actor" value="trial-planner" maxlength="80"></label>
+          <button id="approve" type="button">Approve displayed proposal</button>
+        </div>
+      </div>
+
+      <div class="workflow-grid">
+        <form id="report-form" class="outage-form">
+          <h3>Report resource unavailable</h3>
+          <div class="form-grid">
+            <label>Resource <select id="outage-resource"></select></label>
+            <label>Start <input id="outage-start" value="1@10:00" placeholder="1@10:00"></label>
+            <label>Finish <input id="outage-finish" value="1@17:00" placeholder="1@17:00"></label>
+            <label>Reporter <input id="outage-reporter" value="trial-supervisor" maxlength="80"></label>
+            <label class="wide">Reason <input id="outage-reason" value="Synthetic availability change" maxlength="160"></label>
+          </div>
+          <button type="submit">Report unavailable</button>
+          <p class="guidance">Reporting is untrusted information. It does not change scheduling inputs or the approved plan.</p>
+        </form>
+        <div class="reports-region">
+          <div class="subheading-row"><h3>Availability information</h3><span>reported ≠ accepted</span></div>
+          <div id="reports-list"></div>
+        </div>
+      </div>
+
+      <div id="plan-summary" class="summary-grid"></div>
+      <div id="comparison" class="comparison"></div>
+      <div id="alternatives" class="alternatives"></div>
+    </section>
+
+    <section class="panel results-panel" aria-labelledby="results-heading">
+      <div class="section-heading">
+        <div>
+          <p class="step">3 · Inspect the calculated result</p>
+          <h2 id="results-heading">Plan table and productive-time timeline</h2>
+        </div>
+        <div id="plan-picker" class="segmented" aria-label="Displayed plan"></div>
+      </div>
+      <p class="guidance">Only productive execution periods are drawn. Blank space inside an activity envelope is calendar suspension and consumes no resource capacity.</p>
+      <div class="table-scroll plan-table-region">
+        <table class="plan-table">
+          <thead><tr><th>Activity</th><th>Mode</th><th>Start</th><th>Finish</th><th>Productive periods</th><th>Assignment</th></tr></thead>
+          <tbody id="plan-table"></tbody>
+        </table>
+      </div>
+      <div id="timeline" class="timeline" aria-label="Read-only productive-time Gantt"></div>
+    </section>
+
+    <section class="panel history-panel" aria-labelledby="history-heading">
+      <div class="section-heading"><div><p class="step">4 · Retain provenance</p><h2 id="history-heading">Approval history</h2></div></div>
+      <div id="history"></div>
+    </section>
+  </main>
+
+  <footer>
+    Local trial only. Relative days are not calendar dates or time zones. No drag-to-reschedule, partial progress, external-file import, collaboration or enterprise permissions.
+  </footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>
