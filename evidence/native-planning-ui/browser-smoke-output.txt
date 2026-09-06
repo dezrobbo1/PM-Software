@@ -53,6 +53,7 @@ PASS: D: sequential keyboard edit preserves complete value, focus and caret in [
 PASS: D: pending invalidation immediately blocks calculation and approval
 PASS: D: late invalidation preserves the newer draft and focus
 PASS: D: both keyboard regressions exercised delayed real invalidation responses
+PASS: D: selecting another row cannot recreate an enabled editor during an actual calculation
 PASS: D: apply, calculate and approve still work after typing
 PASS: B: valid saved recovery, actors and history open intact without calculation
 PASS: B: rejected changed finish preserves active workspace, revision and dirty state

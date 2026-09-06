@@ -4,12 +4,12 @@
 
 Starting head: `0d148689d37fe1a9805430d04a0a3662d8b794a0`; live main/base: `d2b2b386cca80b82f1d3737343ce3ef0a59ba067`.
 
-The corrected executable source at `a0d240f1a563f4c11afdd8be37172bc25893728c` passed both CI jobs:
+The corrected executable source at `35e745f035ffe9a741a1935bf8ab3bc5f12d231d` passed both CI jobs:
 
-- run: <https://github.com/dezrobbo1/PM-Software/actions/runs/34034069189>
-- browser artifact: `native-planning-ui-browser`, ID `9989588673`
-- artifact SHA-256: `0ee4429f7698621a67ecf59d883a43b57c4f4ca8ad58162f4c12286bf015bf75`
-- 149 focused Python tests; 5 JavaScript state regressions; 73 real-browser assertions
+- run: <https://github.com/dezrobbo1/PM-Software/actions/runs/34034360964>
+- browser artifact: `native-planning-ui-browser`, ID `9989687921`
+- artifact SHA-256: `c4386d761e5462ca0d45b33ea322e5506c83efad6053db04b00ddb5244f28bae`
+- 149 focused Python tests; 5 JavaScript state regressions; 74 real-browser assertions
 - all existing experiment/workflow commands, compilation and JavaScript syntax checks passed locally; both CI jobs passed
 - Headless Chrome 151.0.7922.34, Linux x86_64, 1366×900 and 1920×1080
 - six deliberately induced HTTP 400/403/409/422 console diagnostics; no unexpected browser errors
@@ -21,7 +21,7 @@ The final documentation commit is rerun in CI before handoff; its exact SHA, run
 | A / 3943816649 | Retrying a draft after 409 reused the newer revision | Draft revision and explicit conflict state; Apply/Save blocked until confirmed reload. Same-context two-tab browser test preserves tab A, retains tab B's unsent text, and verifies deliberate editing after recovery. |
 | B / 3943816663 | Changed finish/allocation and damaged history accepted; malformed plans could poison the session | Candidate-only validation of each stored plan against its own source/hash and exact physical checker before adoption. Tests cover recovery/history, stale approval/proposal, modified finish/hash, recomputed-hash invalid allocation, malformed records and continued use after rejection. No optimisation or uploaded-output repair. |
 | C / 3943816668 | Empty-period milestone moving 30→65 reported unchanged | Compare start/finish as well as periods; browser shows Day 1 15:00 → Day 2 08:30. Unchanged milestone remains unchanged; no invented productive periods or assignments. |
-| D / 3943816656 | First input event disabled the focused control | Background invalidation blocks mutations, not the editor. Sequential keyboard tests in name and capability fields use a 700ms delay on actual Python responses, preserve text/focus/caret, then apply/calculate/approve successfully. |
+| D / 3943816656 | First input event disabled the focused control | Background invalidation blocks mutations, not the editor. Sequential keyboard tests in name and capability fields use a 700ms delay on actual Python responses, preserve text/focus/caret, then apply/calculate/approve successfully; a delayed calculation also verifies row selection cannot bypass the edit lock. |
 | E / 3943816661 | Omitted optional requirements crashed rendering | Safe empty-list defaults; create a list only in editable slot addition. Browser tests render, edit slots, enforce resource references, calculate/save/reopen, and retain the prior hashed snapshot byte-for-byte. |
 | F / 3943816666 | Foreign-port Origin and text/plain JSON accepted | Exact loopback Host/serving-port, complete supplied Origin, JSON content-type checks. HTTP tests verify rejection is atomic; a second-port real-browser attempt receives 403 and leaves the target state/revision unchanged. Origin-less local JSON clients remain explicitly supported. |
 
