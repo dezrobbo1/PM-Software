@@ -38,6 +38,7 @@ jobs:
           tests.test_criticality_semantics_experiment
           tests.test_working_time_experiment
           tests.test_resource_assignment_experiment
+          tests.test_native_planning_workflow
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment
@@ -65,5 +66,16 @@ jobs:
         run: python -m deterministic_scheduling_core.working_time_experiment
       - name: Run resource-assignment falsification experiment
         run: python -m deterministic_scheduling_core.resource_assignment_experiment
+      - name: Run editable native planning workflow
+        run: |
+          set -euo pipefail
+          python -m deterministic_scheduling_core.native_planning_workflow demo /tmp/pm-native-planning-workspace.json | tee /tmp/pm-native-planning-workflow.log
       - name: Compile active package
         run: python -m compileall -q src
+      - name: Save native workflow example and execution evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-planning-workflow
+          path: |
+            /tmp/pm-native-planning-workspace.json
+            /tmp/pm-native-planning-workflow.log
