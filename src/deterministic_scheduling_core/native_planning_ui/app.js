@@ -248,7 +248,10 @@ function renderProjectSettings() {
   $("#project-name").addEventListener("input", (event) => { draft.name = event.target.value; markDraftDirty(); });
   $("#project-horizon").addEventListener("change", (event) => {
     const days = Number(event.target.value);
-    if (!Number.isInteger(days) || days < 1 || days > 14) return showMessage("Horizon must be 1–14 whole relative days.", "error");
+    if (!Number.isInteger(days) || days < 1 || days > 14) {
+      markDraftDirty();
+      return showMessage("Horizon must be 1–14 whole relative days.", "error");
+    }
     draft.horizon_ticks = days * 48; markDraftDirty();
   });
   $("#objective-activity").addEventListener("change", (event) => { draft.objective_activity_id = event.target.value; markDraftDirty(); });
@@ -297,7 +300,7 @@ function renderActivityEditor() {
   $("#activity-name").addEventListener("input", (event) => { activity.name = event.target.value; markDraftDirty(); renderActivityList(); });
   $("#activity-not-before").addEventListener("change", (event) => {
     try { activity.not_before = parseRelativeTime(event.target.value); markDraftDirty(); }
-    catch (error) { showMessage(error.message, "error"); }
+    catch (error) { markDraftDirty(); showMessage(error.message, "error"); }
   });
   $$('[data-predecessor]').forEach((input) => input.addEventListener("change", () => {
     activity.predecessors = $$('[data-predecessor]:checked').map((item) => item.dataset.predecessor);
@@ -346,7 +349,10 @@ function bindModeEditors(activity) {
   }));
   $$('[data-mode-work]').forEach((input) => input.addEventListener("change", (event) => {
     const hours = Number(event.target.value);
-    if (!Number.isFinite(hours) || hours < 0 || !Number.isInteger(hours * 2)) return showMessage("Productive work must be a nonnegative multiple of 0.5 hours.", "error");
+    if (!Number.isFinite(hours) || hours < 0 || !Number.isInteger(hours * 2)) {
+      markDraftDirty();
+      return showMessage("Productive work must be a nonnegative multiple of 0.5 hours.", "error");
+    }
     activity.modes[Number(input.dataset.modeWork)].processing_ticks = hours * 2; markDraftDirty();
   }));
   $$('[data-mode-calendar]').forEach((input) => input.addEventListener("change", (event) => {
@@ -449,7 +455,7 @@ function renderCalendars() {
   </div>`).join("");
   $$('[data-calendar-windows]').forEach((input) => input.addEventListener("change", (event) => {
     try { draft.calendars[Number(input.dataset.calendarWindows)].daily_windows = parseWindows(event.target.value); markDraftDirty(); }
-    catch (error) { showMessage(error.message, "error"); }
+    catch (error) { markDraftDirty(); showMessage(error.message, "error"); }
   }));
   $$('[data-remove-calendar]').forEach((button) => button.addEventListener("click", () => removeCalendar(Number(button.dataset.removeCalendar))));
 }
