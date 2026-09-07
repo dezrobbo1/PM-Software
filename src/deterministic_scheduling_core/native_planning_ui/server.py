@@ -1,0 +1,428 @@
+"""Small dependency-free loopback service for the native planning trial."""
+from __future__ import annotations
+
+import argparse
+from copy import deepcopy
+from dataclasses import dataclass, field
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import secrets
+from pathlib import Path
+from threading import RLock
+from typing import Any
+from urllib.parse import urlsplit
+
+from deterministic_scheduling_core.errors import SchedulingError
+from deterministic_scheduling_core.project.planning_workspace import (
+    Workspace,
+    accept_report,
+    digest,
+    new_blank_workspace,
+    new_demo_workspace,
+    replace_project,
+    report_unavailable,
+    state_hash,
+    trusted_input,
+    validate,
+)
+from deterministic_scheduling_core.scheduling.planning_workspace import approve, propose, validate_stored_plans
+
+MAX_BODY_BYTES = 2 * 1024 * 1024
+MAX_ASSIGNMENT_COMBINATIONS = 64
+ASSET_DIR = Path(__file__).parent
+
+
+def _plan_status(workspace: Workspace, plan: dict | None) -> str:
+    if plan is None:
+        return "NONE"
+    return "CURRENT" if plan.get("source_state_hash") == state_hash(workspace) and plan.get("source_snapshot") == trusted_input(workspace) else "STALE"
+
+
+def _comparison(workspace: Workspace) -> dict[str, Any] | None:
+    old = workspace.get("approved_plan")
+    new = workspace.get("proposal")
+    if not old or not new:
+        return None
+    old_entries = {entry["activity_id"]: entry for entry in old["entries"]}
+    new_entries = {entry["activity_id"]: entry for entry in new["entries"]}
+    changed_modes, changed_assignments, changed_periods, unchanged = [], [], [], []
+    activity_ids = list(old["selected_modes"])
+    activity_ids.extend(activity_id for activity_id in new["selected_modes"] if activity_id not in old["selected_modes"])
+    for activity_id in activity_ids:
+        old_entry, new_entry = old_entries.get(activity_id), new_entries.get(activity_id)
+        mode_changed = old["selected_modes"].get(activity_id) != new["selected_modes"].get(activity_id)
+        assignment_changed = old_entry != new_entry and (old_entry is None or new_entry is None or old_entry["assignments"] != new_entry["assignments"])
+        period_changed = old_entry != new_entry and (old_entry is None or new_entry is None or any(old_entry[key] != new_entry[key] for key in ("start", "finish", "periods")))
+        if mode_changed:
+            changed_modes.append({"activity_id": activity_id, "old": old["selected_modes"].get(activity_id), "new": new["selected_modes"].get(activity_id)})
+        if assignment_changed:
+            changed_assignments.append({
+                "activity_id": activity_id,
+                "old": old_entry["assignments"] if old_entry else None,
+                "new": new_entry["assignments"] if new_entry else None,
+            })
+        if period_changed:
+            changed_periods.append({
+                "activity_id": activity_id,
+                "old": old_entry["periods"] if old_entry else None,
+                "new": new_entry["periods"] if new_entry else None,
+                "old_start": old_entry["start"] if old_entry else None,
+                "old_finish": old_entry["finish"] if old_entry else None,
+                "new_start": new_entry["start"] if new_entry else None,
+                "new_finish": new_entry["finish"] if new_entry else None,
+            })
+        if old_entry is not None and new_entry is not None and not mode_changed and not assignment_changed and not period_changed:
+            unchanged.append(activity_id)
+    return {
+        "old_finish": old["project_finish"],
+        "new_finish": new["project_finish"],
+        "changed_modes": changed_modes,
+        "changed_assignments": changed_assignments,
+        "changed_periods": changed_periods,
+        "unchanged_activity_ids": unchanged,
+    }
+
+
+def _view(session: "BrowserSession") -> dict[str, Any]:
+    workspace = deepcopy(session.workspace)
+    return {
+        "revision": session.revision,
+        "dirty": session.dirty,
+        "source": session.source,
+        "trusted_input_hash": state_hash(workspace),
+        "approved_status": _plan_status(workspace, workspace.get("approved_plan")),
+        "proposal_status": _plan_status(workspace, workspace.get("proposal")),
+        "comparison": _comparison(workspace),
+        "workspace": workspace,
+    }
+
+
+def _assignment_combination_limit_exceeded(requirements: list[dict]) -> bool:
+    """Bound named-resource assignment expansion without enumerating the full space."""
+    prefixes: set[tuple[str, ...]] = {()}
+    for requirement in requirements:
+        next_prefixes: set[tuple[str, ...]] = set()
+        for prefix in prefixes:
+            used = set(prefix)
+            for resource_id in requirement["eligible_resource_ids"]:
+                if resource_id in used:
+                    continue
+                next_prefixes.add((*prefix, resource_id))
+                if len(next_prefixes) > MAX_ASSIGNMENT_COMBINATIONS:
+                    return True
+        prefixes = next_prefixes
+        if not prefixes:
+            return False
+    return False
+
+
+def _validate_trial_size(workspace: Workspace) -> None:
+    project = workspace["project"]
+    count = len(project["activities"])
+    if not 8 <= count <= 15:
+        raise ValueError("the browser trial supports projects with 8 to 15 activities")
+
+    horizon = project.get("horizon_ticks")
+    if type(horizon) is not int or horizon < 48 or horizon > 14 * 48 or horizon % 48:
+        raise ValueError("the browser trial horizon must be 1 to 14 whole relative days")
+
+    for resource in project.get("resources", []):
+        capabilities = resource.get("capabilities")
+        identifier = resource.get("id", "<unknown>")
+        if not isinstance(capabilities, list) or not capabilities or any(not isinstance(capability, str) or not capability.strip() for capability in capabilities):
+            raise ValueError(f"resource {identifier} must define at least one explicit capability")
+
+    for activity in project["activities"]:
+        for mode in activity["modes"]:
+            requirements = mode.get("requirements", [])
+            if not isinstance(requirements, list):
+                raise ValueError(f"requirements on {activity['id']}/{mode['id']} must be a JSON array")
+            for requirement in requirements:
+                for field in ("pool_ids", "eligible_resource_ids"):
+                    values = requirement.get(field)
+                    if not isinstance(values, list) or not values or any(not isinstance(value, str) or not value.strip() for value in values):
+                        raise ValueError(
+                            f"{field} on {activity['id']}/{mode['id']}/{requirement.get('id', '<unknown>')} "
+                            "must be a non-empty JSON array of strings"
+                        )
+            if _assignment_combination_limit_exceeded(requirements):
+                raise ValueError(
+                    f"{activity['id']}/{mode['id']} exceeds the browser trial limit of "
+                    f"{MAX_ASSIGNMENT_COMBINATIONS} physical assignment combinations"
+                )
+
+
+def _body_integer(body: dict[str, Any], key: str) -> int:
+    value = body[key]
+    if type(value) is not int:
+        raise ValueError(f"{key} must be an integer number of 30-minute ticks")
+    return value
+
+
+@dataclass
+class BrowserSession:
+    workspace: Workspace = field(default_factory=new_demo_workspace)
+    revision: int = 0
+    dirty: bool = False
+    source: str = "Built-in example"
+    lock: RLock = field(default_factory=RLock)
+
+
+class SessionStore:
+    def __init__(self) -> None:
+        self._sessions: dict[str, BrowserSession] = {}
+        self._lock = RLock()
+
+    def get(self, session_id: str | None) -> tuple[str, BrowserSession, bool]:
+        with self._lock:
+            if session_id and session_id in self._sessions:
+                return session_id, self._sessions[session_id], False
+            session_id = secrets.token_urlsafe(24)
+            session = BrowserSession()
+            self._sessions[session_id] = session
+            return session_id, session, True
+
+
+class TrialServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, server_address: tuple[str, int], handler: type[BaseHTTPRequestHandler]):
+        super().__init__(server_address, handler)
+        self.sessions = SessionStore()
+
+
+class TrialHandler(BaseHTTPRequestHandler):
+    server: TrialServer
+
+    def log_message(self, format: str, *args: object) -> None:
+        print(f"{self.address_string()} - {format % args}")
+
+    def _headers(self, status: int, content_type: str, length: int, session_id: str | None = None) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(length))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+        if session_id:
+            self.send_header("Set-Cookie", f"pm_trial_session={session_id}; HttpOnly; SameSite=Strict; Path=/")
+        self.end_headers()
+
+    def _json(self, value: Any, status: int = HTTPStatus.OK, session_id: str | None = None) -> None:
+        body = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
+        self._headers(status, "application/json; charset=utf-8", len(body), session_id)
+        self.wfile.write(body)
+
+    def _error(self, message: str, status: int, session: BrowserSession | None = None, session_id: str | None = None) -> None:
+        value: dict[str, Any] = {"ok": False, "error": message}
+        if session:
+            value["state"] = _view(session)
+        self._json(value, status, session_id)
+
+    def _safe_request(self) -> bool:
+        # This service is plain HTTP on IPv4 loopback. Origin-less JSON clients
+        # are allowed, but supplied browser origins must match this exact Host.
+        host = self.headers.get("Host", "")
+        allowed_hosts = {f"{name}:{self.server.server_port}" for name in ("127.0.0.1", "localhost")}
+        if self.server.server_port == 80:
+            allowed_hosts.update({"127.0.0.1", "localhost"})
+        if len(self.headers.get_all("Host", [])) != 1 or host not in allowed_hosts:
+            self._error("Host must identify this loopback service and port", HTTPStatus.FORBIDDEN)
+            return False
+        origin = self.headers.get("Origin")
+        if origin is not None:
+            try:
+                parsed = urlsplit(origin)
+                serving = urlsplit("http://" + host)
+                valid = (len(self.headers.get_all("Origin", [])) == 1
+                         and origin == f"{parsed.scheme}://{parsed.netloc}"
+                         and parsed.scheme == "http" and parsed.username is None and parsed.password is None
+                         and parsed.hostname == serving.hostname
+                         and (parsed.port if parsed.port is not None else 80) == self.server.server_port)
+            except ValueError:
+                valid = False
+            if not valid:
+                self._error("Origin must match this service's scheme, hostname and port", HTTPStatus.FORBIDDEN)
+                return False
+        if self.command == "POST" and self.headers.get_content_type() != "application/json":
+            self._error("JSON mutations require Content-Type application/json", HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+            return False
+        return True
+
+    def _session(self) -> tuple[str, BrowserSession, bool]:
+        session_id = None
+        for cookie in self.headers.get("Cookie", "").split(";"):
+            key, _, value = cookie.strip().partition("=")
+            if key == "pm_trial_session":
+                session_id = value
+        return self.server.sessions.get(session_id)
+
+    def _read_json(self) -> dict[str, Any]:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise ValueError("invalid content length") from exc
+        if length <= 0 or length > MAX_BODY_BYTES:
+            raise ValueError("request body must be present and no larger than 2 MiB")
+        try:
+            value = json.loads(self.rfile.read(length))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("request body must be valid JSON") from exc
+        if not isinstance(value, dict):
+            raise ValueError("request body must be a JSON object")
+        return value
+
+    def do_GET(self) -> None:
+        if not self._safe_request():
+            return
+        path = urlsplit(self.path).path
+        session_id, session, created = self._session()
+        if path == "/api/state":
+            with session.lock:
+                self._json({"ok": True, "state": _view(session)}, session_id=session_id if created else None)
+            return
+        if path == "/favicon.ico":
+            self._headers(HTTPStatus.NO_CONTENT, "image/x-icon", 0, session_id if created else None)
+            return
+        assets = {
+            "/": ("index.html", "text/html; charset=utf-8"),
+            "/index.html": ("index.html", "text/html; charset=utf-8"),
+            "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+            "/styles.css": ("styles.css", "text/css; charset=utf-8"),
+        }
+        if path not in assets:
+            self._error("not found", HTTPStatus.NOT_FOUND, session_id=session_id if created else None)
+            return
+        filename, content_type = assets[path]
+        body = (ASSET_DIR / filename).read_bytes()
+        self._headers(HTTPStatus.OK, content_type, len(body), session_id if created else None)
+        self.wfile.write(body)
+
+    def do_POST(self) -> None:
+        if not self._safe_request():
+            return
+        session_id, session, created = self._session()
+        try:
+            body = self._read_json()
+        except ValueError as exc:
+            self._error(str(exc), HTTPStatus.BAD_REQUEST, session, session_id if created else None)
+            return
+        path = urlsplit(self.path).path
+        with session.lock:
+            if body.get("revision") != session.revision:
+                self._error("workspace changed in another request; draft retained — reload current inputs before applying or saving", HTTPStatus.CONFLICT, session, session_id if created else None)
+                return
+            before = digest(session.workspace)
+            try:
+                payload = self._dispatch(path, body, session)
+            except (KeyError, TypeError, ValueError, SchedulingError) as exc:
+                if digest(session.workspace) != before:
+                    session.revision += 1
+                    session.dirty = True
+                status = HTTPStatus.UNPROCESSABLE_ENTITY if isinstance(exc, SchedulingError) else HTTPStatus.BAD_REQUEST
+                self._error(str(exc), status, session, session_id if created else None)
+                return
+            self._json({"ok": True, "state": _view(session), **payload}, session_id=session_id if created else None)
+
+    def _dispatch(self, path: str, body: dict[str, Any], session: BrowserSession) -> dict[str, Any]:
+        before_workspace = deepcopy(session.workspace)
+        before_source = session.source
+        dirty = True
+        payload: dict[str, Any] = {}
+        if path == "/api/load-example":
+            session.workspace = new_demo_workspace()
+            session.source = "Built-in example"
+            dirty = False
+        elif path == "/api/new":
+            session.workspace = new_blank_workspace()
+            session.source = "New unsaved project"
+        elif path == "/api/open":
+            workspace = deepcopy(body["workspace"])
+            try:
+                validate(workspace)
+                _validate_trial_size(workspace)
+                validate_stored_plans(workspace)
+            except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
+                raise ValueError(f"Cannot open stored workspace: {exc}") from exc
+            session.workspace = workspace
+            session.source = str(body.get("filename") or "Opened workspace")[:120]
+            dirty = False
+        elif path == "/api/project":
+            candidate = deepcopy(session.workspace)
+            replace_project(candidate, body["project"])
+            _validate_trial_size(candidate)
+            session.workspace = candidate
+        elif path == "/api/invalidate-proposal":
+            if session.workspace.get("proposal") is not None:
+                session.workspace["proposal"] = None
+            else:
+                dirty = session.dirty
+        elif path == "/api/calculate":
+            propose(session.workspace)
+        elif path == "/api/approve":
+            approve(session.workspace, str(body.get("actor", "")))
+        elif path == "/api/report":
+            report_id = report_unavailable(
+                session.workspace,
+                str(body["resource_id"]),
+                _body_integer(body, "start"),
+                _body_integer(body, "finish"),
+                str(body.get("reporter", "")),
+                str(body.get("reason", "")),
+            )
+            payload["report_id"] = report_id
+        elif path == "/api/accept":
+            accept_report(session.workspace, str(body["report_id"]), str(body.get("actor", "")))
+        elif path == "/api/export":
+            validate(session.workspace)
+            payload["filename"] = f"{session.workspace['project']['id']}.pm-workspace.json"
+            payload["workspace_json"] = json.dumps(session.workspace, indent=2, ensure_ascii=False) + "\n"
+            dirty = False
+        else:
+            raise ValueError("unknown API action")
+        # Keep every successful mutation/export within the existing reopen limit.
+        # ASCII escaping and default spacing conservatively bound browser JSON;
+        # reserve 4 KiB for revision metadata and a renamed download filename.
+        reopen_body = {
+            "workspace": session.workspace,
+            "filename": f"{session.workspace['project']['id']}.pm-workspace.json",
+        }
+        if len(json.dumps(reopen_body, ensure_ascii=True).encode("ascii")) + 4096 > MAX_BODY_BYTES:
+            session.workspace = before_workspace
+            session.source = before_source
+            raise ValueError(
+                "Workspace save/reopen size limit reached. This action was not applied; "
+                "the previous workspace and full history are retained. "
+                "Save the current workspace before starting a new trial."
+            )
+        session.revision += 1
+        session.dirty = dirty
+        return payload
+
+
+def create_server(port: int = 8765) -> TrialServer:
+    """Create a loopback-only server; port zero requests an ephemeral port."""
+    return TrialServer(("127.0.0.1", port), TrialHandler)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run the PM-Software native planning trial UI on loopback")
+    parser.add_argument("--port", type=int, default=8765, help="loopback port (default: 8765)")
+    args = parser.parse_args(argv)
+    server = create_server(args.port)
+    address = f"http://127.0.0.1:{server.server_port}"
+    print(f"PM-Software native planning trial: {address}", flush=True)
+    print("Press Ctrl+C to stop. Workspace persistence uses browser download/upload.", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopping native planning trial.", flush=True)
+    finally:
+        server.server_close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

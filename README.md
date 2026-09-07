@@ -50,6 +50,19 @@ Prototype 2 then established that PM-Software can create, persist, reopen, edit 
 
 The current native model contains projects, activities/milestones, finish-to-start precedence, resources/capacity demand, alternative activity execution modes, not-before/latest-finish boundaries, workface-style exclusion groups, planned/frozen coordinates and a controlling objective activity. The scheduler consumes that native model only.
 
+### Native planning trial UI
+
+A thin local browser application now exposes the bounded native planning loop without requiring Python or JSON editing. It uses the existing Python validator, scheduler, exact physical checker, report acceptance, approval and workspace persistence functions.
+
+```bash
+python -m pip install -e .
+python -m deterministic_scheduling_core.native_planning_ui
+```
+
+Open `http://127.0.0.1:8765`. The practitioner walkthrough, save/reopen workflow, test command and current limitations are in [`docs/native-planning-ui.md`](docs/native-planning-ui.md).
+
+The retained Chromium trial reproduced the native example (`A03` `SPECIALIST`, Day 1 15:00), kept an unaccepted M2 outage outside trusted inputs, then produced the existing `NORMAL` recovery at Day 2 08:30 with the Day 2 11:30 specialist alternative. A separate browser-entered project was physically feasible, selected its authorised `QUICK` mode and finished Day 1 15:00. These are interface/workflow observations over the existing engine, not new scheduling evidence.
+
 ## Planning-model experiment — Work–Method–Execution
 
 Targeted research challenged the assumption that a planner must completely select one activity network before the scheduling engine can reason about the project.
@@ -463,6 +476,7 @@ python -m unittest \
 - `src/deterministic_scheduling_core/criticality_semantics_experiment.py` — logic-CPM vs executable-criticality falsification experiment.
 - `src/deterministic_scheduling_core/working_time_experiment.py` — elapsed vs productive/joint-calendar falsification experiment.
 - `src/deterministic_scheduling_core/resource_assignment_experiment.py` — pooled vs explicit/selective physical-assignment experiment and exact no-handover checker.
+- `src/deterministic_scheduling_core/native_planning_ui/` — loopback browser trial over the existing native workflow.
 - `src/deterministic_scheduling_core/prototype2_native.py` — first end-to-end native project workflow.
 - `tests/` — focused reference and prototype tests.
 - `docs/` and `docs/archive/` — current direction and historical research.

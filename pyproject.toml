@@ -23,6 +23,9 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"deterministic_scheduling_core.native_planning_ui" = ["*.html", "*.css", "*.js"]
+
 [tool.dsc]
 phase = "proof-of-concept"
 status = "active"

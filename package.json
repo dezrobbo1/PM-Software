@@ -1,0 +1,12 @@
+{
+  "name": "pm-software-native-planning-trial-browser-tests",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Browser acceptance harness for the local native planning trial",
+  "scripts": {
+    "browser:smoke": "node tests/browser/native_planning_ui_smoke.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}
