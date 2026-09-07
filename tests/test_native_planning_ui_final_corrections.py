@@ -5,9 +5,11 @@ from http.cookiejar import CookieJar
 import json
 from threading import Thread
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 
+from deterministic_scheduling_core.native_planning_ui import server as ui_server
 from deterministic_scheduling_core.native_planning_ui.server import create_server
 
 
@@ -118,6 +120,88 @@ class NativePlanningUiFinalCorrectionsTests(unittest.TestCase):
         status, result = self.post("/api/open", {"workspace": saved, "filename": "optional-reopened.json"})
         self.assertEqual(status, 200, result.get("error"))
         self.assertEqual(self.state["workspace"], saved)
+
+    def test_history_growth_stops_before_save_becomes_unreopenable(self):
+        status, result = self.post("/api/calculate")
+        self.assertEqual(status, 200, result.get("error"))
+        status, result = self.post("/api/approve", {"actor": "trial-planner"})
+        self.assertEqual(status, 200, result.get("error"))
+        # Exercise real solves/approvals with a smaller transport budget so the
+        # regression reaches the boundary without hundreds of solver calls.
+        limit = 3 * len(json.dumps(self.state["workspace"]).encode()) + 4096
+        with patch.object(ui_server, "MAX_BODY_BYTES", limit):
+            stopped = False
+            for _ in range(12):
+                for route, payload in (("/api/calculate", {}), ("/api/approve", {"actor": "trial-planner"})):
+                    before = deepcopy(self.state)
+                    status, result = self.post(route, payload)
+                    if status == 400:
+                        self.assertIn("save/reopen size limit", result["error"])
+                        self.assertEqual(self.state, before)
+                        stopped = True
+                        break
+                    self.assertEqual(status, 200, result.get("error"))
+                if stopped:
+                    break
+            self.assertTrue(stopped, "history growth must stop before producing an unreopenable save")
+            self.assertGreater(len(self.state["workspace"]["plan_history"]), 0)
+            retained = deepcopy(self.state["workspace"])
+            status, exported = self.post("/api/export")
+            self.assertEqual(status, 200, exported.get("error"))
+            saved = json.loads(exported["workspace_json"])
+            self.assertEqual(saved, retained)
+            status, result = self.post("/api/new")
+            self.assertEqual(status, 200, result.get("error"))
+            # Include renamed Unicode filename metadata, not just workspace size.
+            payload = {"workspace": saved, "filename": "é" * 100 + ".json"}
+            wire = json.dumps({"revision": self.state["revision"], **payload}).encode()
+            self.assertLessEqual(len(wire), limit)
+            with patch.object(ui_server, "propose", side_effect=AssertionError("open must not solve")):
+                status, result = self.post("/api/open", payload)
+            self.assertEqual(status, 200, result.get("error"))
+            self.assertEqual(self.state["workspace"], retained)
+            self.assertFalse(self.state["dirty"])
+
+    def test_approval_size_overflow_preserves_proposal_and_revision(self):
+        status, result = self.post("/api/calculate")
+        self.assertEqual(status, 200, result.get("error"))
+        before = deepcopy(self.state)
+        reopen_body = {
+            "workspace": before["workspace"],
+            "filename": f"{before['workspace']['project']['id']}.pm-workspace.json",
+        }
+        limit = len(json.dumps(reopen_body).encode()) + 4096 + 16
+        with patch.object(ui_server, "MAX_BODY_BYTES", limit):
+            status, result = self.post("/api/approve", {"actor": "planner-" + "x" * 512})
+        self.assertEqual(status, 400)
+        self.assertIn("save/reopen size limit", result["error"])
+        self.assertEqual(self.state, before)
+        status, result = self.post("/api/approve", {"actor": "trial-planner"})
+        self.assertEqual(status, 200, result.get("error"))
+        self.assertIsNotNone(self.state["workspace"]["approved_plan"])
+
+    def test_export_above_real_two_mib_limit_does_not_claim_saved(self):
+        status, result = self.post("/api/calculate")
+        self.assertEqual(status, 200, result.get("error"))
+        status, result = self.post("/api/approve", {"actor": "trial-planner"})
+        self.assertEqual(status, 200, result.get("error"))
+        # Model oversized in-memory history from an older build. Normal history
+        # growth is exercised through actual HTTP calculations/approvals above.
+        session = next(iter(self.server.sessions._sessions.values()))
+        record = session.workspace["approved_plan"]
+        copies = ui_server.MAX_BODY_BYTES // len(json.dumps(record).encode()) + 2
+        with session.lock:
+            session.workspace["plan_history"] = [deepcopy(record) for _ in range(copies)]
+            session.dirty = True
+        self.state = self.get_json("/api/state")["state"]
+        before = deepcopy(self.state)
+        self.assertGreater(len(json.dumps(before["workspace"]).encode()), 2 * 1024 * 1024)
+        status, result = self.post("/api/export")
+        self.assertEqual(status, 400)
+        self.assertIn("save/reopen size limit", result["error"])
+        self.assertNotIn("workspace_json", result)
+        self.assertEqual(self.state, before)
+        self.assertTrue(self.state["dirty"])
 
 
 if __name__ == "__main__":

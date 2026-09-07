@@ -288,6 +288,8 @@ class TrialHandler(BaseHTTPRequestHandler):
             self._json({"ok": True, "state": _view(session), **payload}, session_id=session_id if created else None)
 
     def _dispatch(self, path: str, body: dict[str, Any], session: BrowserSession) -> dict[str, Any]:
+        before_workspace = deepcopy(session.workspace)
+        before_source = session.source
         dirty = True
         payload: dict[str, Any] = {}
         if path == "/api/load-example":
@@ -341,6 +343,21 @@ class TrialHandler(BaseHTTPRequestHandler):
             dirty = False
         else:
             raise ValueError("unknown API action")
+        # Keep every successful mutation/export within the existing reopen limit.
+        # ASCII escaping and default spacing conservatively bound browser JSON;
+        # reserve 4 KiB for revision metadata and a renamed download filename.
+        reopen_body = {
+            "workspace": session.workspace,
+            "filename": f"{session.workspace['project']['id']}.pm-workspace.json",
+        }
+        if len(json.dumps(reopen_body, ensure_ascii=True).encode("ascii")) + 4096 > MAX_BODY_BYTES:
+            session.workspace = before_workspace
+            session.source = before_source
+            raise ValueError(
+                "Workspace save/reopen size limit reached. This action was not applied; "
+                "the previous workspace and full history are retained. "
+                "Save the current workspace before starting a new trial."
+            )
         session.revision += 1
         session.dirty = dirty
         return payload
