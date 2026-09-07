@@ -98,9 +98,20 @@ def _view(session: "BrowserSession") -> dict[str, Any]:
 
 
 def _validate_trial_size(workspace: Workspace) -> None:
-    count = len(workspace["project"]["activities"])
+    project = workspace["project"]
+    count = len(project["activities"])
     if not 8 <= count <= 15:
         raise ValueError("the browser trial supports projects with 8 to 15 activities")
+
+    horizon = project.get("horizon_ticks")
+    if type(horizon) is not int or horizon < 48 or horizon > 14 * 48 or horizon % 48:
+        raise ValueError("the browser trial horizon must be 1 to 14 whole relative days")
+
+    for resource in project.get("resources", []):
+        capabilities = resource.get("capabilities")
+        identifier = resource.get("id", "<unknown>")
+        if not isinstance(capabilities, list) or not capabilities or any(not isinstance(capability, str) or not capability.strip() for capability in capabilities):
+            raise ValueError(f"resource {identifier} must define at least one explicit capability")
 
 
 def _body_integer(body: dict[str, Any], key: str) -> int:
