@@ -95,6 +95,30 @@ class NativePlanningUiFinalCorrectionsTests(unittest.TestCase):
                 self.assertIn("1 to 14 whole relative days", result["error"])
                 self.assert_unchanged(before)
 
+    def test_saved_workspace_with_historical_extra_resource_reopens(self):
+        workspace = deepcopy(self.state["workspace"])
+        del workspace["project"]["activities"][0]["modes"][0]["requirements"]
+        workspace["project"]["resources"].append({"id": "crew:1", "capabilities": ["MECH"], "calendar_id": "DAY"})
+        status, result = self.post("/api/open", {"workspace": workspace, "filename": "optional.json"})
+        self.assertEqual(status, 200, result.get("error"))
+        self.post("/api/calculate")
+        self.post("/api/approve", {"actor": "trial-planner"})
+
+        project = deepcopy(self.state["workspace"]["project"])
+        project["activities"][0]["modes"][0]["requirements"] = []
+        project["resources"] = [resource for resource in project["resources"] if resource["id"] != "crew:1"]
+        status, result = self.post("/api/project", {"project": project})
+        self.assertEqual(status, 200, result.get("error"))
+        self.post("/api/calculate")
+        status, exported = self.post("/api/export")
+        self.assertEqual(status, 200, exported.get("error"))
+        saved = json.loads(exported["workspace_json"])
+
+        self.post("/api/new")
+        status, result = self.post("/api/open", {"workspace": saved, "filename": "optional-reopened.json"})
+        self.assertEqual(status, 200, result.get("error"))
+        self.assertEqual(self.state["workspace"], saved)
+
 
 if __name__ == "__main__":
     unittest.main()
