@@ -97,6 +97,56 @@ class NativePlanningUiFinalCorrectionsTests(unittest.TestCase):
                 self.assertIn("1 to 14 whole relative days", result["error"])
                 self.assert_unchanged(before)
 
+    def test_open_and_project_reject_string_requirement_collections_before_adoption(self):
+        for field in ("pool_ids", "eligible_resource_ids"):
+            for route in ("open", "project"):
+                with self.subTest(field=field, route=route):
+                    before = deepcopy(self.state)
+                    project = deepcopy(before["workspace"]["project"])
+                    project["resources"].append({"id": "X", "capabilities": ["Q"], "calendar_id": "DAY"})
+                    requirement = project["activities"][1]["modes"][0]["requirements"][0]
+                    requirement["pool_ids"] = ["Q"]
+                    requirement["eligible_resource_ids"] = ["X"]
+                    requirement[field] = "Q" if field == "pool_ids" else "X"
+
+                    if route == "open":
+                        workspace = deepcopy(before["workspace"])
+                        workspace["project"] = project
+                        status, result = self.post("/api/open", {"workspace": workspace, "filename": "string-collection.json"})
+                    else:
+                        status, result = self.post("/api/project", {"project": project})
+
+                    self.assertEqual(status, 400)
+                    self.assertIn("non-empty JSON array of strings", result["error"])
+                    self.assert_unchanged(before)
+
+    def test_open_and_project_bound_assignment_combinations_before_calculation(self):
+        status, result = self.post("/api/new")
+        self.assertEqual(status, 200, result.get("error"))
+        project = deepcopy(self.state["workspace"]["project"])
+        resource_ids = [f"R{index}" for index in range(8)]
+        project["resources"] = [
+            {"id": resource_id, "capabilities": ["X"], "calendar_id": "DAY"}
+            for resource_id in resource_ids
+        ]
+        project["activities"][0]["modes"][0]["requirements"] = [
+            {"id": f"SLOT{index}", "pool_ids": ["X"], "eligible_resource_ids": list(resource_ids)}
+            for index in range(4)
+        ]
+
+        for route in ("project", "open"):
+            with self.subTest(route=route):
+                before = deepcopy(self.state)
+                if route == "project":
+                    status, result = self.post("/api/project", {"project": project})
+                else:
+                    workspace = deepcopy(before["workspace"])
+                    workspace["project"] = project
+                    status, result = self.post("/api/open", {"workspace": workspace, "filename": "too-many-assignments.json"})
+                self.assertEqual(status, 400)
+                self.assertIn("64 physical assignment combinations", result["error"])
+                self.assert_unchanged(before)
+
     def test_saved_workspace_with_historical_extra_resource_reopens(self):
         workspace = deepcopy(self.state["workspace"])
         del workspace["project"]["activities"][0]["modes"][0]["requirements"]
