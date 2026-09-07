@@ -29,6 +29,7 @@ from deterministic_scheduling_core.project.planning_workspace import (
 from deterministic_scheduling_core.scheduling.planning_workspace import approve, propose, validate_stored_plans
 
 MAX_BODY_BYTES = 2 * 1024 * 1024
+MAX_ASSIGNMENT_COMBINATIONS = 64
 ASSET_DIR = Path(__file__).parent
 
 
@@ -97,6 +98,25 @@ def _view(session: "BrowserSession") -> dict[str, Any]:
     }
 
 
+def _assignment_combination_limit_exceeded(requirements: list[dict]) -> bool:
+    """Bound named-resource assignment expansion without enumerating the full space."""
+    prefixes: set[tuple[str, ...]] = {()}
+    for requirement in requirements:
+        next_prefixes: set[tuple[str, ...]] = set()
+        for prefix in prefixes:
+            used = set(prefix)
+            for resource_id in requirement["eligible_resource_ids"]:
+                if resource_id in used:
+                    continue
+                next_prefixes.add((*prefix, resource_id))
+                if len(next_prefixes) > MAX_ASSIGNMENT_COMBINATIONS:
+                    return True
+        prefixes = next_prefixes
+        if not prefixes:
+            return False
+    return False
+
+
 def _validate_trial_size(workspace: Workspace) -> None:
     project = workspace["project"]
     count = len(project["activities"])
@@ -112,6 +132,25 @@ def _validate_trial_size(workspace: Workspace) -> None:
         identifier = resource.get("id", "<unknown>")
         if not isinstance(capabilities, list) or not capabilities or any(not isinstance(capability, str) or not capability.strip() for capability in capabilities):
             raise ValueError(f"resource {identifier} must define at least one explicit capability")
+
+    for activity in project["activities"]:
+        for mode in activity["modes"]:
+            requirements = mode.get("requirements", [])
+            if not isinstance(requirements, list):
+                raise ValueError(f"requirements on {activity['id']}/{mode['id']} must be a JSON array")
+            for requirement in requirements:
+                for field in ("pool_ids", "eligible_resource_ids"):
+                    values = requirement.get(field)
+                    if not isinstance(values, list) or not values or any(not isinstance(value, str) or not value.strip() for value in values):
+                        raise ValueError(
+                            f"{field} on {activity['id']}/{mode['id']}/{requirement.get('id', '<unknown>')} "
+                            "must be a non-empty JSON array of strings"
+                        )
+            if _assignment_combination_limit_exceeded(requirements):
+                raise ValueError(
+                    f"{activity['id']}/{mode['id']} exceeds the browser trial limit of "
+                    f"{MAX_ASSIGNMENT_COMBINATIONS} physical assignment combinations"
+                )
 
 
 def _body_integer(body: dict[str, Any], key: str) -> int:
