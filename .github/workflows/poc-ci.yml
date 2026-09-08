@@ -41,6 +41,7 @@ jobs:
           tests.test_native_planning_workflow
           tests.test_native_planning_ui
           tests.test_native_planning_ui_final_corrections
+          tests.test_hosted_native_planning_ui
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment
@@ -73,7 +74,14 @@ jobs:
           set -euo pipefail
           python -m deterministic_scheduling_core.native_planning_workflow demo /tmp/pm-native-planning-workspace.json | tee /tmp/pm-native-planning-workflow.log
       - name: Compile active package
-        run: python -m compileall -q src
+        run: python -m compileall -q src api
+      - name: Validate hosted static bundle and JavaScript
+        run: |
+          python tools/build_hosted_native_planning_ui.py
+          cmp public/index.html src/deterministic_scheduling_core/native_planning_ui/index.html
+          cmp public/app.js src/deterministic_scheduling_core/native_planning_ui/app.js
+          cmp public/styles.css src/deterministic_scheduling_core/native_planning_ui/styles.css
+          node --check public/app.js
       - name: Save native workflow example and execution evidence
         uses: actions/upload-artifact@v4
         with:

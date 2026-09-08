@@ -52,7 +52,7 @@ The current native model contains projects, activities/milestones, finish-to-sta
 
 ### Native planning trial UI
 
-A thin local browser application now exposes the bounded native planning loop without requiring Python or JSON editing. It uses the existing Python validator, scheduler, exact physical checker, report acceptance, approval and workspace persistence functions.
+A thin browser application now exposes the bounded native planning loop without requiring Python or JSON editing. It uses the existing Python validator, scheduler, exact physical checker, report acceptance, approval and workspace persistence functions.
 
 ```bash
 python -m pip install -e .
@@ -62,6 +62,8 @@ python -m deterministic_scheduling_core.native_planning_ui
 Open `http://127.0.0.1:8765`. The practitioner walkthrough, save/reopen workflow, test command and current limitations are in [`docs/native-planning-ui.md`](docs/native-planning-ui.md).
 
 The retained Chromium trial reproduced the native example (`A03` `SPECIALIST`, Day 1 15:00), kept an unaccepted M2 outage outside trusted inputs, then produced the existing `NORMAL` recovery at Day 2 08:30 with the Day 2 11:30 specialist alternative. A separate browser-entered project was physically feasible, selected its authorised `QUICK` mode and finished Day 1 15:00. These are interface/workflow observations over the existing engine, not new scheduling evidence.
+
+Prototype 3 adds a protected Vercel Preview of that same interface. The hosted browser carries the complete portable workspace to a stateless Python Function; the function validates it, calls the same native workflow, and returns an atomic replacement. No process-global session is authoritative and no scheduling rule moved into JavaScript. The current Preview URL and tested deployment ID are recorded on the open Prototype 3 PR because Preview URLs are deployment-specific. See [`docs/hosted-native-planning-ui.md`](docs/hosted-native-planning-ui.md) for the architecture, request boundary, hosted walkthrough and limitations.
 
 ## Planning-model experiment — Work–Method–Execution
 
@@ -477,6 +479,7 @@ python -m unittest \
 - `src/deterministic_scheduling_core/working_time_experiment.py` — elapsed vs productive/joint-calendar falsification experiment.
 - `src/deterministic_scheduling_core/resource_assignment_experiment.py` — pooled vs explicit/selective physical-assignment experiment and exact no-handover checker.
 - `src/deterministic_scheduling_core/native_planning_ui/` — loopback browser trial over the existing native workflow.
+- `src/deterministic_scheduling_core/native_planning_ui/hosted.py` and `api/index.py` — stateless hosted adapter and Vercel Python entrypoint over that same workflow.
 - `src/deterministic_scheduling_core/prototype2_native.py` — first end-to-end native project workflow.
 - `tests/` — focused reference and prototype tests.
 - `docs/` and `docs/archive/` — current direction and historical research.

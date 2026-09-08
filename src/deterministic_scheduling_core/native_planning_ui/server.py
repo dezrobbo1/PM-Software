@@ -28,7 +28,9 @@ from deterministic_scheduling_core.project.planning_workspace import (
 )
 from deterministic_scheduling_core.scheduling.planning_workspace import approve, propose, validate_stored_plans
 
-MAX_BODY_BYTES = 2 * 1024 * 1024
+MAX_WORKSPACE_BYTES = 2 * 1024 * 1024
+MAX_BODY_BYTES = MAX_WORKSPACE_BYTES
+MAX_HOSTED_BODY_BYTES = 2 * MAX_WORKSPACE_BYTES
 MAX_ASSIGNMENT_COMBINATIONS = 64
 ASSET_DIR = Path(__file__).parent
 
@@ -184,6 +186,92 @@ class SessionStore:
             return session_id, session, True
 
 
+def dispatch_action(path: str, body: dict[str, Any], session: BrowserSession) -> dict[str, Any]:
+    """Apply one trial action to a caller-owned session candidate.
+
+    The loopback server serialises calls around this function.  The hosted
+    adapter instead creates a fresh candidate for every request, so this is
+    deliberately independent of ``SessionStore`` and process lifetime.
+    """
+    before_workspace = deepcopy(session.workspace)
+    before_source = session.source
+    dirty = True
+    payload: dict[str, Any] = {}
+    if path == "/api/load-example":
+        session.workspace = new_demo_workspace()
+        session.source = "Built-in example"
+        dirty = False
+    elif path == "/api/new":
+        session.workspace = new_blank_workspace()
+        session.source = "New unsaved project"
+    elif path == "/api/open":
+        workspace = deepcopy(body["workspace"])
+        try:
+            validate(workspace)
+            _validate_trial_size(workspace)
+            validate_stored_plans(workspace)
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"Cannot open stored workspace: {exc}") from exc
+        session.workspace = workspace
+        session.source = str(body.get("filename") or "Opened workspace")[:120]
+        dirty = False
+    elif path == "/api/project":
+        candidate = deepcopy(session.workspace)
+        replace_project(candidate, body["project"])
+        _validate_trial_size(candidate)
+        session.workspace = candidate
+    elif path == "/api/invalidate-proposal":
+        if session.workspace.get("proposal") is not None:
+            session.workspace["proposal"] = None
+        else:
+            dirty = session.dirty
+    elif path == "/api/calculate":
+        propose(session.workspace)
+    elif path == "/api/approve":
+        approve(session.workspace, str(body.get("actor", "")))
+    elif path == "/api/report":
+        report_id = report_unavailable(
+            session.workspace,
+            str(body["resource_id"]),
+            _body_integer(body, "start"),
+            _body_integer(body, "finish"),
+            str(body.get("reporter", "")),
+            str(body.get("reason", "")),
+        )
+        payload["report_id"] = report_id
+    elif path == "/api/accept":
+        accept_report(session.workspace, str(body["report_id"]), str(body.get("actor", "")))
+    elif path == "/api/export":
+        validate(session.workspace)
+        payload["filename"] = f"{session.workspace['project']['id']}.pm-workspace.json"
+        payload["workspace_json"] = json.dumps(session.workspace, indent=2, ensure_ascii=False) + "\n"
+        dirty = False
+    else:
+        raise ValueError("unknown API action")
+    # Keep every successful mutation/export within the existing reopen limit.
+    # ASCII escaping and default spacing conservatively bound browser JSON;
+    # reserve 4 KiB for revision metadata and a renamed download filename.
+    reopen_body = {
+        "workspace": session.workspace,
+        "filename": f"{session.workspace['project']['id']}.pm-workspace.json",
+    }
+    # MAX_BODY_BYTES remains the loopback request limit and is patched by the
+    # boundary regressions.  The hosted transport has its own larger envelope
+    # because Open carries both the current and replacement workspaces.
+    workspace_limit = min(MAX_WORKSPACE_BYTES, MAX_BODY_BYTES)
+    if len(json.dumps(reopen_body, ensure_ascii=True).encode("ascii")) + 4096 > workspace_limit:
+        session.workspace = before_workspace
+        session.source = before_source
+        raise ValueError(
+            "Workspace save/reopen size limit reached. This action was not applied; "
+            "the previous workspace and full history are retained. "
+            "Save the current workspace before starting a new trial."
+        )
+    session.revision += 1
+    session.dirty = dirty
+    return payload
+
+
 class TrialServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -327,79 +415,7 @@ class TrialHandler(BaseHTTPRequestHandler):
             self._json({"ok": True, "state": _view(session), **payload}, session_id=session_id if created else None)
 
     def _dispatch(self, path: str, body: dict[str, Any], session: BrowserSession) -> dict[str, Any]:
-        before_workspace = deepcopy(session.workspace)
-        before_source = session.source
-        dirty = True
-        payload: dict[str, Any] = {}
-        if path == "/api/load-example":
-            session.workspace = new_demo_workspace()
-            session.source = "Built-in example"
-            dirty = False
-        elif path == "/api/new":
-            session.workspace = new_blank_workspace()
-            session.source = "New unsaved project"
-        elif path == "/api/open":
-            workspace = deepcopy(body["workspace"])
-            try:
-                validate(workspace)
-                _validate_trial_size(workspace)
-                validate_stored_plans(workspace)
-            except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
-                raise ValueError(f"Cannot open stored workspace: {exc}") from exc
-            session.workspace = workspace
-            session.source = str(body.get("filename") or "Opened workspace")[:120]
-            dirty = False
-        elif path == "/api/project":
-            candidate = deepcopy(session.workspace)
-            replace_project(candidate, body["project"])
-            _validate_trial_size(candidate)
-            session.workspace = candidate
-        elif path == "/api/invalidate-proposal":
-            if session.workspace.get("proposal") is not None:
-                session.workspace["proposal"] = None
-            else:
-                dirty = session.dirty
-        elif path == "/api/calculate":
-            propose(session.workspace)
-        elif path == "/api/approve":
-            approve(session.workspace, str(body.get("actor", "")))
-        elif path == "/api/report":
-            report_id = report_unavailable(
-                session.workspace,
-                str(body["resource_id"]),
-                _body_integer(body, "start"),
-                _body_integer(body, "finish"),
-                str(body.get("reporter", "")),
-                str(body.get("reason", "")),
-            )
-            payload["report_id"] = report_id
-        elif path == "/api/accept":
-            accept_report(session.workspace, str(body["report_id"]), str(body.get("actor", "")))
-        elif path == "/api/export":
-            validate(session.workspace)
-            payload["filename"] = f"{session.workspace['project']['id']}.pm-workspace.json"
-            payload["workspace_json"] = json.dumps(session.workspace, indent=2, ensure_ascii=False) + "\n"
-            dirty = False
-        else:
-            raise ValueError("unknown API action")
-        # Keep every successful mutation/export within the existing reopen limit.
-        # ASCII escaping and default spacing conservatively bound browser JSON;
-        # reserve 4 KiB for revision metadata and a renamed download filename.
-        reopen_body = {
-            "workspace": session.workspace,
-            "filename": f"{session.workspace['project']['id']}.pm-workspace.json",
-        }
-        if len(json.dumps(reopen_body, ensure_ascii=True).encode("ascii")) + 4096 > MAX_BODY_BYTES:
-            session.workspace = before_workspace
-            session.source = before_source
-            raise ValueError(
-                "Workspace save/reopen size limit reached. This action was not applied; "
-                "the previous workspace and full history are retained. "
-                "Save the current workspace before starting a new trial."
-            )
-        session.revision += 1
-        session.dirty = dirty
-        return payload
+        return dispatch_action(path, body, session)
 
 
 def create_server(port: int = 8765) -> TrialServer:

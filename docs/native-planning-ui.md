@@ -1,6 +1,6 @@
 # Minimal native planning trial UI
 
-This is a thin local browser interface over the native planning workflow. It calls the existing Python project validation, CP-SAT scheduling, exact physical checker, resource-report acceptance, proposal approval and JSON workspace persistence functions. It does not calculate dates or assignments in JavaScript.
+This is the local launch guide for the thin browser interface over the native planning workflow. It calls the existing Python project validation, CP-SAT scheduling, exact physical checker, resource-report acceptance, proposal approval and JSON workspace persistence functions. It does not calculate dates or assignments in JavaScript. The stateless Vercel Preview adaptation is documented separately in [`hosted-native-planning-ui.md`](hosted-native-planning-ui.md).
 
 ## Install and launch
 
@@ -91,6 +91,6 @@ The bounded PR #26 corrections also exercise same-session two-tab conflicts, key
 
 ## Current limitations
 
-This is a bounded practitioner trial, not a production application. It has an in-memory single-process session store, local actor strings rather than authentication, repeated daily calendars only, capacity-one physical resources, finish-to-start precedence, at most 16 authorised mode combinations, and 8–15 activities in the browser profile. It has no drag scheduling, partial progress/actual history, structural Work–Method subgraphs, adaptive-neighbourhood integration, external schedule import/export, database, collaboration, permissions, cloud deployment, mobile/touch validation or general workforce/calendar language.
+This is a bounded practitioner trial, not a production application. The local launch has an in-memory single-process session store; both transports use local actor strings rather than authenticated identities, repeated daily calendars, capacity-one physical resources, finish-to-start precedence, at most 16 authorised mode combinations, and 8–15 activities in the browser profile. It has no drag scheduling, partial progress/actual history, structural Work–Method subgraphs, adaptive-neighbourhood integration, external schedule import/export, database, collaboration, enterprise permissions, touch-specific interaction design or general workforce/calendar language. The hosted Preview removes the installation requirement but does not remove those domain limitations.
 
 Output dates remain calculated results. To change a plan, edit trusted native inputs and calculate another proposal.
