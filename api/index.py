@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from deterministic_scheduling_core.native_planning_ui.hosted import execute, initial_response  # noqa: E402
-from deterministic_scheduling_core.native_planning_ui.server import MAX_BODY_BYTES  # noqa: E402
+from deterministic_scheduling_core.native_planning_ui.server import MAX_HOSTED_BODY_BYTES  # noqa: E402
 
 _BOOTED_AT = monotonic()
 _INVOCATIONS = 0  # Diagnostics only; never used as workspace state.
@@ -90,11 +90,11 @@ async def action(request: Request) -> JSONResponse:
         declared_length = int(request.headers.get("content-length", "0"))
     except ValueError:
         declared_length = 0
-    if declared_length <= 0 or declared_length > MAX_BODY_BYTES:
-        return _response(413, {"ok": False, "error": "request body must be present and no larger than 2 MiB"}, started)
+    if declared_length <= 0 or declared_length > MAX_HOSTED_BODY_BYTES:
+        return _response(413, {"ok": False, "error": "request body must be present and no larger than 4 MiB"}, started)
     raw = await request.body()
-    if len(raw) > MAX_BODY_BYTES:
-        return _response(413, {"ok": False, "error": "request body must be present and no larger than 2 MiB"}, started)
+    if len(raw) > MAX_HOSTED_BODY_BYTES:
+        return _response(413, {"ok": False, "error": "request body must be present and no larger than 4 MiB"}, started)
     try:
         body = json.loads(raw)
     except (UnicodeDecodeError, json.JSONDecodeError):

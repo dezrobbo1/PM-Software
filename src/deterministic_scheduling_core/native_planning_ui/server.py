@@ -28,7 +28,9 @@ from deterministic_scheduling_core.project.planning_workspace import (
 )
 from deterministic_scheduling_core.scheduling.planning_workspace import approve, propose, validate_stored_plans
 
-MAX_BODY_BYTES = 2 * 1024 * 1024
+MAX_WORKSPACE_BYTES = 2 * 1024 * 1024
+MAX_BODY_BYTES = MAX_WORKSPACE_BYTES
+MAX_HOSTED_BODY_BYTES = 2 * MAX_WORKSPACE_BYTES
 MAX_ASSIGNMENT_COMBINATIONS = 64
 ASSET_DIR = Path(__file__).parent
 
@@ -253,7 +255,11 @@ def dispatch_action(path: str, body: dict[str, Any], session: BrowserSession) ->
         "workspace": session.workspace,
         "filename": f"{session.workspace['project']['id']}.pm-workspace.json",
     }
-    if len(json.dumps(reopen_body, ensure_ascii=True).encode("ascii")) + 4096 > MAX_BODY_BYTES:
+    # MAX_BODY_BYTES remains the loopback request limit and is patched by the
+    # boundary regressions.  The hosted transport has its own larger envelope
+    # because Open carries both the current and replacement workspaces.
+    workspace_limit = min(MAX_WORKSPACE_BYTES, MAX_BODY_BYTES)
+    if len(json.dumps(reopen_body, ensure_ascii=True).encode("ascii")) + 4096 > workspace_limit:
         session.workspace = before_workspace
         session.source = before_source
         raise ValueError(

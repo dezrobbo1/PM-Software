@@ -11,6 +11,10 @@ from starlette.datastructures import Headers
 
 from api.index import _origin_matches_https_host, action as http_action
 from deterministic_scheduling_core.native_planning_ui.hosted import execute, initial_response
+from deterministic_scheduling_core.native_planning_ui.server import (
+    MAX_HOSTED_BODY_BYTES,
+    MAX_WORKSPACE_BYTES,
+)
 from deterministic_scheduling_core.scheduling.planning_workspace import _plan_hash
 
 
@@ -144,6 +148,70 @@ class HostedNativePlanningUiTests(unittest.TestCase):
         self.assertEqual(self.state["workspace"], expected)
         self.assertIsNone(self.state["workspace"]["proposal"])
         self.assertEqual(len(self.state["workspace"]["plan_history"]), 1)
+
+    def test_open_accepts_two_individually_bounded_workspaces_in_one_request(self):
+        def expanded_workspace(marker):
+            workspace = deepcopy(self.state["workspace"])
+            workspace["reports"].append({
+                "id": "E001", "resource_id": "M2", "start": 20, "finish": 34,
+                "reason": marker + "x" * (3 * MAX_WORKSPACE_BYTES // 4),
+                "reported_by": "hosted-size-regression", "reported_at": "synthetic",
+                "status": "REPORTED", "scheduling_role": "FORECAST_AVAILABILITY",
+                "accepted_by": None, "accepted_at": None,
+            })
+            return workspace
+
+        current_workspace = expanded_workspace("current-")
+        opened_workspace = expanded_workspace("opened-")
+        body = {
+            "expected_revision": self.state["revision"],
+            "state": {
+                "revision": self.state["revision"], "dirty": True,
+                "source": "Current large workspace", "workspace": current_workspace,
+            },
+            "payload": {
+                "action": "open", "workspace": opened_workspace,
+                "filename": "selected-large-workspace.pm-workspace.json",
+            },
+        }
+        wire_size = len(json.dumps(body).encode("utf-8"))
+        self.assertGreater(wire_size, MAX_WORKSPACE_BYTES)
+        self.assertLessEqual(wire_size, MAX_HOSTED_BODY_BYTES)
+
+        with patch("deterministic_scheduling_core.native_planning_ui.hosted.propose",
+                   side_effect=AssertionError("opening must not optimise")):
+            status, result = self.http_call(body)
+
+        self.assertEqual(status, 200, result.get("error"))
+        self.assertEqual(result["state"]["workspace"], opened_workspace)
+        self.assertEqual(result["state"]["source"], "selected-large-workspace.pm-workspace.json")
+        self.assertEqual(result["state"]["revision"], self.state["revision"] + 1)
+
+    def test_open_still_rejects_one_workspace_above_individual_limit_atomically(self):
+        oversized = deepcopy(self.state["workspace"])
+        oversized["reports"].append({
+            "id": "E001", "resource_id": "M2", "start": 20, "finish": 34,
+            "reason": "x" * MAX_WORKSPACE_BYTES,
+            "reported_by": "hosted-size-regression", "reported_at": "synthetic",
+            "status": "REPORTED", "scheduling_role": "FORECAST_AVAILABILITY",
+            "accepted_by": None, "accepted_at": None,
+        })
+        body = {
+            "expected_revision": self.state["revision"],
+            "state": {key: deepcopy(self.state[key]) for key in ("revision", "dirty", "source", "workspace")},
+            "payload": {"action": "open", "workspace": oversized, "filename": "too-large.json"},
+        }
+        before = deepcopy(body["state"])
+        self.assertLessEqual(len(json.dumps(body).encode("utf-8")), MAX_HOSTED_BODY_BYTES)
+
+        status, result = self.http_call(body)
+
+        self.assertEqual(status, 400)
+        self.assertIn("save/reopen size limit", result["error"])
+        self.assertEqual(
+            {key: result["state"][key] for key in ("revision", "dirty", "source", "workspace")},
+            before,
+        )
 
     def test_independent_initial_states_do_not_share_process_memory(self):
         first = initial_response()["state"]
