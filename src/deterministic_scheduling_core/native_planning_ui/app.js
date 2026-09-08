@@ -95,6 +95,10 @@ function clearMessage() {
   target.className = "message";
 }
 
+function workspaceDownloadJson(data) {
+  return data.workspace_json ?? `${JSON.stringify(data.state.workspace, null, 2)}\n`;
+}
+
 async function request(path, payload = {}) {
   const expectedRevision = payload.revision ?? current.revision;
   let requestPath = path;
@@ -692,7 +696,7 @@ $("#save-workspace").addEventListener("click", async () => {
     // Loopback returns the formatted download for compatibility. The hosted
     // response carries the workspace once in state to stay below Vercel's
     // response limit, so format that authoritative returned value locally.
-    const workspaceJson = data.workspace_json ?? `${JSON.stringify(data.state.workspace, null, 2)}\n`;
+    const workspaceJson = workspaceDownloadJson(data);
     const blob = new Blob([workspaceJson], {type: "application/json"});
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);

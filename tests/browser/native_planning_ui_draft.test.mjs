@@ -79,6 +79,13 @@ test("E: omitted requirements render and support slot add/remove-resource checks
   assert.equal(run("draft.resources.length"), 0);
 });
 
+test("hosted Save formats the authoritative single-copy response", () => {
+  const {run} = editor();
+  const downloaded = run("workspaceDownloadJson({state: {workspace: {schema: 'trial', reports: [{id: 'E001'}]}}})");
+  assert.deepEqual(JSON.parse(downloaded), {schema: "trial", reports: [{id: "E001"}]});
+  assert.ok(downloaded.endsWith("\n"));
+});
+
 test("G: invalid visible work edit immediately blocks approval", () => {
   const {context, document, node, run} = editor();
   const work = node("mode-work");
