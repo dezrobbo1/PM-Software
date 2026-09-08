@@ -689,7 +689,11 @@ $("#save-workspace").addEventListener("click", async () => {
   try {
     if (draftDirty) await applyDraft("Input changes applied before export.");
     const data = await perform("/api/export", {}, "Complete native workspace downloaded.");
-    const blob = new Blob([data.workspace_json], {type: "application/json"});
+    // Loopback returns the formatted download for compatibility. The hosted
+    // response carries the workspace once in state to stay below Vercel's
+    // response limit, so format that authoritative returned value locally.
+    const workspaceJson = data.workspace_json ?? `${JSON.stringify(data.state.workspace, null, 2)}\n`;
+    const blob = new Blob([workspaceJson], {type: "application/json"});
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = data.filename.replace(/[^A-Za-z0-9_.-]/g, "-");

@@ -123,6 +123,11 @@ def execute(body: Any) -> tuple[int, dict[str, Any]]:
         if action == "approve":
             _replace_browser_proposal_with_authoritative_result(candidate)
         result = dispatch_action(f"/api/{action}", payload, candidate)
+        # The complete authoritative workspace is already returned in state.
+        # Repeating its indented JSON as a string can push an otherwise valid
+        # near-limit export over Vercel's function response-size limit.
+        if action == "export":
+            result.pop("workspace_json", None)
     except (AttributeError, IndexError, KeyError, TypeError, ValueError, SchedulingError) as exc:
         status = HTTPStatus.UNPROCESSABLE_ENTITY if isinstance(exc, SchedulingError) else HTTPStatus.BAD_REQUEST
         return status, {"ok": False, "error": str(exc), "state": original}

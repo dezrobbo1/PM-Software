@@ -138,7 +138,8 @@ class HostedNativePlanningUiTests(unittest.TestCase):
         expected = deepcopy(self.state["workspace"])
         status, exported = self.call("export")
         self.assertEqual(status, 200)
-        saved = json.loads(exported["workspace_json"])
+        self.assertNotIn("workspace_json", exported)
+        saved = deepcopy(exported["state"]["workspace"])
         self.assertEqual(saved, expected)
         self.call("new")
         with patch("deterministic_scheduling_core.native_planning_ui.hosted.propose",
@@ -148,6 +149,39 @@ class HostedNativePlanningUiTests(unittest.TestCase):
         self.assertEqual(self.state["workspace"], expected)
         self.assertIsNone(self.state["workspace"]["proposal"])
         self.assertEqual(len(self.state["workspace"]["plan_history"]), 1)
+
+    def test_near_limit_export_returns_workspace_once_below_hosted_response_limit(self):
+        workspace = deepcopy(self.state["workspace"])
+        workspace["reports"] = [
+            {
+                "id": f"E{index:06d}", "resource_id": "M2", "start": 20, "finish": 34,
+                "reason": "x", "reported_by": "r", "reported_at": "s",
+                "status": "REPORTED", "scheduling_role": "FORECAST_AVAILABILITY",
+                "accepted_by": None, "accepted_at": None,
+            }
+            for index in range(8_800)
+        ]
+        body = {
+            "expected_revision": self.state["revision"],
+            "state": {
+                "revision": self.state["revision"], "dirty": True,
+                "source": "Near-limit export", "workspace": workspace,
+            },
+            "payload": {"action": "export"},
+        }
+
+        status, exported = self.http_call(body)
+
+        self.assertEqual(status, 200)
+        self.assertNotIn("workspace_json", exported)
+        self.assertEqual(len(exported["state"]["workspace"]["reports"]), 8_800)
+        self.assertFalse(exported["state"]["dirty"])
+        response_bytes = len(json.dumps(exported, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+        self.assertLess(response_bytes, 9 * 1024 * 1024 // 2)
+        duplicated = deepcopy(exported)
+        duplicated["workspace_json"] = json.dumps(workspace, indent=2, ensure_ascii=False) + "\n"
+        duplicated_bytes = len(json.dumps(duplicated, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+        self.assertGreater(duplicated_bytes, 9 * 1024 * 1024 // 2)
 
     def test_open_accepts_two_individually_bounded_workspaces_in_one_request(self):
         def expanded_workspace(marker):
