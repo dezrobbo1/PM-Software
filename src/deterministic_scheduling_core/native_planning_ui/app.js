@@ -10,6 +10,9 @@ let draftConflict = false;
 let busy = false;
 let invalidating = false;
 let pendingInvalidation = Promise.resolve();
+const browserLocation = window.location || {protocol: "", search: ""};
+const hostedTransport = browserLocation.protocol === "https:"
+  || /(?:^|[?&])transport=stateless(?:&|$)/.test(browserLocation.search);
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -93,16 +96,37 @@ function clearMessage() {
 }
 
 async function request(path, payload = {}) {
-  const response = await fetch(path, {
+  const expectedRevision = payload.revision ?? current.revision;
+  let requestPath = path;
+  let body = {revision: current.revision, ...payload};
+  if (hostedTransport) {
+    const actionPayload = {...payload, action: path.replace(/^\/api\//, "")};
+    delete actionPayload.revision;
+    requestPath = "/api/planning";
+    body = {
+      expected_revision: expectedRevision,
+      state: {
+        revision: current.revision,
+        dirty: current.dirty,
+        source: current.source,
+        workspace: current.workspace,
+      },
+      payload: actionPayload,
+    };
+  }
+  const response = await fetch(requestPath, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({revision: current.revision, ...payload}),
+    body: JSON.stringify(body),
   });
   let data;
   try {
     data = await response.json();
   } catch (_error) {
-    throw new Error(`The local service returned HTTP ${response.status} without a JSON response.`);
+    throw new Error(`The planning service returned HTTP ${response.status} without a JSON response.`);
+  }
+  if (data.runtime) {
+    window.__pmTrialRuntime = [...(window.__pmTrialRuntime || []), {path, ...data.runtime}];
   }
   if (!response.ok) {
     if (response.status === 409) draftConflict = true;
@@ -726,12 +750,17 @@ $("#add-calendar").addEventListener("click", () => {
 async function start() {
   setBusy(true);
   try {
-    const response = await fetch("/api/state", {cache: "no-store"});
+    const response = await fetch(hostedTransport ? "/api/planning" : "/api/state", {cache: "no-store"});
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if (data.runtime) window.__pmTrialRuntime = [{path: "/api/state", ...data.runtime}];
     adoptState(data.state, true);
+    const footer = document.querySelector("footer");
+    if (hostedTransport && footer) {
+      footer.textContent = "Hosted bounded trial. Workspace state stays in this browser and portable JSON files; serverless functions retain no authoritative session state. Relative days are not dates or time zones.";
+    }
   } catch (error) {
-    showMessage(`Cannot reach the local planning service: ${error.message}`, "error");
+    showMessage(`Cannot reach the planning service: ${error.message}`, "error");
   } finally {
     setBusy(false);
   }

@@ -178,5 +178,19 @@ footer { color: var(--muted); font-size: 11px; margin: 0 auto; max-width: 1680px
   .project-settings { grid-template-columns: 1fr 1fr; }
   .form-grid { grid-template-columns: 1fr 1fr; }
 }
+
+@media (max-width: 600px) {
+  .app-header, main { padding-left: 10px; padding-right: 10px; }
+  .file-actions, .heading-actions { align-items: stretch; display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .heading-actions label, .file-actions .button { min-width: 0; width: auto; }
+  .panel { padding: 12px; }
+  .project-settings, .editor-fields, .mode-fields, .requirement-row,
+  .resource-row, .calendar-row, .form-grid, .history-row, .report-item,
+  .activity-list-region .add-row, .resource-calendar-grid .add-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .form-grid .wide, .mode-fields button, .requirement-row button { grid-column: 1; }
+  .timeline { min-width: 0; }
+}
 /* Keep explicit conflict-only controls hidden despite button display rules. */
 [hidden] { display: none !important; }

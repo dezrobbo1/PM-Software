@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+build
+benchmarks
+docs
+evidence
+native-validation
+registers
+requirements
+schemas
+tests
+project_sources
+**/__pycache__
+**/*.pyc
+*.md

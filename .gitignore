@@ -7,3 +7,5 @@ results/
 build/
 native-files/
 private-data/
+public/
+.vercel/
