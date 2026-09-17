@@ -48,7 +48,7 @@ def _comparison(workspace: Workspace) -> dict[str, Any] | None:
         return None
     old_entries = {entry["activity_id"]: entry for entry in old["entries"]}
     new_entries = {entry["activity_id"]: entry for entry in new["entries"]}
-    changed_modes, changed_assignments, changed_periods, unchanged = [], [], [], []
+    changed_modes, changed_assignments, changed_periods, changed_group_demands, unchanged = [], [], [], [], []
     activity_ids = list(old["selected_modes"])
     activity_ids.extend(activity_id for activity_id in new["selected_modes"] if activity_id not in old["selected_modes"])
     for activity_id in activity_ids:
@@ -56,6 +56,11 @@ def _comparison(workspace: Workspace) -> dict[str, Any] | None:
         mode_changed = old["selected_modes"].get(activity_id) != new["selected_modes"].get(activity_id)
         assignment_changed = old_entry != new_entry and (old_entry is None or new_entry is None or old_entry["assignments"] != new_entry["assignments"])
         period_changed = old_entry != new_entry and (old_entry is None or new_entry is None or any(old_entry[key] != new_entry[key] for key in ("start", "finish", "periods")))
+        old_demand = old_entry.get("group_demands", []) if old_entry else []
+        new_demand = new_entry.get("group_demands", []) if new_entry else []
+        demand_changed = old_demand != new_demand
+        if demand_changed:
+            changed_group_demands.append({"activity_id": activity_id, "old": old_demand, "new": new_demand})
         if mode_changed:
             changed_modes.append({"activity_id": activity_id, "old": old["selected_modes"].get(activity_id), "new": new["selected_modes"].get(activity_id)})
         if assignment_changed:
@@ -74,7 +79,7 @@ def _comparison(workspace: Workspace) -> dict[str, Any] | None:
                 "new_start": new_entry["start"] if new_entry else None,
                 "new_finish": new_entry["finish"] if new_entry else None,
             })
-        if old_entry is not None and new_entry is not None and not mode_changed and not assignment_changed and not period_changed:
+        if old_entry is not None and new_entry is not None and not mode_changed and not assignment_changed and not period_changed and not demand_changed:
             unchanged.append(activity_id)
     return {
         "old_finish": old["project_finish"],
@@ -82,6 +87,7 @@ def _comparison(workspace: Workspace) -> dict[str, Any] | None:
         "changed_modes": changed_modes,
         "changed_assignments": changed_assignments,
         "changed_periods": changed_periods,
+        "changed_group_demands": changed_group_demands,
         "unchanged_activity_ids": unchanged,
     }
 

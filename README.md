@@ -52,6 +52,15 @@ The current native model contains projects, activities/milestones, finish-to-sta
 
 ### Native planning trial UI
 
+The planner-capacity profile adds ordinary resource groups and activity quantities
+to the productive-calendar workspace (not the older elapsed-time model). New
+projects need no artificial workforce; explicit named-resource/eligibility inputs
+and old workspaces remain supported. See [planner capacity instructions and
+limits](docs/planner-resource-capacity.md). The conditional retained 15-item case
+recalculated with the same finish/objective/periods using 2 groups and 12 quantity
+rows instead of 4 anonymous representatives, 22 slots and 44 eligibility memberships.
+This is representation and scheduling evidence, not measured human time savings.
+
 A thin browser application now exposes the bounded native planning loop without requiring Python or JSON editing. It uses the existing Python validator, scheduler, exact physical checker, report acceptance, approval and workspace persistence functions.
 
 ```bash

@@ -108,3 +108,23 @@ test("G: invalid visible work edit immediately blocks approval", () => {
   assert.equal(node("#approve").disabled, true, "old proposal is immediately non-approvable");
   assert.match(node("#message").textContent, /nonnegative multiple of 0\.5/);
 });
+
+test("group quantity editor uses one row and prevents removal of referenced capacity", () => {
+  const {run, node} = editor();
+  run(`draft = {resource_groups: [{id:'CREW', name:'Crew', capacity:2, calendar_id:'DAY'}],
+    calendars:[{id:'DAY'}], resources:[], activities:[{id:'A', modes:[{id:'FIXED', processing_ticks:4, calendar_id:'DAY'}]}]};
+    addGroupRequirement(draft.activities[0],0);`);
+  assert.equal(run("draft.activities[0].modes[0].group_requirements.length"),1);
+  assert.match(run("modeCard(draft.activities[0],draft.activities[0].modes[0],0)"),/Quantity/);
+  run("removeGroup(0)");
+  assert.equal(run("draft.resource_groups.length"),1);
+  assert.match(node("#message").textContent,/still required/);
+});
+
+test("group result shows quantity, never compiler unit names; milestone guidance is truthful", () => {
+  const {run} = editor();
+  assert.match(run(`assignmentLabel({id:'A',modes:[{id:'FIXED'}]}, {selected_modes:{A:'FIXED'}},
+    {assignments:[],group_demands:[['CREW',2]]})`),/CREW × 2/);
+  run("draft = {calendars:[{id:'DAY'}],resources:[]}");
+  assert.match(run("modeCard({modes:[{}]}, {id:'FIXED',processing_ticks:0,calendar_id:'DAY'},0)"),/Zero-work milestone/);
+});

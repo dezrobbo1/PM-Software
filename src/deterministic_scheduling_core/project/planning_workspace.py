@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA = "pm-native-planning-workspace/0"
+GROUP_SCHEMA = "pm-native-planning-workspace/1"
 POLICY = "finish-mode-preservation-start-movement-assignment-preservation-timing/0"
 Workspace = dict[str, Any]
 
@@ -35,10 +36,13 @@ def _ids(items: list[dict], label: str) -> set[str]:
 
 def validate(workspace: Workspace) -> None:
     """Validate the deliberately small editable input, not a general project schema."""
-    if workspace.get("schema") != SCHEMA:
-        raise ValueError(f"expected schema {SCHEMA}")
+    if workspace.get("schema") not in {SCHEMA, GROUP_SCHEMA}:
+        raise ValueError(f"expected schema {SCHEMA} or {GROUP_SCHEMA}")
+    grouped = workspace["schema"] == GROUP_SCHEMA
     project = workspace["project"]
     allowed = {"id", "name", "horizon_ticks", "calendars", "resources", "activities", "objective_activity_id", "pool_riggers"}
+    if grouped:
+        allowed.add("resource_groups")
     if set(project) - allowed:
         raise ValueError(f"unsupported project fields: {sorted(set(project) - allowed)}")
     horizon = project["horizon_ticks"]
@@ -47,6 +51,21 @@ def validate(workspace: Workspace) -> None:
         raise ValueError("project needs activities")
     calendars = _ids(project["calendars"], "calendar")
     resources = _ids(project["resources"], "resource")
+    groups = project["resource_groups"] if grouped else []
+    group_ids = _ids(groups, "resource group")
+    if group_ids & resources:
+        raise ValueError("resource groups and named resources must have distinct IDs; overlap is unsupported")
+    by_group = {g["id"]: g for g in groups}
+    for group in groups:
+        if set(group) != {"id", "name", "capacity", "calendar_id", "disjoint", "interchangeable"}:
+            raise ValueError("resource groups require ID, name, capacity, calendar and declarations; member lists/overlap are unsupported")
+        _integer(group["capacity"], "group capacity", 1)
+        if not isinstance(group["name"], str) or not group["name"].strip() or group["calendar_id"] not in calendars:
+            raise ValueError("resource group needs a display name and known calendar")
+        if group["disjoint"] is not True or group["interchangeable"] is not True:
+            raise ValueError("groups must be declared disjoint from every other group and named resource, and internally interchangeable")
+    if len(groups) > 8 or sum(g["capacity"] for g in groups) > 32:
+        raise ValueError("bounded group profile supports at most 8 groups and 32 total capacity units")
     activities = _ids(project["activities"], "activity")
     for calendar in project["calendars"]:
         for start, finish in calendar["daily_windows"]:
@@ -55,6 +74,8 @@ def validate(workspace: Workspace) -> None:
             if not start < finish <= 48:
                 raise ValueError("calendar windows must lie within a 48-tick day")
     for resource in project["resources"]:
+        if grouped and (resource["id"].startswith("@group/") or set(resource) - {"id", "capabilities", "calendar_id", "capacity"}):
+            raise ValueError("named resources cannot declare group membership or use reserved internal IDs")
         if resource["calendar_id"] not in calendars or resource.get("capacity", 1) != 1:
             raise ValueError("this workspace supports known calendars and capacity-one physical resources")
     by_resource = {resource["id"]: resource for resource in project["resources"]}
@@ -68,7 +89,10 @@ def validate(workspace: Workspace) -> None:
         if not set(activity.get("predecessors", [])) <= activities:
             raise ValueError("unknown predecessor")
         for mode in activity["modes"]:
-            if set(mode) - {"id", "processing_ticks", "calendar_id", "continuity", "requirements"}:
+            mode_fields = {"id", "processing_ticks", "calendar_id", "continuity", "requirements"}
+            if grouped:
+                mode_fields.add("group_requirements")
+            if set(mode) - mode_fields:
                 raise ValueError(f"unsupported mode fields on {activity['id']}/{mode['id']}")
             _integer(mode["processing_ticks"], "processing_ticks")
             if mode["calendar_id"] not in calendars:
@@ -77,9 +101,23 @@ def validate(workspace: Workspace) -> None:
                 raise ValueError("unsupported continuity rule")
             requirements = mode.get("requirements", [])
             _ids(requirements, "requirement")
-            if requirements and not mode["processing_ticks"]:
+            demands = mode.get("group_requirements", [])
+            if not isinstance(demands, list):
+                raise ValueError("group_requirements must be an array")
+            seen_groups = set()
+            for demand in demands:
+                if set(demand) != {"group_id", "demand"} or demand["group_id"] not in by_group:
+                    raise ValueError("group requirement needs a known group_id and demand only")
+                gid = demand["group_id"]
+                _integer(demand["demand"], "group demand", 1)
+                if gid in seen_groups or demand["demand"] > by_group[gid]["capacity"]:
+                    raise ValueError(f"group {gid}: use one quantity row; demand must not exceed available capacity")
+                seen_groups.add(gid)
+            if (requirements or demands) and not mode["processing_ticks"]:
                 raise ValueError("zero-work milestones cannot consume resources in this POC")
             for requirement in requirements:
+                if grouped and (requirement["id"].startswith("@group/") or set(requirement) != {"id", "pool_ids", "eligible_resource_ids"}):
+                    raise ValueError("named slots require explicit eligibility; reserved IDs/group membership are unsupported")
                 eligible = requirement["eligible_resource_ids"]
                 if not eligible or len(eligible) != len(set(eligible)) or not set(eligible) <= resources:
                     raise ValueError("eligible resources must be nonempty, unique and known")
@@ -120,11 +158,15 @@ def validate(workspace: Workspace) -> None:
 
 
 def trusted_input(workspace: Workspace) -> dict:
-    return {
+    result = {
         "project": deepcopy(workspace["project"]),
         "accepted_reports": [deepcopy(r) for r in workspace["reports"] if r["status"] == "ACCEPTED"],
         "policy": POLICY,
     }
+    # Version zero's source snapshots/hashes remain byte-for-byte meaningful.
+    if workspace["schema"] == GROUP_SCHEMA:
+        result["workspace_schema"] = GROUP_SCHEMA
+    return result
 
 
 def state_hash(workspace: Workspace) -> str:
@@ -213,24 +255,19 @@ def new_blank_workspace() -> Workspace:
             }],
         })
     workspace = {
-        "schema": SCHEMA,
+        "schema": GROUP_SCHEMA,
         "project": {
             "id": "new-native-project",
             "name": "New native project",
             "horizon_ticks": 144,
             "objective_activity_id": "N08",
-            "pool_riggers": True,
+            "pool_riggers": False,
             "calendars": [
                 {"id": "DAY", "daily_windows": [[14, 24], [25, 34]]},
                 {"id": "NIGHT", "daily_windows": [[36, 48]]},
             ],
-            "resources": [
-                {"id": "M1", "capabilities": ["MECH"], "calendar_id": "DAY"},
-                {"id": "M2", "capabilities": ["MECH", "INSPECT"], "calendar_id": "DAY"},
-                {"id": "N1", "capabilities": ["MECH"], "calendar_id": "NIGHT"},
-                {"id": "R1", "capabilities": ["RIGGER"], "calendar_id": "DAY"},
-                {"id": "R2", "capabilities": ["RIGGER"], "calendar_id": "DAY"},
-            ],
+            "resources": [],
+            "resource_groups": [],
             "activities": activities,
         },
         "reports": [],
