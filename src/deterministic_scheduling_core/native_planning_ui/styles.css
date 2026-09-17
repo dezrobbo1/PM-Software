@@ -72,7 +72,7 @@ h3 { font-size: 15px; margin-bottom: 10px; }
 .message.success { background: var(--green-soft); border: 1px solid #a6ceb5; color: var(--green); }
 
 main { display: grid; gap: 14px; margin: 14px auto; max-width: 1680px; padding: 0 clamp(14px, 2vw, 30px); }
-.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 5px; box-shadow: var(--shadow); padding: 18px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 5px; box-shadow: var(--shadow); padding: 18px; min-width: 0; }
 .section-heading { align-items: end; border-bottom: 1px solid var(--line); display: flex; gap: 18px; justify-content: space-between; margin-bottom: 15px; padding-bottom: 12px; }
 .step { color: var(--navy); font-size: 11px; font-weight: 800; letter-spacing: .08em; margin-bottom: 2px; text-transform: uppercase; }
 .heading-actions { align-items: end; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
@@ -173,7 +173,7 @@ footer { color: var(--muted); font-size: 11px; margin: 0 auto; max-width: 1680px
 
 @media (max-width: 900px) {
   .app-header, .section-heading { align-items: flex-start; flex-direction: column; }
-  .workspace-grid, .resource-calendar-grid, .workflow-grid, .summary-grid { grid-template-columns: 1fr; }
+  .workspace-grid, .resource-calendar-grid, .workflow-grid, .summary-grid { grid-template-columns: minmax(0, 1fr); }
   .editor-region { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: 14px; }
   .project-settings { grid-template-columns: 1fr 1fr; }
   .form-grid { grid-template-columns: 1fr 1fr; }

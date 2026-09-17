@@ -67,8 +67,9 @@ export async function capacityTrial(browser, url, evidenceDir, assert, consoleEr
   await page.locator("#open-file").setInputFiles(destination);await page.getByText(/Opened .*without recalculating/).waitFor();
   state=await page.evaluate(()=>window.__pmTrialState);
   assert(state.workspace.plan_history.length===1 && state.workspace.approved_plan.project_finish===29 && state.workspace.proposal===null,"capacity: fresh session reopens exact approval/history without solving");
-  assert(await page.evaluate(()=>document.documentElement.scrollWidth===document.documentElement.clientWidth),"capacity: narrow viewport has no page-level horizontal overflow");
   await page.screenshot({path:path.join(evidenceDir,"capacity-reopened-390.png"),fullPage:true});
+  const overflow = await page.evaluate(()=>({width:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth}));
+  assert(overflow.width===overflow.scroll,`capacity: narrow viewport has no page-level horizontal overflow (${JSON.stringify(overflow)})`);
   fs.writeFileSync(path.join(evidenceDir,"capacity-observation.json"),JSON.stringify({groups:2,quantity_rows:8,manual_eligibility_memberships:0,viewports:["1366x900","390x844"],agent_test_approvals:true},null,2));
   await context.close();
 }
