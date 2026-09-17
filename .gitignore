@@ -9,3 +9,4 @@ native-files/
 private-data/
 public/
 .vercel/
+node_modules/

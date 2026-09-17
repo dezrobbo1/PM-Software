@@ -6,19 +6,31 @@ This is not the final solver architecture or a structural Work-Method compiler.
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import asdict
-from itertools import product
-from math import prod
+from dataclasses import asdict, replace
+from itertools import combinations, product
+from math import comb, prod
 
 import ortools
 from ortools.sat.python import cp_model
 
 from deterministic_scheduling_core.errors import SchedulingError
 from deterministic_scheduling_core.project.planning_workspace import (
-    POLICY, SCHEMA, Workspace, digest, now, state_hash, trusted_input, validate,
+    POLICY, SCHEMA, GROUP_SCHEMA, Workspace, digest, now, state_hash, trusted_input, validate,
 )
 from deterministic_scheduling_core import resource_assignment_experiment as ra
 from deterministic_scheduling_core.working_time_experiment import SUSPENDABLE, WorkCalendar
+
+
+def _group_slots(project: dict, mode: dict) -> tuple[ra.RequirementSlot, ...]:
+    """Anonymous compilation only, never planner-maintained identities."""
+    groups = {g["id"]: (i, g) for i, g in enumerate(project.get("resource_groups", []))}
+    slots = []
+    for demand in mode.get("group_requirements", []):
+        index, group = groups[demand["group_id"]]
+        prefix = f"@group/{index}/"
+        eligible = tuple(f"{prefix}{n}" for n in range(group["capacity"]))
+        slots.extend(ra.RequirementSlot(f"{prefix}{n}", (prefix,), eligible) for n in range(demand["demand"]))
+    return tuple(slots)
 
 
 def _case(workspace: Workspace, selected: dict[str, str]) -> ra.ExperimentCase:
@@ -26,7 +38,7 @@ def _case(workspace: Workspace, selected: dict[str, str]) -> ra.ExperimentCase:
     activities = []
     for activity in project["activities"]:
         mode = next(m for m in activity["modes"] if m["id"] == selected[activity["id"]])
-        requirements = tuple(ra.RequirementSlot(r["id"], tuple(r["pool_ids"]), tuple(r["eligible_resource_ids"])) for r in mode.get("requirements", []))
+        requirements = tuple(ra.RequirementSlot(r["id"], tuple(r["pool_ids"]), tuple(r["eligible_resource_ids"])) for r in mode.get("requirements", [])) + _group_slots(project, mode)
         activities.append(ra.ActivitySpec(
             activity["id"], activity["name"], mode["processing_ticks"], mode["calendar_id"],
             requirements, tuple(activity.get("predecessors", [])), activity.get("not_before", 0),
@@ -34,7 +46,9 @@ def _case(workspace: Workspace, selected: dict[str, str]) -> ra.ExperimentCase:
         ))
     return ra.ExperimentCase(
         tuple(WorkCalendar(c["id"], tuple(tuple(w) for w in c["daily_windows"])) for c in project["calendars"]),
-        tuple(ra.PhysicalResource(r["id"], tuple(r["capabilities"]), r["calendar_id"], 1) for r in project["resources"]),
+        tuple(ra.PhysicalResource(r["id"], tuple(r["capabilities"]), r["calendar_id"], 1) for r in project["resources"])
+        + tuple(ra.PhysicalResource(f"@group/{i}/{n}", (f"@group/{i}/",), g["calendar_id"], 1)
+                for i, g in enumerate(project.get("resource_groups", [])) for n in range(g["capacity"])),
         tuple(ra.AvailabilityException(r["resource_id"], r["start"], r["finish"], r["reason"]) for r in workspace["reports"] if r["status"] == "ACCEPTED"),
         tuple(activities), project["objective_activity_id"], project["horizon_ticks"],
     )
@@ -56,7 +70,35 @@ def _can_pool(case: ra.ExperimentCase, requested: bool) -> bool:
     return True
 
 
-def _solve_case(case: ra.ExperimentCase, pooled: bool, approved: dict | None):
+def _group_placements(case: ra.ExperimentCase, activity: ra.ActivitySpec, approach: str):
+    """Keep one anonymous set for all segments; quotient out within-crew permutations.
+
+    This is the existing finite-placement compiler, with disjoint group sets as
+    an additional input. No dates are repaired after solving. Anonymous sets
+    carry capacity/continuity constraints but never preservation penalties.
+    """
+    named = tuple(r for r in activity.requirements if not r.id.startswith("@group/"))
+    blocks = {}
+    for r in activity.requirements[len(named):]:
+        blocks.setdefault(r.pool_ids[0], []).append(r)
+    count = prod(comb(len(rs[0].eligible_resource_ids), len(rs)) for rs in blocks.values())
+    named_choices = ra._assignment_combinations(replace(activity, requirements=named), approach)
+    if count * len(named_choices) > 64:
+        raise ValueError("bounded group compiler supports at most 64 physical assignment/set combinations per activity-mode")
+    group_choices = [tuple(combinations(rs[0].eligible_resource_ids, len(rs))) for rs in blocks.values()]
+    candidates = []
+    for named_assignment in named_choices:
+        for sets in product(*group_choices):
+            assignments = named_assignment + tuple(unit for units in sets for unit in units)
+            eligible = ra._eligible_execution_slots(case, activity, approach, assignments)
+            for start in range(activity.not_before, case.horizon + 1):
+                periods = ra._periods_from_start(start, activity.processing_ticks, eligible, activity.continuity, case.horizon)
+                if periods is not None:
+                    candidates.append(ra.CandidatePlacement(start, periods[-1][1] if periods else start, periods, assignments))
+    return tuple(candidates)
+
+
+def _solve_case(case: ra.ExperimentCase, pooled: bool, approved: dict | None, grouped: bool = False):
     model = cp_model.CpModel()
     starts, ends, choices = {}, {}, {}
     named_intervals = {resource.id: [] for resource in case.resources}
@@ -64,7 +106,7 @@ def _solve_case(case: ra.ExperimentCase, pooled: bool, approved: dict | None):
     assignment_changes = []
     reference = {e["activity_id"]: e for e in approved["entries"]} if approved else {}
     for activity in case.activities:
-        placements = ra._candidate_placements(case, activity, "C" if pooled else "B")
+        placements = (_group_placements if grouped else ra._candidate_placements)(case, activity, "C" if pooled else "B")
         if not placements:
             return None
         starts[activity.id] = model.new_int_var(0, case.horizon, f"start_{activity.id}")
@@ -80,7 +122,7 @@ def _solve_case(case: ra.ExperimentCase, pooled: bool, approved: dict | None):
             model.add(ends[activity.id] == placement.finish).only_enforce_if(literal)
             changes = 0
             for requirement, resource_id in zip(activity.requirements, placement.assignments):
-                if requirement.id in old_assignments and old_assignments[requirement.id] != resource_id:
+                if not (grouped and requirement.id.startswith("@group/")) and requirement.id in old_assignments and old_assignments[requirement.id] != resource_id:
                     changes += 1
                 for segment, (start, finish) in enumerate(placement.periods):
                     interval = model.new_optional_interval_var(start, finish - start, finish, literal,
@@ -148,13 +190,14 @@ def propose(workspace: Workspace) -> dict:
     if prod(len(a["modes"]) for a in activities) > 16:
         raise ValueError("this POC supports at most 16 authorised activity-mode combinations")
     approved = workspace["approved_plan"]
+    grouped = workspace["schema"] == GROUP_SCHEMA
     alternatives, candidates = [], []
     calls = 0
     for modes in product(*(a["modes"] for a in activities)):
         selected = {a["id"]: mode["id"] for a, mode in zip(activities, modes)}
         case = _case(workspace, selected)
         pooled = _can_pool(case, workspace["project"].get("pool_riggers", False))
-        result = _solve_case(case, pooled, approved)
+        result = _solve_case(case, pooled, approved, grouped)
         if result is None:
             alternatives.append({"modes": selected, "status": "INFEASIBLE"})
             continue
@@ -180,10 +223,20 @@ def propose(workspace: Workspace) -> dict:
                    "proof": "all feasible mode combinations and objective stages proven optimal",
                    "repeatability": "same-environment observation only; equivalent assignments need not be unique"},
     }
+    if grouped:
+        plan["solver"]["compiler"] = "native-workflow/groups-1"
+        plan["group_proof"] = "aggregate productive-period capacity plus exact global fixed anonymous allocation; no real-person assignment"
+        for entry, activity in zip(plan["entries"], activities):
+            mode = next(m for m in activity["modes"] if m["id"] == selected[activity["id"]])
+            entry["assignments"] = [pair for pair in entry["assignments"] if not pair[0].startswith("@group/")]
+            entry["group_demands"] = [[r["group_id"], r["demand"]] for r in mode.get("group_requirements", [])]
+        plan["allocation_witness"] = [row for row in plan["allocation_witness"] if not row[1].startswith("@group/")]
     # Store JSON-shaped values even before the first save/reopen.
     import json
     plan = json.loads(json.dumps(plan))
     plan["plan_hash"] = _plan_hash(plan)
+    if grouped:
+        validate_plan(workspace, plan)
     workspace["proposal"] = plan
     return plan
 
@@ -201,19 +254,24 @@ def validate_plan(workspace: Workspace, plan: dict) -> None:
         if plan["selected_modes"][activity["id"]] not in {m["id"] for m in activity["modes"]}:
             raise ValueError("plan selected an unauthorised mode")
     case = _case(workspace, plan["selected_modes"])
+    grouped = workspace["schema"] == GROUP_SCHEMA
+    if grouped:
+        _check_group_occupancy(workspace["project"], plan)
     entries = []
     for entry in plan["entries"]:
         periods = tuple(tuple(p) for p in entry["periods"])
         activity = case.activity_by_id[entry["activity_id"]]
         if any(type(tick) is not int for tick in (entry["start"], entry["finish"], *(tick for period in periods for tick in period))):
             raise ValueError("execution times must be integer 30-minute ticks")
-        assignments = entry["assignments"]
+        assignments = list(entry["assignments"])
+        if grouped:
+            assignments += [(r.id, None) for r in activity.requirements if r.id.startswith("@group/")]
         if sorted(slot for slot, _ in assignments) != sorted(r.id for r in activity.requirements):
             raise ValueError("assignments must cover each requirement slot exactly")
         submitted = dict(assignments)
         for requirement in activity.requirements:
-            if submitted[requirement.id] is None and not (plan["pooled_riggers"] and requirement.pool_ids == ("RIGGER",) and _can_pool(case, True)):
-                raise ValueError("only interchangeable RIGGER slots may be deferred")
+            if submitted[requirement.id] is None and not ((grouped and requirement.id.startswith("@group/")) or (plan["pooled_riggers"] and requirement.pool_ids == ("RIGGER",) and _can_pool(case, True))):
+                raise ValueError("only declared interchangeable groups or eligible legacy RIGGER slots may be deferred")
         if entry["start"] < activity.not_before or entry["finish"] > case.horizon:
             raise ValueError("plan lies outside native time boundaries")
         if periods and (entry["start"] != periods[0][0] or entry["finish"] != periods[-1][1]):
@@ -227,12 +285,41 @@ def validate_plan(workspace: Workspace, plan: dict) -> None:
         if periods != ra._periods_from_start(entry["start"], activity.processing_ticks, eligible, activity.continuity, case.horizon):
             raise ValueError("execution periods disagree with productive work and permitted calendar suspension")
         entries.append(ra.ScheduledEntry(entry["activity_id"], entry["start"], entry["finish"], periods,
-                                        tuple(tuple(a) for a in entry["assignments"])))
+                                        tuple(tuple(a) for a in assignments)))
     check = ra.check_fixed_schedule(case, tuple(entries))
     if not check.physically_assignable:
         raise ValueError(f"proposal is not physically assignable: {check.reason}")
     if plan["project_finish"] != next(e.finish for e in entries if e.activity_id == case.objective_activity_id):
         raise ValueError("controlling finish disagrees with execution")
+
+
+def _check_group_occupancy(project: dict, plan: dict) -> None:
+    """Direct submitted-period audit, independent of anonymous compiler choices."""
+    groups = {g["id"]: g for g in project["resource_groups"]}
+    calendars = {c["id"]: WorkCalendar(c["id"], tuple(tuple(w) for w in c["daily_windows"])).slots(project["horizon_ticks"])
+                 for c in project["calendars"]}
+    activities = {a["id"]: a for a in project["activities"]}
+    occupancy = {}
+    for entry in plan["entries"]:
+        a = activities[entry["activity_id"]]
+        mode = next(m for m in a["modes"] if m["id"] == plan["selected_modes"][a["id"]])
+        expected = [[r["group_id"], r["demand"]] for r in mode.get("group_requirements", [])]
+        submitted = entry.get("group_demands")
+        if (not isinstance(submitted, list) or any(not isinstance(row, list) or len(row) != 2
+                or not isinstance(row[0], str) or type(row[1]) is not int for row in submitted)
+                or submitted != expected):
+            raise ValueError("submitted group demands disagree with authorised mode requirements")
+        for gid, demand in expected:
+            for start, finish in entry["periods"]:
+                if type(start) is not int or type(finish) is not int or not 0 <= start < finish <= project["horizon_ticks"]:
+                    raise ValueError("invalid group productive periods")
+                for tick in range(start, finish):
+                    if tick not in calendars[groups[gid]["calendar_id"]]:
+                        raise ValueError(f"group {gid} executes outside its calendar")
+                    key = (gid, tick)
+                    occupancy[key] = occupancy.get(key, 0) + demand
+                    if occupancy[key] > groups[gid]["capacity"]:
+                        raise ValueError(f"group {gid} capacity exceeded at tick {tick}")
 
 
 def validate_stored_plans(workspace: Workspace) -> None:
@@ -258,7 +345,7 @@ def validate_stored_plans(workspace: Workspace) -> None:
                 if not isinstance(plan[key], kind):
                     raise ValueError(f"{key} has an invalid shape")
             snapshot = plan["source_snapshot"]
-            historical = {"schema": SCHEMA, "project": snapshot["project"], "reports": snapshot["accepted_reports"],
+            historical = {"schema": snapshot.get("workspace_schema", SCHEMA), "project": snapshot["project"], "reports": snapshot["accepted_reports"],
                           "approved_plan": None, "proposal": None, "plan_history": []}
             validate_plan(historical, plan)
             if plan["policy"] != POLICY or not plan["objective"] or plan["objective"][0] != plan["project_finish"]:
@@ -277,10 +364,13 @@ def validate_stored_plans(workspace: Workspace) -> None:
                     if resource is None or assignment[1] not in (None, resource):
                         raise ValueError("allocation witness contradicts a named assignment")
                     assignment[1] = resource
+            witness_case = _case(historical, plan["selected_modes"])
             witness_entries = tuple(ra.ScheduledEntry(e["activity_id"], e["start"], e["finish"],
-                                    tuple(tuple(p) for p in e["periods"]), tuple(tuple(a) for a in e["assignments"]))
+                                    tuple(tuple(p) for p in e["periods"]), tuple(tuple(a) for a in e["assignments"])
+                                    + tuple((r.id, None) for r in witness_case.activity_by_id[e["activity_id"]].requirements
+                                            if historical["schema"] == GROUP_SCHEMA and r.id.startswith("@group/")))
                                     for e in witnessed["entries"])
-            witness_check = ra.check_fixed_schedule(_case(historical, plan["selected_modes"]), witness_entries)
+            witness_check = ra.check_fixed_schedule(witness_case, witness_entries)
             if not witness_check.physically_assignable:
                 raise ValueError(f"invalid allocation witness: {witness_check.reason}")
             for alternative in plan["alternatives"]:
