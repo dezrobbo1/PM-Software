@@ -37,7 +37,8 @@ export async function capacityTrial(browser, url, evidenceDir, assert, consoleEr
   let state = await page.evaluate(()=>window.__pmTrialState);
   assert(state.workspace.proposal.project_finish===22,"capacity: two-unit synthetic plan finishes Day 1 11:00");
   assert(state.workspace.proposal.physical_status==="PROVEN_FEASIBLE","capacity: independent check passes");
-  assert(await page.locator("#plan-table").getByText("CREW × 1 (group capacity)",{exact:true}).count()===7,"capacity: results display quantities without fake assignments");
+  assert(await page.locator("#plan-table tr").filter({hasText:"CREW × 1 (group capacity)"}).count()===7
+    && !(await page.locator("#plan-table").innerText()).includes("@group/"),"capacity: results display quantities without fake assignments");
   assert(await page.locator('#report-form button').isDisabled(),"capacity: no fictitious-person outage reporting");
   assert(!(await page.locator("#plan-summary").innerText()).includes("Rigging identity"),"capacity: no irrelevant rigging status");
   await approve();
