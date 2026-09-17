@@ -131,16 +131,6 @@ async function exampleLifecycle(browser, url) {
   await page.getByRole("button", {name: "New project"}).click();
   await page.getByText(/New eight-activity starter/).waitFor();
 
-  // New projects no longer inject an artificial example roster. This legacy
-  // eligibility regression explicitly enters the roster its case requires.
-  await page.getByText("Resources and calendars", {exact:true}).click();
-  for (const [id, capabilities] of [["M1","MECH"],["M2","MECH, INSPECT"],["N1","MECH"],["R1","RIGGER"],["R2","RIGGER"]]) {
-    await page.locator("#new-resource-id").fill(id);
-    await page.locator("#new-resource-capabilities").fill(capabilities);
-    await page.locator("#add-resource").click();
-  }
-  await page.locator('[data-resource-calendar="2"]').selectOption("NIGHT");
-  await page.locator("#pool-riggers").check();
   await reopen(page, savedPath);
   const reopened = await page.evaluate(() => window.__pmTrialState.workspace);
   assert(reopened.approved_plan.selected_modes.A03 === "NORMAL", "downloaded recovery reopens with its approval intact");
@@ -213,6 +203,16 @@ async function independentCase(browser, url) {
     N07: "Independent validation",
     N08: "Independent controlling handoff",
   };
+  // New projects no longer inject an artificial example roster. This legacy
+  // eligibility regression explicitly enters the roster its case requires.
+  await page.getByText("Resources and calendars", {exact:true}).click();
+  for (const [id, capabilities] of [["M1","MECH"],["M2","MECH, INSPECT"],["N1","MECH"],["R1","RIGGER"],["R2","RIGGER"]]) {
+    await page.locator("#new-resource-id").fill(id);
+    await page.locator("#new-resource-capabilities").fill(capabilities);
+    await page.locator("#add-resource").click();
+  }
+  await page.locator('[data-resource-calendar="2"]').selectOption("NIGHT");
+  await page.locator("#pool-riggers").check();
   for (const [id, name] of Object.entries(names)) {
     await clickActivity(page, id);
     await fillAndBlur(page.locator("#activity-name"), name);
