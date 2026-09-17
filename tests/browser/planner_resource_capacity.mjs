@@ -51,7 +51,8 @@ export async function capacityTrial(browser, url, evidenceDir, assert, consoleEr
   await page.screenshot({path:path.join(evidenceDir,"capacity-edited-state.png"),fullPage:true});
   const editedState = await page.evaluate(()=>window.__pmTrialState);
   fs.writeFileSync(path.join(evidenceDir,"capacity-edited-state.json"),JSON.stringify(editedState,null,2));
-  assert((await page.locator("#approved-state").innerText()).includes("stale"),`capacity: applied capacity edit leaves stale approval, not an outage report (status=${editedState.approved_status}, capacity=${editedState.workspace.project.resource_groups[0].capacity})`);
+  assert((await page.locator("#approved-state").innerText()).toLowerCase().includes("stale")
+    && editedState.approved_status === "STALE", "capacity: applied capacity edit leaves visibly stale approval, not an outage report");
   await calculate(); state=await page.evaluate(()=>window.__pmTrialState);
   assert(state.workspace.proposal.project_finish===29 && state.workspace.reports.length===0,"capacity: one-unit recovery finishes Day 1 14:30 without fabricated reports");
   assert(state.workspace.approved_plan.plan_hash===originalApproval.plan_hash && state.workspace.proposal,"capacity: proposal remains separate from old approval");
