@@ -16,7 +16,7 @@ from ortools.sat.python import cp_model
 from deterministic_scheduling_core.errors import SchedulingError
 from deterministic_scheduling_core.project.planning_workspace import (
     POLICY, SCHEMA, GROUP_SCHEMA, STATUS_SCHEMA, Workspace, current_status_records,
-    digest, now, state_hash, trusted_input, validate, validate_accepted_history,
+    digest, now, state_hash, trusted_input, validate, validate_accepted_history, validate_group_allocation,
 )
 from deterministic_scheduling_core import resource_assignment_experiment as ra
 from deterministic_scheduling_core.working_time_experiment import SUSPENDABLE, WorkCalendar
@@ -325,7 +325,9 @@ def _propose_statused(workspace: Workspace) -> dict:
     mode_options = []
     for activity in activities:
         record = states[activity["id"]]
-        if record["execution_state"] in {"IN_PROGRESS", "COMPLETED"}:
+        if record["execution_state"] == "COMPLETED":
+            mode_options.append([record["execution_context"]["mode"]])
+        elif record["execution_state"] == "IN_PROGRESS":
             matches = [mode for mode in activity["modes"] if mode["id"] == record["mode_id"]]
             if not matches:
                 raise ValueError(f"{activity['id']}: its accepted begun mode is no longer authorised")
@@ -358,8 +360,10 @@ def _propose_statused(workspace: Workspace) -> dict:
     future_by_id = {entry.activity_id: entry for entry in future_entries}
     entries = []
     for activity in activities:
-        mode = next(mode for mode in activity["modes"] if mode["id"] == selected[activity["id"]])
-        entries.append(_status_entry(activity, mode, states[activity["id"]], future_by_id.get(activity["id"])))
+        record = states[activity["id"]]
+        mode = (record["execution_context"]["mode"] if record["execution_state"] == "COMPLETED"
+                else next(mode for mode in activity["modes"] if mode["id"] == selected[activity["id"]]))
+        entries.append(_status_entry(activity, mode, record, future_by_id.get(activity["id"])))
     plan = {
         "source_state_hash": state_hash(workspace),
         "source_snapshot": trusted_input(workspace),
@@ -522,9 +526,9 @@ def _validate_status_plan(workspace: Workspace, plan: dict) -> None:
         raise ValueError("plan status point disagrees with accepted project state")
     for activity in activities:
         selected = plan["selected_modes"][activity["id"]]
-        if selected not in {mode["id"] for mode in activity["modes"]}:
-            raise ValueError("plan selected an unauthorised mode")
         record = states[activity["id"]]
+        if record["execution_state"] != "COMPLETED" and selected not in {mode["id"] for mode in activity["modes"]}:
+            raise ValueError("plan selected an unauthorised mode")
         if record["execution_state"] in {"IN_PROGRESS", "COMPLETED"} and selected != record["mode_id"]:
             raise ValueError(f"{activity['id']}: begun mode was silently changed")
     case = _future_case(workspace, plan["selected_modes"], states)
@@ -534,7 +538,8 @@ def _validate_status_plan(workspace: Workspace, plan: dict) -> None:
         activity_id = activity["id"]
         entry = entries_by_id[activity_id]
         record = states[activity_id]
-        mode = next(mode for mode in activity["modes"] if mode["id"] == plan["selected_modes"][activity_id])
+        mode = (record["execution_context"]["mode"] if record["execution_state"] == "COMPLETED"
+                else next(mode for mode in activity["modes"] if mode["id"] == plan["selected_modes"][activity_id]))
         context_mode = record["execution_context"]["mode"] if record["execution_context"] else None
         expected_actual_groups = [[demand["group_id"], demand["demand"]] for demand in context_mode.get("group_requirements", [])] if context_mode else []
         expected_actual = {
@@ -654,27 +659,7 @@ def _check_status_group_no_handover(workspace: Workspace, plan: dict, states: di
                 capacity = min(capacity, historical_groups[group_id]["capacity"])
             demand = actual_demands[group_id] if group_id in actual_demands else future_demands[group_id]
             tasks.setdefault(group_id, []).append((activity_id, demand, occupied, capacity))
-    for group_id, group_tasks in tasks.items():
-        used: dict[int, set[int]] = {}
-        ordered = sorted(group_tasks, key=lambda task: (-len(task[2]), -task[1], task[0]))
-
-        def assign(index: int) -> bool:
-            if index == len(ordered):
-                return True
-            _, demand, occupied, capacity = ordered[index]
-            for units in combinations(range(capacity), demand):
-                if any(occupied & used.get(unit, set()) for unit in units):
-                    continue
-                for unit in units:
-                    used.setdefault(unit, set()).update(occupied)
-                if assign(index + 1):
-                    return True
-                for unit in units:
-                    used[unit].difference_update(occupied)
-            return False
-
-        if not assign(0):
-            raise ValueError(f"group {group_id} has no consistent anonymous no-handover allocation across accepted and future productive periods")
+    validate_group_allocation(tasks, "accepted and future productive periods")
 
 
 def _check_group_occupancy(project: dict, plan: dict) -> None:

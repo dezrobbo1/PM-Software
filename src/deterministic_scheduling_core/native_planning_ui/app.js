@@ -627,7 +627,11 @@ function renderStatusWorkflow() {
   const accepted = currentUpdates[selectedStatusActivityId] || null;
   const state = accepted?.execution_state || "NOT_STARTED";
   const modeId = accepted?.mode_id || activity.modes[0]?.id || "";
-  const mode = activity.modes.find((item) => item.id === modeId) || activity.modes[0];
+  const statusModes = [...activity.modes];
+  if (accepted?.execution_context?.mode && !statusModes.some((item) => item.id === modeId)) {
+    statusModes.push({...accepted.execution_context.mode, historicalOnly: true});
+  }
+  const mode = statusModes.find((item) => item.id === modeId) || statusModes[0];
   const groupLabel = (mode?.group_requirements || []).map((demand) => `${demand.group_id} × ${demand.demand}`).join(", ") || "None";
   const acceptedRows = workspace.project.activities.map((item) => {
     const update = currentUpdates[item.id];
@@ -649,7 +653,7 @@ function renderStatusWorkflow() {
     <form id="status-update-form" class="status-editor"><div class="subheading-row"><h3>Draft update · ${escapeHtml(activity.id)}</h3><span>${accepted ? `Correction of ${escapeHtml(accepted.id)}` : "First assertion"}</span></div>
       <div class="status-form-grid">
         <label>Execution state<select id="execution-state">${["NOT_STARTED", "IN_PROGRESS", "COMPLETED"].map((value) => `<option ${value === state ? "selected" : ""}>${value}</option>`).join("")}</select></label>
-        <label>Mode used<select id="execution-mode">${activity.modes.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === modeId ? "selected" : ""}>${escapeHtml(item.id)}</option>`).join("")}</select></label>
+        <label>Mode used<select id="execution-mode">${statusModes.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === modeId ? "selected" : ""}>${escapeHtml(item.id)}${item.historicalOnly ? " (accepted history; retired)" : ""}</option>`).join("")}</select></label>
         <label>Actual start<input id="actual-start" value="${accepted?.actual_start == null ? "" : inputTick(accepted.actual_start)}" placeholder="1@10:00"></label>
         <label id="status-finish-field" ${state === "COMPLETED" ? "" : "hidden"}>Actual finish<input id="actual-finish" value="${accepted?.actual_finish == null ? "" : inputTick(accepted.actual_finish)}" placeholder="1@11:00"></label>
         <label class="wide">Actual productive periods<input id="actual-periods" value="${escapeHtml(periodsInput(accepted?.actual_periods || []))}" placeholder="1@10:00-1@11:00; 1@12:30-1@13:00"></label>
@@ -664,7 +668,7 @@ function renderStatusWorkflow() {
     </form>
   </div><div class="pending-status"><h3>Review and accept drafted updates</h3>${pendingHtml}</div>`;
   $("#execution-mode").addEventListener("change", () => {
-    const selectedMode = activity.modes.find((item) => item.id === $("#execution-mode").value);
+    const selectedMode = statusModes.find((item) => item.id === $("#execution-mode").value);
     $("#status-group-requirement").textContent = (selectedMode?.group_requirements || []).map((demand) => `${demand.group_id} × ${demand.demand}`).join(", ") || "None";
     $("#status-assignments-field").hidden = !selectedMode?.requirements?.length;
     if (!selectedMode?.requirements?.length) $("#actual-assignments").value = "";

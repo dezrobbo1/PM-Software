@@ -44,6 +44,33 @@ def _plan_status(workspace: Workspace, plan: dict | None) -> str:
     return "CURRENT" if plan.get("source_state_hash") == state_hash(workspace) and plan.get("source_snapshot") == trusted_input(workspace) else "STALE"
 
 
+def _execution_comparison_entry(entry: dict | None, plan: dict) -> dict | None:
+    """Compare execution, not the future-only v2 compatibility envelope."""
+    if entry is None:
+        return None
+    statused = "execution_state" in entry
+    periods = entry["actual_periods"] + entry["forecast_periods"] if statused else entry["periods"]
+    merged: list[list[int]] = []
+    for start, finish in periods:
+        if merged and merged[-1][1] == start:
+            merged[-1][1] = finish
+        else:
+            merged.append([start, finish])
+    witness = {(aid, slot): resource for aid, slot, resource in plan["allocation_witness"]}
+    assignments = (entry["actual_assignments"] if statused else []) + entry["assignments"]
+    assignments = {(slot, resource if resource is not None else witness.get((entry["activity_id"], slot)))
+                   for slot, resource in assignments}
+    groups = {(group, quantity) for group, quantity in
+              ((entry["actual_group_demands"] if statused else []) + entry.get("group_demands", []))}
+    start, finish = entry["start"], entry["finish"]
+    if statused:
+        start = entry["actual_start"] if entry["actual_start"] is not None else entry["forecast_start"]
+        finish = entry["actual_finish"] if entry["execution_state"] == "COMPLETED" else entry["forecast_finish"]
+    return {"start": start, "finish": finish, "periods": merged,
+            "assignments": [list(pair) for pair in sorted(assignments, key=lambda pair: (pair[0], pair[1] or ""))],
+            "group_demands": [list(pair) for pair in sorted(groups)]}
+
+
 def _comparison(workspace: Workspace) -> dict[str, Any] | None:
     old = workspace.get("approved_plan")
     new = workspace.get("proposal")
@@ -56,6 +83,9 @@ def _comparison(workspace: Workspace) -> dict[str, Any] | None:
     activity_ids.extend(activity_id for activity_id in new["selected_modes"] if activity_id not in old["selected_modes"])
     for activity_id in activity_ids:
         old_entry, new_entry = old_entries.get(activity_id), new_entries.get(activity_id)
+        if any(entry is not None and "execution_state" in entry for entry in (old_entry, new_entry)):
+            old_entry = _execution_comparison_entry(old_entry, old)
+            new_entry = _execution_comparison_entry(new_entry, new)
         mode_changed = old["selected_modes"].get(activity_id) != new["selected_modes"].get(activity_id)
         assignment_changed = old_entry != new_entry and (old_entry is None or new_entry is None or old_entry["assignments"] != new_entry["assignments"])
         period_changed = old_entry != new_entry and (old_entry is None or new_entry is None or any(old_entry[key] != new_entry[key] for key in ("start", "finish", "periods")))

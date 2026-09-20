@@ -61,6 +61,11 @@ occurrence still wins. Each accepted assertion retains:
 
 Historical context is separate from current future-planning facts. A later
 calendar edit does not move or invalidate already accepted productive periods.
+New assertions also capture the accepted named-resource outages applicable to
+their historical assignments. This optional version-2 context field is never
+backfilled into older assertions or plan snapshots. A context without it makes
+no historical outage claim; current outages cannot retrospectively justify a
+gap. Corrections retaining execution choices retain that historical context.
 Future work still uses current calendars, accepted named-resource outages,
 capacities, precedence, continuity and the retained objective hierarchy.
 
@@ -87,6 +92,24 @@ An additional exact search proves that a consistent anonymous group-unit set
 exists across accepted and forecast productive periods without persisting those
 units as people. Rehashing edited output does not bypass these checks.
 
+History-only no-handover feasibility is checked atomically at acceptance, even
+before all activities have a status. Per-tick capacity alone is insufficient.
+An inconsistent assertion remains reported for inspection; it is not committed
+to trusted history and misdiagnosed later as future infeasibility.
+
+Continuous completed history fills its entire actual-start/actual-finish
+envelope; continuous in-progress history fills through its last productive
+tick. Adjacent recorded periods are permitted, but leading, internal and
+completed trailing gaps are not. Suspendable history may omit only ticks that
+were unavailable under the captured joint activity/resource conditions.
+
+Completed activities use their captured mode even if it is later retired from
+current planning choices. In-progress remainder still requires its already-used
+mode to remain authorised. Recovery comparisons combine actual and forecast
+execution (including named assignments and group quantities), so completing
+work exactly as approved is not a move, and correcting history is not hidden
+by an unchanged future remainder.
+
 ## Planner workflow
 
 The browser exposes the bounded sequence directly:
@@ -109,8 +132,9 @@ This first slice establishes one status point per test workspace and permits
 explicit corrections at that point. Advancing to a later status point, carrying
 assertions forward and reviewing new execution is a separate capability. Begun
 work requires a known actual start in this profile. Out-of-sequence predecessor
-history and interrupted continuous work are retained as assertions but block
-authoritative recovery; the engine does not invent a repair. When the controlling
+history blocks authoritative recovery; interrupted continuous work remains a
+reported assertion and cannot be accepted into this bounded model. The engine
+does not invent a repair. When the controlling
 activity is explicitly completed, calculation reports that no future recovery
 remains instead of manufacturing a new plan.
 

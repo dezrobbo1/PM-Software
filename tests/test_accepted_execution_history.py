@@ -30,7 +30,7 @@ from deterministic_scheduling_core.scheduling.planning_workspace import (
     validate_plan,
     validate_stored_plans,
 )
-from deterministic_scheduling_core.native_planning_ui.server import BrowserSession, dispatch_action
+from deterministic_scheduling_core.native_planning_ui.server import BrowserSession, dispatch_action, _comparison
 from deterministic_scheduling_core.native_planning_ui.hosted import execute
 
 
@@ -132,6 +132,178 @@ def pooled_statused():
 
 
 class AcceptedExecutionHistoryTests(unittest.TestCase):
+    def history_case(self, continuity="SUSPENDABLE_AT_AVAILABILITY_GAPS", grouped=False):
+        workspace = new_blank_workspace()
+        project = workspace["project"]
+        project.update(horizon_ticks=48, objective_activity_id="H", pool_riggers=False, resources=[])
+        project["calendars"] = [{"id": "ALL", "daily_windows": [[0, 48]]}]
+        project["resource_groups"] = ([{"id": "G", "name": "G", "capacity": 2,
+            "calendar_id": "ALL", "disjoint": True, "interchangeable": True}] if grouped else [])
+        project["activities"] = [{"id": aid, "name": aid, "not_before": 0,
+            "predecessors": ["X"] if aid == "H" else [], "modes": [{"id": "USED",
+            "processing_ticks": 0 if aid == "H" else 2, "calendar_id": "ALL",
+            "continuity": continuity, "requirements": [],
+            "group_requirements": [{"group_id": "G", "demand": 1}] if grouped and aid != "H" else []}]}
+            for aid in ("X", "H")]
+        enable_status_tracking(workspace, 26)
+        _accept(workspace, "H", "NOT_STARTED")
+        return workspace
+
+    def test_continuous_history_requires_complete_actual_envelope_atomically(self):
+        for start, finish, periods in ((20, 24, [[22, 24]]), (22, 26, [[22, 24]]),
+                                       (20, 26, []), (20, 24, [[20, 21], [23, 24]])):
+            with self.subTest(start=start, finish=finish, periods=periods):
+                workspace = self.history_case("CONTINUOUS")
+                update = report_status_update(workspace, "X", "COMPLETED", "planner", "review actual",
+                    actual_start=start, actual_finish=finish, actual_periods=periods,
+                    mode_id="USED", remaining_processing_ticks=0)
+                before = deepcopy(workspace)
+                with self.assertRaisesRegex(ValueError, "continuous|CONTINUOUS"):
+                    accept_status_update(workspace, update, "planner")
+                self.assertEqual(workspace, before)
+                # A manually re-labelled accepted record must not bypass the
+                # independent historical check either.
+                record = workspace["execution"]["updates"][-1]
+                record.update(status="ACCEPTED", accepted_by="planner", accepted_at="test")
+                with self.assertRaisesRegex(ValueError, "continuous|CONTINUOUS"):
+                    validate_accepted_history(workspace, require_complete=True)
+
+    def test_continuous_adjacent_periods_and_explicit_milestone_are_valid(self):
+        workspace = self.history_case("CONTINUOUS")
+        _accept(workspace, "X", "COMPLETED", actual_start=20, actual_finish=24,
+                actual_periods=[[20, 22], [22, 24]], mode_id="USED", remaining_processing_ticks=0)
+        self.assertEqual(propose(workspace)["project_finish"], 26)
+        workspace = self.history_case("CONTINUOUS")
+        workspace["project"]["activities"][0]["modes"][0]["processing_ticks"] = 0
+        _accept(workspace, "X", "COMPLETED", actual_start=20, actual_finish=20,
+                actual_periods=[], mode_id="USED", remaining_processing_ticks=0)
+        validate_plan(workspace, propose(workspace))
+
+    def test_suspendable_history_rejects_arbitrary_or_leading_eligible_gaps(self):
+        for periods in ([[10, 11], [20, 21]], [[20, 21]]):
+            workspace = self.history_case()
+            update = report_status_update(workspace, "X", "COMPLETED", "planner", "review actual",
+                actual_start=10, actual_finish=21, actual_periods=periods,
+                mode_id="USED", remaining_processing_ticks=0)
+            before = deepcopy(workspace)
+            with self.assertRaisesRegex(ValueError, "gap|suspension"):
+                accept_status_update(workspace, update, "planner")
+            self.assertEqual(workspace, before)
+
+    def test_historical_group_allocation_rejects_triangle_before_acceptance(self):
+        workspace = self.history_case(grouped=True)
+        template = workspace["project"]["activities"][0]
+        periods = {"X": [[0, 1], [2, 3]], "Y": [[0, 1], [4, 5]], "Z": [[2, 3], [4, 5]]}
+        project = deepcopy(workspace["project"])
+        project["activities"] = []
+        for aid, actual in periods.items():
+            activity = deepcopy(template); activity.update(id=aid, name=aid)
+            activity["modes"][0]["calendar_id"] = aid
+            project["calendars"].append({"id": aid, "daily_windows": actual})
+            project["activities"].append(activity)
+        handoff = deepcopy(workspace["project"]["activities"][-1]); handoff["predecessors"] = list(periods)
+        project["activities"].append(handoff); replace_project(workspace, project)
+        for aid in ("X", "Y"):
+            actual = periods[aid]
+            _accept(workspace, aid, "COMPLETED", actual_start=actual[0][0], actual_finish=actual[-1][1],
+                    actual_periods=actual, mode_id="USED", remaining_processing_ticks=0)
+        update = report_status_update(workspace, "Z", "COMPLETED", "planner", "third conflict",
+            actual_start=2, actual_finish=5, actual_periods=periods["Z"], mode_id="USED", remaining_processing_ticks=0)
+        before = deepcopy(workspace)
+        with self.assertRaisesRegex(ValueError, "accepted.*group.*no-handover"):
+            accept_status_update(workspace, update, "planner")
+        self.assertEqual(workspace, before)
+        record = workspace["execution"]["updates"][-1]
+        record.update(status="ACCEPTED", accepted_by="planner", accepted_at="test")
+        with self.assertRaisesRegex(ValueError, "accepted.*group.*no-handover"):
+            propose(workspace)
+
+    def test_historical_joint_calendar_gap_and_outage_context_remain_fixed(self):
+        for gap_source in ("activity", "group", "named", "outage"):
+            with self.subTest(gap_source=gap_source):
+                workspace = self.history_case(grouped=gap_source == "group")
+                project = workspace["project"]
+                project["calendars"].append({"id": "GAP", "daily_windows": [[10, 11], [20, 21]]})
+                mode = project["activities"][0]["modes"][0]
+                assignments = []
+                if gap_source == "activity": mode["calendar_id"] = "GAP"
+                if gap_source == "group": project["resource_groups"][0]["calendar_id"] = "GAP"
+                if gap_source in ("named", "outage"):
+                    project["resources"] = [{"id": "R", "capabilities": ["Q"],
+                        "calendar_id": "GAP" if gap_source == "named" else "ALL", "capacity": 1}]
+                    mode["requirements"] = [{"id": "S", "pool_ids": ["Q"], "eligible_resource_ids": ["R"]}]
+                    assignments = [["S", "R"]]
+                if gap_source == "outage":
+                    outage = report_unavailable(workspace, "R", 11, 20, "planner", "historical outage")
+                    accept_report(workspace, outage, "planner")
+                _accept(workspace, "X", "COMPLETED", actual_start=10, actual_finish=21,
+                    actual_periods=[[10, 11], [20, 21]], mode_id="USED", named_assignments=assignments,
+                    remaining_processing_ticks=0)
+                accepted = deepcopy(current_status_records(workspace)["X"])
+                if gap_source == "outage":
+                    self.assertEqual(accepted["execution_context"]["accepted_outages"][0]["id"], outage)
+                    later = report_unavailable(workspace, "R", 10, 11, "planner", "later future input")
+                    accept_report(workspace, later, "planner")
+                changed = deepcopy(project)
+                changed["calendars"] = [{"id": c["id"], "daily_windows": [[30, 40]]} for c in project["calendars"]]
+                replace_project(workspace, changed)
+                validate_accepted_history(workspace, require_complete=True)
+                self.assertEqual(current_status_records(workspace)["X"], accepted)
+                validate_plan(workspace, propose(workspace))
+
+    def test_completed_retired_mode_recovery_correction_and_reopen(self):
+        workspace, _ = named_statused()
+        prior = deepcopy(current_status_records(workspace)["A01"])
+        project = deepcopy(workspace["project"])
+        next(a for a in project["activities"] if a["id"] == "A01")["modes"][0]["id"] = "REPLACEMENT"
+        replace_project(workspace, project)
+        plan = propose(workspace)
+        self.assertEqual(plan["selected_modes"]["A01"], "FIXED")
+        self.assertEqual(next(e for e in plan["entries"] if e["activity_id"] == "A01")["actual_periods"], [[14, 16]])
+        validate_plan(workspace, plan)
+        approve(workspace, "test-only")
+        _accept(workspace, "A01", "COMPLETED", actual_start=14, actual_finish=16,
+                actual_periods=[[14, 16]], mode_id="FIXED", remaining_processing_ticks=0,
+                supersedes_update_id=prior["id"])
+        self.assertEqual(current_status_records(workspace)["A01"]["execution_context"], prior["execution_context"])
+        propose(workspace)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "retired-mode.json"; save(workspace, path)
+            reopened = load(path); validate_stored_plans(reopened)
+            self.assertEqual(reopened, workspace)
+
+    def test_in_progress_retired_mode_is_still_not_executable(self):
+        workspace, _ = named_statused()
+        project = deepcopy(workspace["project"])
+        activity = next(a for a in project["activities"] if a["id"] == "A03")
+        activity["modes"] = [m for m in activity["modes"] if m["id"] != "SPECIALIST"]
+        replace_project(workspace, project)
+        with self.assertRaisesRegex(ValueError, "no longer authorised"):
+            propose(workspace)
+
+    def test_comparison_does_not_invent_changes_for_completed_history(self):
+        workspace, _ = named_statused()
+        propose(workspace)
+        comparison = _comparison(workspace)
+        completed = {"A01", "A02", "A05", "A06", "A07"}
+        self.assertTrue(completed <= set(comparison["unchanged_activity_ids"]))
+        for field in ("changed_periods", "changed_assignments", "changed_group_demands"):
+            self.assertFalse(completed & {e["activity_id"] for e in comparison[field]})
+
+    def test_comparison_detects_actual_correction_when_forecast_is_unchanged(self):
+        workspace, _ = named_statused()
+        propose(workspace); approve(workspace, "test-only")
+        prior = current_status_records(workspace)["A03"]
+        _accept(workspace, "A03", "IN_PROGRESS", actual_start=21, actual_periods=[[21, 22]],
+                mode_id="SPECIALIST", named_assignments=prior["named_assignments"],
+                remaining_processing_ticks=4, supersedes_update_id=prior["id"])
+        propose(workspace)
+        comparison = _comparison(workspace)
+        self.assertNotIn("A03", comparison["unchanged_activity_ids"])
+        change = next(e for e in comparison["changed_periods"] if e["activity_id"] == "A03")
+        self.assertEqual(change["old"], [[20, 22], [28, 32]])
+        self.assertEqual(change["new"], [[21, 22], [28, 32]])
+
     def test_legacy_profiles_reject_mixed_execution_fields(self):
         for workspace in (new_demo_workspace(), new_blank_workspace()):
             workspace["execution"] = {"status_point": 22, "updates": []}

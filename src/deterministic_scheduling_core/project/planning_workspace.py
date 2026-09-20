@@ -4,6 +4,8 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 from hashlib import sha256
+from itertools import combinations
+from math import comb
 import json
 from pathlib import Path
 from typing import Any
@@ -416,6 +418,8 @@ def _context_for_update(workspace: Workspace, activity: dict, mode: dict, named_
         "calendars": [deepcopy(calendars[key]) for key in sorted(calendar_ids)],
         "named_resources": [deepcopy(resources[key]) for key in sorted(resource_ids)],
         "resource_groups": [deepcopy(groups[demand["group_id"]]) for demand in mode.get("group_requirements", [])],
+        "accepted_outages": [deepcopy(report) for report in workspace["reports"]
+                             if report["status"] == "ACCEPTED" and report["resource_id"] in resource_ids],
     }
 
 
@@ -450,17 +454,21 @@ def report_status_update(
     mode = None
     context = None
     if execution_state != "NOT_STARTED":
+        prior = next((item for item in workspace["execution"]["updates"] if item["id"] == supersedes_update_id), None)
+        same_choices = (prior and prior["status"] == "ACCEPTED" and prior["activity_id"] == activity_id
+                        and prior["mode_id"] == mode_id and prior["named_assignments"] == assignments
+                        and prior["execution_context"])
         mode = next((item for item in activity["modes"] if item["id"] == mode_id), None)
+        if mode is None and same_choices and execution_state == prior["execution_state"] == "COMPLETED":
+            mode = prior["execution_context"]["mode"]
         if mode is None:
             raise ValueError("begun work needs an authorised current mode")
-        context = _context_for_update(workspace, activity, mode, assignments)
-        prior = next((item for item in workspace["execution"]["updates"] if item["id"] == supersedes_update_id), None)
-        if (prior and prior["status"] == "ACCEPTED" and prior["activity_id"] == activity_id
-                and prior["mode_id"] == mode_id and prior["named_assignments"] == assignments
-                and prior["execution_context"]):
+        if same_choices:
             # Revising an estimate must not recapture today's forecast calendar
             # as the historical calendar of work that already happened.
             context = deepcopy(prior["execution_context"])
+        else:
+            context = _context_for_update(workspace, activity, mode, assignments)
     update_id = _next_record_id(workspace["execution"]["updates"], "U")
     record = {
         "id": update_id,
@@ -506,11 +514,14 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
     named_occupancy: dict[tuple[str, int], str] = {}
     group_occupancy: dict[tuple[str, int], int] = {}
     group_capacity: dict[tuple[str, int], int] = {}
+    group_tasks: dict[str, list[tuple[str, int, frozenset[int], int]]] = {}
     for activity_id, update in current.items():
         if update["execution_state"] == "NOT_STARTED":
             continue
         context = update["execution_context"]
-        if not isinstance(context, dict) or set(context) != {"activity_id", "mode", "calendars", "named_resources", "resource_groups"} or context["activity_id"] != activity_id:
+        required_context = {"activity_id", "mode", "calendars", "named_resources", "resource_groups"}
+        if (not isinstance(context, dict) or not required_context <= set(context)
+                or set(context) - required_context - {"accepted_outages"} or context["activity_id"] != activity_id):
             raise ValueError(f"{activity_id}: invalid accepted execution context")
         mode = context["mode"]
         if not isinstance(mode, dict) or mode.get("id") != update["mode_id"]:
@@ -521,6 +532,7 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
         if mode.get("calendar_id") not in calendars:
             raise ValueError(f"{activity_id}: historical activity calendar is missing")
         activity_slots = _daily_slots(calendars[mode["calendar_id"]], horizon)
+        joint_slots = set(activity_slots)
         occupied = [tick for start, finish in update["actual_periods"] for tick in range(start, finish)]
         if any(tick not in activity_slots for tick in occupied):
             raise ValueError(f"{activity_id}: accepted productive history lies outside its historical activity calendar")
@@ -540,6 +552,7 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
             if resource["calendar_id"] not in calendars:
                 raise ValueError(f"{activity_id}/{requirement_id}: historical resource calendar is missing")
             resource_slots = _daily_slots(calendars[resource["calendar_id"]], horizon)
+            joint_slots.intersection_update(resource_slots)
             if any(tick not in resource_slots for tick in occupied):
                 raise ValueError(f"{activity_id}/{requirement_id}: accepted history lies outside historical resource availability")
             for tick in occupied:
@@ -553,6 +566,7 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
                 raise ValueError(f"{activity_id}: historical group context is missing")
             group = groups[group_id]
             slots = _daily_slots(calendars[group["calendar_id"]], horizon)
+            joint_slots.intersection_update(slots)
             if any(tick not in slots for tick in occupied):
                 raise ValueError(f"{activity_id}: accepted group work lies outside its historical calendar")
             for tick in occupied:
@@ -561,6 +575,33 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
                 group_capacity[key] = min(group_capacity.get(key, group["capacity"]), group["capacity"])
                 if group_occupancy[key] > group_capacity[key]:
                     raise ValueError(f"accepted group {group_id} capacity is exceeded at tick {tick}")
+            if occupied:
+                group_tasks.setdefault(group_id, []).append((activity_id, quantity, frozenset(occupied), group["capacity"]))
+        # Old v2 snapshots have no captured outages; never retrofit today's
+        # availability into them or rewrite their hashes.
+        outages = context.get("accepted_outages", [])
+        if not isinstance(outages, list):
+            raise ValueError(f"{activity_id}: historical accepted outages must be an array")
+        for outage in outages:
+            if (not isinstance(outage, dict) or outage.get("status") != "ACCEPTED"
+                    or outage.get("resource_id") not in resources or not outage.get("accepted_by")):
+                raise ValueError(f"{activity_id}: invalid historical accepted outage")
+            _integer(outage["start"], "historical outage start")
+            _integer(outage["finish"], "historical outage finish", 1)
+            if outage["start"] >= outage["finish"]:
+                raise ValueError(f"{activity_id}: invalid historical outage interval")
+            joint_slots.difference_update(range(outage["start"], outage["finish"]))
+        if any(tick not in joint_slots for tick in occupied):
+            raise ValueError(f"{activity_id}: accepted work contradicts captured historical availability")
+        if mode.get("continuity") == "CONTINUOUS":
+            end = update["actual_finish"] if update["execution_state"] == "COMPLETED" else (occupied[-1] + 1 if occupied else update["actual_start"])
+            if occupied != list(range(update["actual_start"], end)):
+                raise ValueError(f"{activity_id}: continuous actual periods must fill the accepted execution envelope")
+        elif occupied:
+            expected = sorted(tick for tick in joint_slots if update["actual_start"] <= tick <= occupied[-1])
+            if occupied != expected:
+                raise ValueError(f"{activity_id}: historical suspension gap contains executable productive time")
+    validate_group_allocation(group_tasks, "accepted history")
     if require_complete:
         for activity in workspace["project"]["activities"]:
             record = current[activity["id"]]
@@ -570,11 +611,34 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
                         raise ValueError(f"{activity['id']}: begun work requires predecessor {predecessor} to be explicitly COMPLETED")
                     if current[predecessor]["actual_finish"] > record["actual_start"]:
                         raise ValueError(f"{activity['id']}: out-of-sequence actual start before predecessor {predecessor} finish is unsupported")
-                if record["execution_context"]["mode"].get("continuity") == "CONTINUOUS":
-                    periods = record["actual_periods"]
-                    if any(left[1] != right[0] for left, right in zip(periods, periods[1:])):
-                        raise ValueError(f"{activity['id']}: interrupted continuous accepted history is unsupported")
     return current
+
+
+def validate_group_allocation(tasks: dict[str, list[tuple[str, int, frozenset[int], int]]], label: str) -> None:
+    """Prove fixed anonymous sets exist; never persist their identities."""
+    for group_id, group_tasks in tasks.items():
+        used: dict[int, set[int]] = {}
+        ordered = sorted(group_tasks, key=lambda task: (-len(task[2]), -task[1], task[0]))
+        if any(comb(capacity, demand) > 64 for _, demand, _, capacity in ordered):
+            raise ValueError("bounded historical group proof supports at most 64 allocation sets")
+
+        def assign(index: int) -> bool:
+            if index == len(ordered):
+                return True
+            _, demand, occupied, capacity = ordered[index]
+            for units in combinations(range(capacity), demand):
+                if any(occupied & used.get(unit, set()) for unit in units):
+                    continue
+                for unit in units:
+                    used.setdefault(unit, set()).update(occupied)
+                if assign(index + 1):
+                    return True
+                for unit in units:
+                    used[unit].difference_update(occupied)
+            return False
+
+        if not assign(0):
+            raise ValueError(f"{label}: group {group_id} has no consistent anonymous no-handover allocation")
 
 
 def accept_status_update(workspace: Workspace, update_id: str, actor: str) -> None:
