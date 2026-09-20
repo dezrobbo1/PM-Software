@@ -571,7 +571,8 @@ def _validate_historical_execution_context(
         if (not isinstance(capabilities, list) or not capabilities
                 or any(not isinstance(capability, str) or not capability.strip() for capability in capabilities)):
             raise ValueError(f"{activity_id}/{resource_id}: historical capabilities must be nonempty strings")
-        if "capacity" in resource and (type(resource["capacity"]) is not int or resource["capacity"] != 1):
+        # Match the existing v2 project boundary without rewriting captured values.
+        if resource.get("capacity", 1) != 1:
             raise ValueError(f"{activity_id}/{resource_id}: historical named resources have capacity one")
         if (not isinstance(resource["calendar_id"], str) or not resource["calendar_id"].strip()
                 or resource["calendar_id"] not in calendars):

@@ -275,6 +275,37 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
                 self.assertEqual(context["mode"], project["activities"][0]["modes"][0])
                 validate_plan(workspace, propose(workspace))
 
+    def test_v2_named_capacity_one_preserves_representation_through_progress(self):
+        for capacity in (True, 1.0, 1, "omitted"):
+            with self.subTest(capacity=capacity):
+                workspace = self.named_history_case()
+                project = deepcopy(workspace["project"])
+                if capacity == "omitted":
+                    project["resources"][0].pop("capacity")
+                else:
+                    project["resources"][0]["capacity"] = capacity
+                replace_project(workspace, project)
+                values = dict(actual_start=20, actual_periods=[[20, 26]], mode_id="USED",
+                    named_assignments=[["ONE", "R1"], ["TWO", "R2"]], remaining_processing_ticks=2)
+                old_id = _accept(workspace, "X", "IN_PROGRESS", **values)
+                _accept(workspace, "X", "IN_PROGRESS", supersedes_update_id=old_id, **values)
+                for record in workspace["execution"]["updates"]:
+                    if record["activity_id"] == "X":
+                        self.assertEqual(json.dumps(record["execution_context"]["named_resources"]),
+                                         json.dumps(project["resources"]))
+                validate_plan(workspace, propose(workspace))
+                before = json.dumps(workspace, sort_keys=True)
+                original_hash = state_hash(workspace)
+                with TemporaryDirectory() as directory:
+                    path = Path(directory) / "capacity.json"
+                    save(workspace, path)
+                    original_bytes = path.read_bytes()
+                    reopened = load(path)
+                    self.assertEqual(json.dumps(reopened, sort_keys=True), before)
+                    self.assertEqual(state_hash(reopened), original_hash)
+                    save(reopened, path)
+                    self.assertEqual(path.read_bytes(), original_bytes)
+
     def test_superseded_accepted_context_structure_is_validated(self):
         workspace = self.named_history_case()
         values = dict(actual_start=20, actual_finish=26, actual_periods=[[20, 26]], mode_id="USED",
@@ -336,7 +367,7 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
             ("bad continuity", named, lambda ctx: ctx["mode"].__setitem__("continuity", "ARBITRARY")),
             ("bad calendar", named, lambda ctx: ctx["calendars"][0].__setitem__("daily_windows", [[20, 20]])),
             ("bad named capacity", named, lambda ctx: ctx["named_resources"][0].__setitem__("capacity", 2)),
-            ("bad named capacity type", named, lambda ctx: ctx["named_resources"][0].__setitem__("capacity", True)),
+            ("bad named capacity type", named, lambda ctx: ctx["named_resources"][0].__setitem__("capacity", "1")),
             ("bad group capacity", grouped, lambda ctx: ctx["resource_groups"][0].__setitem__("capacity", 0)),
             ("oversized group capacity", grouped, lambda ctx: ctx["resource_groups"][0].__setitem__("capacity", 33)),
         ]
