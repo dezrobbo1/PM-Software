@@ -106,10 +106,22 @@
       </details>
     </section>
 
+    <section class="panel status-panel" aria-labelledby="status-heading">
+      <div class="section-heading">
+        <div>
+          <p class="step">2 · Accept execution state</p>
+          <h2 id="status-heading">Status point and accepted progress</h2>
+        </div>
+        <div id="status-point-control"></div>
+      </div>
+      <p class="guidance">The status point is explicit relative-project time. Draft updates do not change trusted state. Accept each reviewed activity assertion before calculating a recovery.</p>
+      <div id="status-workflow"></div>
+    </section>
+
     <section class="panel workflow-panel" aria-labelledby="workflow-heading">
       <div class="section-heading">
         <div>
-          <p class="step">2 · Calculate, accept facts, approve proposals</p>
+          <p class="step">3 · Calculate, accept facts, approve proposals</p>
           <h2 id="workflow-heading">Planning workflow</h2>
         </div>
         <div class="heading-actions">
@@ -147,7 +159,7 @@
     <section class="panel results-panel" aria-labelledby="results-heading">
       <div class="section-heading">
         <div>
-          <p class="step">3 · Inspect the calculated result</p>
+          <p class="step">4 · Inspect the calculated result</p>
           <h2 id="results-heading">Plan table and productive-time timeline</h2>
         </div>
         <div id="plan-picker" class="segmented" aria-label="Displayed plan"></div>
@@ -163,13 +175,13 @@
     </section>
 
     <section class="panel history-panel" aria-labelledby="history-heading">
-      <div class="section-heading"><div><p class="step">4 · Retain provenance</p><h2 id="history-heading">Approval history</h2></div></div>
+      <div class="section-heading"><div><p class="step">5 · Retain provenance</p><h2 id="history-heading">Approval and correction history</h2></div></div>
       <div id="history"></div>
     </section>
   </main>
 
   <footer>
-    Local trial only. Relative days are not calendar dates or time zones. No drag-to-reschedule, partial progress, external-file import, collaboration or enterprise permissions.
+    Local trial only. Relative days are not calendar dates or time zones. No drag-to-edit actual history, external-file import, collaboration or enterprise permissions.
   </footer>
   <script src="/app.js" defer></script>
 </body>

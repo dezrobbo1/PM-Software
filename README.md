@@ -61,6 +61,15 @@ recalculated with the same finish/objective/periods using 2 groups and 12 quanti
 rows instead of 4 anonymous representatives, 22 slots and 44 eligibility memberships.
 This is representation and scheduling evidence, not measured human time savings.
 
+The accepted-progress profile adds an explicit relative status point, reviewed
+execution assertions, productive actual periods, separately accepted remaining
+work, and correction/supersession provenance. A statused recovery fixes accepted
+history and begun mode/resource choices, then optimises only the permissible
+future remainder. Interchangeable group history stays at group-and-quantity level;
+internal allocation witnesses never become fictitious workers. Version 0 and 1
+workspaces still open without inferred progress. See the
+[accepted-progress semantic contract](docs/accepted-progress-executable-remainder.md).
+
 A thin browser application now exposes the bounded native planning loop without requiring Python or JSON editing. It uses the existing Python validator, scheduler, exact physical checker, report acceptance, approval and workspace persistence functions.
 
 ```bash
@@ -472,7 +481,8 @@ python -m unittest \
   tests.test_adaptive_repair_experiment \
   tests.test_criticality_semantics_experiment \
   tests.test_working_time_experiment \
-  tests.test_resource_assignment_experiment -v
+  tests.test_resource_assignment_experiment \
+  tests.test_accepted_execution_history -v
 ```
 
 ## Active repository map

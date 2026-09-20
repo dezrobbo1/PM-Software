@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import {correctionRegressions} from "./native_planning_ui_corrections.mjs";
 import {capacityTrial} from "./planner_resource_capacity.mjs";
+import {acceptedProgressTrial} from "./accepted_execution_history.mjs";
 
 const playwrightImport = process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES
   ? path.join(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES, "playwright", "index.mjs")
@@ -335,13 +336,14 @@ async function failurePaths(browser, url) {
 const server = await startServer();
 let browser;
 try {
-  browser = await chromium.launch({headless: true});
+  browser = await chromium.launch({headless: true, ...(process.env.PM_BROWSER_EXECUTABLE ? {executablePath: process.env.PM_BROWSER_EXECUTABLE, args: ["--no-zygote"]} : {})});
   await exampleLifecycle(browser, server.url);
   await durationEdit(browser, server.url);
   await independentCase(browser, server.url);
   await failurePaths(browser, server.url);
   await capacityTrial(browser, server.url, evidenceDir, assert, consoleErrors);
   await correctionRegressions(browser, server.url, evidenceDir, assert, observations);
+  await acceptedProgressTrial(browser, server.url, evidenceDir, assert);
   const unexpectedConsoleErrors = consoleErrors.filter((message) => !/failure: Failed to load resource: the server responded with a status of (400|422)/.test(message));
   observations.push(`OBSERVED: ${consoleErrors.length - unexpectedConsoleErrors.length} expected console network diagnostics from the deliberately exercised HTTP 400/422 responses`);
   assert(unexpectedConsoleErrors.length === 0, `browser console has no unexpected errors (${unexpectedConsoleErrors.length})`);

@@ -17,10 +17,13 @@ from deterministic_scheduling_core.errors import SchedulingError
 from deterministic_scheduling_core.project.planning_workspace import (
     Workspace,
     accept_report,
+    accept_status_update,
     digest,
+    enable_status_tracking,
     new_blank_workspace,
     new_demo_workspace,
     replace_project,
+    report_status_update,
     report_unavailable,
     state_hash,
     trusted_input,
@@ -247,6 +250,27 @@ def dispatch_action(path: str, body: dict[str, Any], session: BrowserSession) ->
         payload["report_id"] = report_id
     elif path == "/api/accept":
         accept_report(session.workspace, str(body["report_id"]), str(body.get("actor", "")))
+    elif path == "/api/enable-status":
+        enable_status_tracking(session.workspace, _body_integer(body, "status_point"))
+    elif path == "/api/status-update":
+        update_id = report_status_update(
+            session.workspace,
+            str(body["activity_id"]),
+            str(body["execution_state"]),
+            str(body.get("actor", "")),
+            str(body.get("reason", "")),
+            actual_start=body.get("actual_start"),
+            actual_finish=body.get("actual_finish"),
+            actual_periods=body.get("actual_periods"),
+            mode_id=body.get("mode_id"),
+            named_assignments=body.get("named_assignments"),
+            remaining_processing_ticks=body.get("remaining_processing_ticks"),
+            occurred_at=body.get("occurred_at"),
+            supersedes_update_id=body.get("supersedes_update_id"),
+        )
+        payload["update_id"] = update_id
+    elif path == "/api/accept-status":
+        accept_status_update(session.workspace, str(body["update_id"]), str(body.get("actor", "")))
     elif path == "/api/export":
         validate(session.workspace)
         payload["filename"] = f"{session.workspace['project']['id']}.pm-workspace.json"

@@ -30,6 +30,9 @@ _ACTIONS = {
     "approve",
     "report",
     "accept",
+    "enable-status",
+    "status-update",
+    "accept-status",
     "export",
 }
 _ACTION_FIELDS = {
@@ -42,6 +45,9 @@ _ACTION_FIELDS = {
     "approve": {"action", "actor"},
     "report": {"action", "resource_id", "start", "finish", "reporter", "reason"},
     "accept": {"action", "report_id", "actor"},
+    "enable-status": {"action", "status_point"},
+    "status-update": {"action", "activity_id", "execution_state", "actor", "reason", "actual_start", "actual_finish", "actual_periods", "mode_id", "named_assignments", "remaining_processing_ticks", "occurred_at", "supersedes_update_id"},
+    "accept-status": {"action", "update_id", "actor"},
     "export": {"action"},
 }
 _OPTIONAL_ACTION_FIELDS = {"open": {"filename"}}
