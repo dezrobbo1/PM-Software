@@ -20,7 +20,7 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; background: #e9edef; color: var(--ink); font-size: 14px; line-height: 1.42; }
+body { margin: 0; background: #e9edef; color: var(--ink); font-size: 14px; line-height: 1.42; overflow-x: hidden; }
 button, input, select { font: inherit; }
 button, .button {
   align-items: center; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 4px;
@@ -118,6 +118,25 @@ summary { color: var(--navy); cursor: pointer; font-size: 15px; font-weight: 750
 .resource-row { grid-template-columns: 85px minmax(150px, 1.5fr) minmax(110px, 1fr) auto; }
 .calendar-row { grid-template-columns: 100px minmax(210px, 2fr) auto; }
 
+.status-point { align-items: flex-end; display: grid; gap: 1px; justify-items: end; }
+.status-point span, .status-point small { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+.status-point strong { color: var(--navy); font-size: 18px; }
+.status-grid { display: grid; gap: 18px; grid-template-columns: minmax(520px, 1.35fr) minmax(380px, .9fr); }
+.status-table-region, .status-editor { min-width: 0; }
+.status-table-region .table-scroll { max-height: 390px; }
+.status-table-region td:first-child { min-width: 210px; }
+.status-table-region td:nth-child(3), .status-table-region td:nth-child(5) { min-width: 190px; }
+.selected-status { background: var(--blue-soft); }
+.link-button { background: transparent; border: 0; color: var(--navy); display: inline; min-height: 0; padding: 0; text-decoration: underline; }
+.status-editor { background: var(--surface-soft); border: 1px solid var(--line); padding: 12px; }
+.status-form-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.status-form-grid .wide { grid-column: span 2; }
+.pending-status { border-top: 1px solid var(--line); margin-top: 15px; padding-top: 12px; }
+.status-update-item { background: var(--surface-soft); }
+.timeline-status-point { position: absolute; border-left: 2px dashed #ad6721; height: 100%; top: 0; z-index: 2; pointer-events: none; }
+.timeline-milestone { position: absolute; transform: translateX(-50%); font-size: 15px; color: #278268; }
+.timeline-milestone.actual { color: #233f60; }
+
 .workflow-grid { display: grid; gap: 18px; grid-template-columns: minmax(420px, 1fr) minmax(380px, 1fr); }
 .outage-form, .reports-region { background: var(--surface-soft); border: 1px solid var(--line); padding: 12px; }
 .form-grid { display: grid; gap: 8px; grid-template-columns: repeat(4, minmax(100px, 1fr)); margin-bottom: 8px; }
@@ -156,6 +175,10 @@ summary { color: var(--navy); cursor: pointer; font-size: 15px; font-weight: 750
 .timeline-track::before { background-image: linear-gradient(to right, #e5e9ec 1px, transparent 1px); background-size: 5% 100%; content: ""; inset: 0; pointer-events: none; position: absolute; }
 .timeline-segment { background: #2d6d98; border: 1px solid #174e75; border-radius: 2px; height: 18px; position: absolute; top: 8px; min-width: 2px; }
 .timeline-segment.proposal { background: #34855c; border-color: #1f6943; }
+.timeline-segment.actual { background: #173f5f; border-color: #102f47; top: 5px; }
+.timeline-segment.forecast { background: #34855c; border-color: #1f6943; top: 13px; }
+.actual-line, .forecast-line { border-left: 3px solid var(--navy); margin: 2px 0; padding: 3px 6px; white-space: normal; }
+.forecast-line { border-left-color: #34855c; }
 .axis-label { color: var(--muted); font-size: 10px; position: absolute; top: 8px; transform: translateX(-50%); white-space: nowrap; }
 .axis-label:first-child { transform: none; }
 .axis-label:last-child { transform: translateX(-100%); }
@@ -173,7 +196,7 @@ footer { color: var(--muted); font-size: 11px; margin: 0 auto; max-width: 1680px
 
 @media (max-width: 900px) {
   .app-header, .section-heading { align-items: flex-start; flex-direction: column; }
-  .workspace-grid, .resource-calendar-grid, .workflow-grid, .summary-grid { grid-template-columns: minmax(0, 1fr); }
+  .workspace-grid, .resource-calendar-grid, .workflow-grid, .summary-grid, .status-grid { grid-template-columns: minmax(0, 1fr); }
   .editor-region { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: 14px; }
   .project-settings { grid-template-columns: 1fr 1fr; }
   .form-grid { grid-template-columns: 1fr 1fr; }
@@ -186,10 +209,10 @@ footer { color: var(--muted); font-size: 11px; margin: 0 auto; max-width: 1680px
   .panel { padding: 12px; }
   .project-settings, .editor-fields, .mode-fields, .requirement-row,
   .resource-row, .calendar-row, .form-grid, .history-row, .report-item,
-  .activity-list-region .add-row, .resource-calendar-grid .add-row {
+  .activity-list-region .add-row, .resource-calendar-grid .add-row, .status-form-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-  .form-grid .wide, .mode-fields button, .requirement-row button { grid-column: 1; }
+  .form-grid .wide, .status-form-grid .wide, .mode-fields button, .requirement-row button { grid-column: 1; }
   .timeline { min-width: 0; }
 }
 /* Keep explicit conflict-only controls hidden despite button display rules. */

@@ -43,6 +43,7 @@ jobs:
           tests.test_native_planning_ui_final_corrections
           tests.test_hosted_native_planning_ui
           tests.test_planner_resource_capacity
+          tests.test_accepted_execution_history
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment

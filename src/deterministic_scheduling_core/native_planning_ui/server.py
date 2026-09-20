@@ -17,10 +17,13 @@ from deterministic_scheduling_core.errors import SchedulingError
 from deterministic_scheduling_core.project.planning_workspace import (
     Workspace,
     accept_report,
+    accept_status_update,
     digest,
+    enable_status_tracking,
     new_blank_workspace,
     new_demo_workspace,
     replace_project,
+    report_status_update,
     report_unavailable,
     state_hash,
     trusted_input,
@@ -41,6 +44,33 @@ def _plan_status(workspace: Workspace, plan: dict | None) -> str:
     return "CURRENT" if plan.get("source_state_hash") == state_hash(workspace) and plan.get("source_snapshot") == trusted_input(workspace) else "STALE"
 
 
+def _execution_comparison_entry(entry: dict | None, plan: dict) -> dict | None:
+    """Compare execution, not the future-only v2 compatibility envelope."""
+    if entry is None:
+        return None
+    statused = "execution_state" in entry
+    periods = entry["actual_periods"] + entry["forecast_periods"] if statused else entry["periods"]
+    merged: list[list[int]] = []
+    for start, finish in periods:
+        if merged and merged[-1][1] == start:
+            merged[-1][1] = finish
+        else:
+            merged.append([start, finish])
+    witness = {(aid, slot): resource for aid, slot, resource in plan["allocation_witness"]}
+    assignments = (entry["actual_assignments"] if statused else []) + entry["assignments"]
+    assignments = {(slot, resource if resource is not None else witness.get((entry["activity_id"], slot)))
+                   for slot, resource in assignments}
+    groups = {(group, quantity) for group, quantity in
+              ((entry["actual_group_demands"] if statused else []) + entry.get("group_demands", []))}
+    start, finish = entry["start"], entry["finish"]
+    if statused:
+        start = entry["actual_start"] if entry["actual_start"] is not None else entry["forecast_start"]
+        finish = entry["actual_finish"] if entry["execution_state"] == "COMPLETED" else entry["forecast_finish"]
+    return {"start": start, "finish": finish, "periods": merged,
+            "assignments": [list(pair) for pair in sorted(assignments, key=lambda pair: (pair[0], pair[1] or ""))],
+            "group_demands": [list(pair) for pair in sorted(groups)]}
+
+
 def _comparison(workspace: Workspace) -> dict[str, Any] | None:
     old = workspace.get("approved_plan")
     new = workspace.get("proposal")
@@ -53,6 +83,9 @@ def _comparison(workspace: Workspace) -> dict[str, Any] | None:
     activity_ids.extend(activity_id for activity_id in new["selected_modes"] if activity_id not in old["selected_modes"])
     for activity_id in activity_ids:
         old_entry, new_entry = old_entries.get(activity_id), new_entries.get(activity_id)
+        if any(entry is not None and "execution_state" in entry for entry in (old_entry, new_entry)):
+            old_entry = _execution_comparison_entry(old_entry, old)
+            new_entry = _execution_comparison_entry(new_entry, new)
         mode_changed = old["selected_modes"].get(activity_id) != new["selected_modes"].get(activity_id)
         assignment_changed = old_entry != new_entry and (old_entry is None or new_entry is None or old_entry["assignments"] != new_entry["assignments"])
         period_changed = old_entry != new_entry and (old_entry is None or new_entry is None or any(old_entry[key] != new_entry[key] for key in ("start", "finish", "periods")))
@@ -247,6 +280,27 @@ def dispatch_action(path: str, body: dict[str, Any], session: BrowserSession) ->
         payload["report_id"] = report_id
     elif path == "/api/accept":
         accept_report(session.workspace, str(body["report_id"]), str(body.get("actor", "")))
+    elif path == "/api/enable-status":
+        enable_status_tracking(session.workspace, _body_integer(body, "status_point"))
+    elif path == "/api/status-update":
+        update_id = report_status_update(
+            session.workspace,
+            str(body["activity_id"]),
+            str(body["execution_state"]),
+            str(body.get("actor", "")),
+            str(body.get("reason", "")),
+            actual_start=body.get("actual_start"),
+            actual_finish=body.get("actual_finish"),
+            actual_periods=body.get("actual_periods"),
+            mode_id=body.get("mode_id"),
+            named_assignments=body.get("named_assignments"),
+            remaining_processing_ticks=body.get("remaining_processing_ticks"),
+            occurred_at=body.get("occurred_at"),
+            supersedes_update_id=body.get("supersedes_update_id"),
+        )
+        payload["update_id"] = update_id
+    elif path == "/api/accept-status":
+        accept_status_update(session.workspace, str(body["update_id"]), str(body.get("actor", "")))
     elif path == "/api/export":
         validate(session.workspace)
         payload["filename"] = f"{session.workspace['project']['id']}.pm-workspace.json"

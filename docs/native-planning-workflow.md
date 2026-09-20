@@ -55,7 +55,7 @@ Or edit the native `project` object in JSON: activity names, predecessors, relea
 
 ## What is saved
 
-The workspace contains native project inputs, original reports and acceptance metadata, the approved execution plan, an unapproved proposal and previous approved plans. Each calculated plan includes its trusted source snapshot, source hash, reference-plan hash, chosen modes, actual productive periods, named assignments or deferred pool slots, physical allocation witness, objective results, alternative evaluations, and solver version/configuration.
+The workspace contains native project inputs, original reports and acceptance metadata, the approved execution plan, an unapproved proposal and previous approved plans. Version 2 also contains an explicit status point and immutable accepted/corrected execution assertions. Each statused calculated plan carries separate accepted `actual_*` fields and calculated `forecast_*` fields, plus its trusted source snapshot, source hash, reference-plan hash, chosen modes, named assignments or group quantities, physical allocation witness, objective results, alternative evaluations, and solver version/configuration.
 
 Report acceptance and plan approval are separate. Accepting a report does not rewrite the approved plan. A recovery remains a proposal until explicitly approved. A failed recovery does not reject the accepted report or erase the previous plan; the old plan is visibly stale. Input edits invalidate pending proposals and stale proposals cannot be approved.
 
@@ -69,12 +69,12 @@ The declared policy is: controlling finish (zero allowed degradation), then pres
 
 Repeatability means observed identical output under the same input ordering, solver version, parameters and environment. Hashes do not prove unique assignments or cross-version/platform reproducibility. This is also the clarification accepted in the PR #24 review; its legacy `canonical_signature` name must not be read as a stronger guarantee.
 
-This loop supports future productive work, finish-to-start dependencies, capacity-one physical resources and daily calendar windows. It does not integrate partially completed work, actual-history scheduling, unrestricted handovers, structural alternative activity subgraphs, elapsed curing processes, arbitrary calendar recurrence, a browser UI or authenticated approval authority. Actor names record local single-user decisions; they are not an enterprise authorisation system. Accepted availability intervals are forecast assumptions, not historical actuals.
+The version 2 loop supports explicitly accepted completed and in-progress work, separately estimated productive remainder, finish-to-start dependencies, named resources, disjoint interchangeable groups and daily calendar windows. It does not add unrestricted handovers/preemption, structural alternative activity subgraphs, elapsed curing processes, arbitrary calendar recurrence or authenticated approval authority. Actor names record local single-user decisions; they are not an enterprise authorisation system. Accepted availability intervals remain forecast assumptions, not historical actuals. The complete statused contract and correction rules are in [`accepted-progress-executable-remainder.md`](accepted-progress-executable-remainder.md).
 
 ## Validation
 
 ```bash
-python -m unittest tests.test_native_planning_workflow -v
+python -m unittest tests.test_native_planning_workflow tests.test_accepted_execution_history -v
 ```
 
 The existing POC smoke workflow also runs the prior suite, these twelve workflow tests, the full command demonstration and compilation. Its `native-planning-workflow` artifact contains the saved example workspace and demonstration log. Previous experiment modules remain unchanged.

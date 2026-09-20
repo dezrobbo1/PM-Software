@@ -91,5 +91,7 @@ Operational interpretation still needs confirmation of working windows, committe
 capacity without outside competing demand, inspection position, and conditional
 required scope. A successful solve is not safety authorisation or actual progress.
 
-No accepted execution history, status point, remaining-work recovery, WBS, overlapping
-capability-pool model, timed partial-pool reporting or new objective is added.
+Version 2 now reuses this group representation for accepted history and executable
+remaining work; see [`accepted-progress-executable-remainder.md`](accepted-progress-executable-remainder.md).
+That later profile does not add WBS, overlapping capability pools, timed partial-pool
+reporting, anonymous worker identities or a new objective.

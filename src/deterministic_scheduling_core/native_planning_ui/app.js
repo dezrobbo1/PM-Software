@@ -3,6 +3,7 @@
 let current = null;
 let draft = null;
 let selectedActivityId = null;
+let selectedStatusActivityId = null;
 let displayedPlanKind = "proposal";
 let draftDirty = false;
 let draftRevision = null;
@@ -48,6 +49,50 @@ function parseRelativeTime(value) {
   const hour = Number(match[2]);
   if (day < 1 || hour > 23) throw new Error("Relative day must be at least 1 and hour must be 00–23.");
   return (day - 1) * 48 + hour * 2 + (match[3] === "30" ? 1 : 0);
+}
+
+function optionalRelativeTime(value) {
+  return value.trim() ? parseRelativeTime(value) : null;
+}
+
+function parseProductivePeriods(value) {
+  if (!value.trim()) return [];
+  return value.split(";").map((part) => {
+    const pieces = part.trim().split(/\s*[-–]\s*/);
+    if (pieces.length !== 2) throw new Error("Productive periods use start-finish pairs separated by semicolons.");
+    const start = parseRelativeTime(pieces[0]);
+    const finish = parseRelativeTime(pieces[1]);
+    if (start >= finish) throw new Error("Each productive period must finish after it starts.");
+    return [start, finish];
+  });
+}
+
+function parseNamedAssignments(value) {
+  if (!value.trim()) return [];
+  return value.split(",").map((part) => {
+    const [slot, resource, ...extra] = part.split("=").map((item) => item.trim());
+    if (!slot || !resource || extra.length) throw new Error("Named assignments use SLOT=RESOURCE pairs separated by commas.");
+    return [slot, resource];
+  });
+}
+
+function periodsInput(periods) {
+  return (periods || []).map(([start, finish]) => `${inputTick(start)}-${inputTick(finish)}`).join("; ");
+}
+
+function parseRemainingHours(value) {
+  const ticks = Number(value) * 2;
+  if (!value.trim() || !Number.isInteger(ticks) || ticks < 0) {
+    throw new Error("Enter an explicit remaining-work estimate in multiples of 0.5 hours; zero does not confirm completion.");
+  }
+  return ticks;
+}
+
+function currentExecutionUpdates(workspace) {
+  if (workspace.schema !== "pm-native-planning-workspace/2") return {};
+  const accepted = workspace.execution.updates.filter((update) => update.status === "ACCEPTED");
+  const superseded = new Set(accepted.map((update) => update.supersedes_update_id).filter(Boolean));
+  return Object.fromEntries(accepted.filter((update) => !superseded.has(update.id)).map((update) => [update.activity_id, update]));
 }
 
 function clockLabel(tick) {
@@ -157,7 +202,7 @@ function adoptState(state, replaceDraft) {
   window.__pmTrialState = clone(state);
   if (replaceDraft || !draft) render();
   else {
-    renderStatus(); renderWorkflow(); renderResults(); renderHistory(); syncActions();
+    renderStatus(); renderStatusWorkflow(); renderWorkflow(); renderResults(); renderHistory(); syncActions();
   }
 }
 
@@ -245,6 +290,7 @@ function render() {
   renderActivityEditor();
   renderResources();
   renderCalendars();
+  renderStatusWorkflow();
   renderWorkflow();
   renderResults();
   renderHistory();
@@ -555,6 +601,116 @@ function removeCalendar(index) {
   draft.calendars.splice(index, 1); markDraftDirty(); renderCalendars(); renderProjectSettings(); renderActivityEditor(); renderResources();
 }
 
+function renderStatusWorkflow() {
+  const workspace = current.workspace;
+  const point = $("#status-point-control");
+  const region = $("#status-workflow");
+  if (workspace.schema !== "pm-native-planning-workspace/2") {
+    point.innerHTML = `<label>Status point <input id="status-point-input" value="1@11:00" placeholder="1@11:00"></label><button id="enable-status" type="button">Enable accepted progress</button>`;
+    region.innerHTML = '<p class="empty">No execution status has been recorded. Set the status point explicitly; existing approvals remain inspectable and become stale.</p>';
+    $("#enable-status").addEventListener("click", async () => {
+      try {
+        await perform("/api/enable-status", {status_point: parseRelativeTime($("#status-point-input").value)}, "Status point established. Record and accept an explicit status for every activity.", true);
+      } catch (error) {
+        if (!$("#message").classList.contains("error")) showMessage(error.message, "error");
+      }
+    });
+    return;
+  }
+  const statusPoint = workspace.execution.status_point;
+  point.innerHTML = `<div class="status-point"><span>Status point</span><strong>${tickLabel(statusPoint)}</strong><small>tick ${statusPoint}</small></div>`;
+  const currentUpdates = currentExecutionUpdates(workspace);
+  if (!selectedStatusActivityId || !workspace.project.activities.some((activity) => activity.id === selectedStatusActivityId)) {
+    selectedStatusActivityId = workspace.project.activities[0]?.id ?? null;
+  }
+  const activity = workspace.project.activities.find((item) => item.id === selectedStatusActivityId);
+  const accepted = currentUpdates[selectedStatusActivityId] || null;
+  const state = accepted?.execution_state || "NOT_STARTED";
+  const modeId = accepted?.mode_id || activity.modes[0]?.id || "";
+  const statusModes = [...activity.modes];
+  if (accepted?.execution_context?.mode && !statusModes.some((item) => item.id === modeId)) {
+    statusModes.push({...accepted.execution_context.mode, historicalOnly: true});
+  }
+  const mode = statusModes.find((item) => item.id === modeId) || statusModes[0];
+  const groupLabel = (mode?.group_requirements || []).map((demand) => `${demand.group_id} × ${demand.demand}`).join(", ") || "None";
+  const acceptedRows = workspace.project.activities.map((item) => {
+    const update = currentUpdates[item.id];
+    const status = update?.execution_state || "UNKNOWN";
+    const actual = update?.actual_periods?.length ? update.actual_periods.map(([start, finish]) => `${compactTick(start)}–${compactTick(finish)}`).join("; ") : "—";
+    const remaining = update?.remaining_processing_ticks == null ? "—" : `${update.remaining_processing_ticks / 2} h`;
+    const provenance = update ? `${update.id} · ${update.accepted_by}${update.supersedes_update_id ? ` · corrects ${update.supersedes_update_id}` : ""}` : "No accepted assertion";
+    return `<tr class="${item.id === selectedStatusActivityId ? "selected-status" : ""}"><td><button type="button" class="link-button" data-status-activity="${escapeHtml(item.id)}">${escapeHtml(item.id)}</button> · ${escapeHtml(item.name)}</td><td><span class="badge ${status === "UNKNOWN" ? "reported" : "current"}">${escapeHtml(status)}</span></td><td>${escapeHtml(actual)}</td><td>${escapeHtml(remaining)}</td><td>${escapeHtml(provenance)}</td></tr>`;
+  }).join("");
+  const pending = workspace.execution.updates.filter((update) => update.status === "REPORTED");
+  const pendingHtml = pending.length ? pending.map((update) => `<article class="report-item status-update-item">
+    <div><p><strong>${escapeHtml(update.id)} · ${escapeHtml(update.activity_id)} · ${escapeHtml(update.execution_state)}</strong> <span class="badge reported">REVIEW</span></p>
+    <p>${update.actual_periods.length ? `Actual ${escapeHtml(periodsInput(update.actual_periods))}` : "No actual productive periods"} · remaining ${update.remaining_processing_ticks == null ? "—" : `${update.remaining_processing_ticks / 2} h`}</p>
+    <p class="report-meta">Asserted by ${escapeHtml(update.asserted_by)} · occurrence ${tickLabel(update.occurred_at)}${update.supersedes_update_id ? ` · supersedes ${escapeHtml(update.supersedes_update_id)}` : ""} · ${escapeHtml(update.reason)}</p></div>
+    <div><label>Acceptance actor<input data-status-acceptance-actor="${escapeHtml(update.id)}" value="trial-planner" maxlength="80"></label><button type="button" data-accept-status="${escapeHtml(update.id)}">Accept reviewed update</button></div>
+  </article>`).join("") : '<p class="empty">No status updates are awaiting acceptance.</p>';
+  region.innerHTML = `<div class="status-grid">
+    <div class="status-table-region"><div class="subheading-row"><h3>Current accepted state</h3><span>Every UNKNOWN blocks recovery</span></div><div class="table-scroll"><table><thead><tr><th>Activity</th><th>Status</th><th>Actual productive periods</th><th>Remaining</th><th>Acceptance / correction</th></tr></thead><tbody>${acceptedRows}</tbody></table></div></div>
+    <form id="status-update-form" class="status-editor"><div class="subheading-row"><h3>Draft update · ${escapeHtml(activity.id)}</h3><span>${accepted ? `Correction of ${escapeHtml(accepted.id)}` : "First assertion"}</span></div>
+      <div class="status-form-grid">
+        <label>Execution state<select id="execution-state">${["NOT_STARTED", "IN_PROGRESS", "COMPLETED"].map((value) => `<option ${value === state ? "selected" : ""}>${value}</option>`).join("")}</select></label>
+        <label>Mode used<select id="execution-mode">${statusModes.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === modeId ? "selected" : ""}>${escapeHtml(item.id)}${item.historicalOnly ? " (accepted history; retired)" : ""}</option>`).join("")}</select></label>
+        <label>Actual start<input id="actual-start" value="${accepted?.actual_start == null ? "" : inputTick(accepted.actual_start)}" placeholder="1@10:00"></label>
+        <label id="status-finish-field" ${state === "COMPLETED" ? "" : "hidden"}>Actual finish<input id="actual-finish" value="${accepted?.actual_finish == null ? "" : inputTick(accepted.actual_finish)}" placeholder="1@11:00"></label>
+        <label class="wide">Actual productive periods<input id="actual-periods" value="${escapeHtml(periodsInput(accepted?.actual_periods || []))}" placeholder="1@10:00-1@11:00; 1@12:30-1@13:00"></label>
+        <label>Remaining productive hours<input id="remaining-hours" type="number" min="0" step="0.5" value="${accepted?.remaining_processing_ticks == null ? "" : accepted.remaining_processing_ticks / 2}"></label>
+        <label id="status-assignments-field" class="wide" ${mode?.requirements?.length ? "" : "hidden"}>Named assignments<input id="actual-assignments" value="${escapeHtml((accepted?.named_assignments || []).map(([slot, resource]) => `${slot}=${resource}`).join(", "))}" placeholder="SLOT=RESOURCE"></label>
+        <label>Occurred at<input id="status-occurred" value="${inputTick(accepted?.occurred_at ?? statusPoint)}"></label>
+        <label>Asserted by<input id="status-actor" value="trial-planner" maxlength="80"></label>
+        <label class="wide">Reason<input id="status-reason" value="${accepted ? "Reviewed correction" : "Reviewed status-point assertion"}" maxlength="160"></label>
+      </div>
+      <p class="guidance">Group requirement for the selected mode: <strong id="status-group-requirement">${escapeHtml(groupLabel)}</strong>. Group work records quantity only; do not enter anonymous unit identities.</p>
+      <button class="primary" type="submit">Record update for review</button>
+    </form>
+  </div><div class="pending-status"><h3>Review and accept drafted updates</h3>${pendingHtml}</div>`;
+  $("#execution-mode").addEventListener("change", () => {
+    const selectedMode = statusModes.find((item) => item.id === $("#execution-mode").value);
+    $("#status-group-requirement").textContent = (selectedMode?.group_requirements || []).map((demand) => `${demand.group_id} × ${demand.demand}`).join(", ") || "None";
+    $("#status-assignments-field").hidden = !selectedMode?.requirements?.length;
+    if (!selectedMode?.requirements?.length) $("#actual-assignments").value = "";
+  });
+  $("#execution-state").addEventListener("change", () => {
+    $("#status-finish-field").hidden = $("#execution-state").value !== "COMPLETED";
+  });
+  $$('[data-status-activity]').forEach((button) => button.addEventListener("click", () => { selectedStatusActivityId = button.dataset.statusActivity; renderStatusWorkflow(); syncActions(); }));
+  $$('[data-accept-status]').forEach((button) => button.addEventListener("click", async () => {
+    const updateId = button.dataset.acceptStatus;
+    const actor = $(`[data-status-acceptance-actor="${CSS.escape(updateId)}"]`).value;
+    try { await perform("/api/accept-status", {update_id: updateId, actor}, `${updateId} accepted into trusted project state. Any prior approval is now stale.`); }
+    catch (_error) { /* visible message is sufficient */ }
+  }));
+  $("#status-update-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const executionState = $("#execution-state").value;
+      const begun = executionState !== "NOT_STARTED";
+      const completed = executionState === "COMPLETED";
+      const hoursValue = $("#remaining-hours").value;
+      const remainingTicks = completed ? 0 : (begun ? parseRemainingHours(hoursValue) : null);
+      await perform("/api/status-update", {
+        activity_id: activity.id,
+        execution_state: executionState,
+        actor: $("#status-actor").value,
+        reason: $("#status-reason").value,
+        actual_start: begun ? optionalRelativeTime($("#actual-start").value) : null,
+        actual_finish: completed ? optionalRelativeTime($("#actual-finish").value) : null,
+        actual_periods: begun ? parseProductivePeriods($("#actual-periods").value) : [],
+        mode_id: begun ? $("#execution-mode").value : null,
+        named_assignments: begun ? parseNamedAssignments($("#actual-assignments").value) : [],
+        remaining_processing_ticks: remainingTicks,
+        occurred_at: parseRelativeTime($("#status-occurred").value),
+        supersedes_update_id: accepted?.id || null,
+      }, "Status update recorded for review. Trusted state is unchanged until acceptance.");
+    } catch (error) {
+      if (!$("#message").classList.contains("error")) showMessage(error.message, "error");
+    }
+  });
+}
+
 function planCard(title, plan, status) {
   if (!plan) return `<article class="summary-card"><h3>${title}</h3><p class="empty">None recorded.</p></article>`;
   const actor = plan.approved_by ? `<p class="guidance">Approved by ${escapeHtml(plan.approved_by)} at ${escapeHtml(plan.approved_at)}</p>` : '<p class="guidance">Calculated only — approval is still pending.</p>';
@@ -640,6 +796,12 @@ function assignmentLabel(activity, plan, entry) {
   })].join("<br>");
 }
 
+function actualAssignmentLabel(entry) {
+  const groups = (entry.actual_group_demands || []).map(([id, quantity]) => `${escapeHtml(id)} × ${quantity} (accepted group)`);
+  const named = (entry.actual_assignments || []).map(([slot, resource]) => `${escapeHtml(slot)}: ${escapeHtml(resource)}`);
+  return [...groups, ...named].join("<br>") || "No resource demand";
+}
+
 function renderResults() {
   const [plan, kind] = selectedPlan();
   displayedPlanKind = kind;
@@ -655,8 +817,16 @@ function renderResults() {
   }
   const sourceActivities = plan.source_snapshot?.project?.activities || current.workspace.project.activities;
   const activities = Object.fromEntries(sourceActivities.map((activity) => [activity.id, activity]));
+  const statused = Number.isInteger(plan.status_point);
   $("#plan-table").innerHTML = plan.entries.map((entry) => {
     const activity = activities[entry.activity_id];
+    if (statused) {
+      const actual = entry.actual_periods.length ? entry.actual_periods.map(([start, finish]) => `${compactTick(start)}–${compactTick(finish)}`).join("; ") : "None";
+      const forecast = entry.forecast_periods.length ? entry.forecast_periods.map(([start, finish]) => `${compactTick(start)}–${compactTick(finish)}`).join("; ") : (entry.execution_state === "COMPLETED" ? "None — completed" : "Zero remaining; completion unconfirmed");
+      const start = entry.actual_start == null ? (entry.forecast_start == null ? "—" : tickLabel(entry.forecast_start)) : tickLabel(entry.actual_start);
+      const finish = entry.forecast_finish == null ? (entry.actual_finish == null ? "—" : tickLabel(entry.actual_finish)) : tickLabel(entry.forecast_finish);
+      return `<tr><td><strong>${escapeHtml(entry.activity_id)}</strong> · ${escapeHtml(activity.name)}<br><span class="badge current">${escapeHtml(entry.execution_state)}</span></td><td>${activity.modes.length === 1 && plan.selected_modes[entry.activity_id] === "FIXED" ? '<span class="guidance" title="FIXED — sole authorised method">Single method</span>' : escapeHtml(plan.selected_modes[entry.activity_id])}</td><td>${start}</td><td>${finish}</td><td><div class="actual-line"><strong>ACTUAL</strong> ${escapeHtml(actual)}</div><div class="forecast-line"><strong>FORECAST</strong> ${escapeHtml(forecast)} · ${entry.remaining_processing_ticks / 2} h</div></td><td><div class="actual-line"><strong>ACTUAL</strong><br>${actualAssignmentLabel(entry)}</div><div class="forecast-line"><strong>FORECAST</strong><br>${assignmentLabel(activity, plan, entry)}</div></td></tr>`;
+    }
     const periods = entry.periods.length ? entry.periods.map(([start, finish]) => `${compactTick(start)}–${compactTick(finish)}`).join("; ") : "Milestone";
     return `<tr><td><strong>${escapeHtml(entry.activity_id)}</strong> · ${escapeHtml(activity.name)}</td><td>${activity.modes.length === 1 && plan.selected_modes[entry.activity_id] === "FIXED" ? '<span class="guidance" title="FIXED — sole authorised method">Single method</span>' : escapeHtml(plan.selected_modes[entry.activity_id])}</td><td>${tickLabel(entry.start)}</td><td>${tickLabel(entry.finish)}</td><td class="period-list">${escapeHtml(periods)}</td><td>${assignmentLabel(activity, plan, entry)}</td></tr>`;
   }).join("");
@@ -664,24 +834,40 @@ function renderResults() {
 }
 
 function renderTimeline(plan, kind, activities) {
-  const nonempty = plan.entries.flatMap((entry) => entry.periods);
+  const statused = Number.isInteger(plan.status_point);
+  const nonempty = plan.entries.flatMap((entry) => statused ? [...entry.actual_periods, ...entry.forecast_periods] : entry.periods);
   const axisStart = nonempty.length ? Math.min(...nonempty.map((period) => period[0])) : 0;
   const axisFinish = Math.max(axisStart + 1, plan.project_finish);
   const span = axisFinish - axisStart;
   const markers = Array.from({length: 6}, (_, index) => Math.round(axisStart + (span * index / 5)));
-  const axis = `<div class="timeline-axis"><div class="timeline-label"><strong>${kind === "proposal" ? "Proposal" : "Approved plan"}</strong></div><div class="timeline-track">${markers.map((tick) => `<span class="axis-label" style="left:${((tick - axisStart) / span) * 100}%">${compactTick(tick)}</span>`).join("")}</div></div>`;
-  const rows = plan.entries.map((entry) => `<div class="timeline-row"><div class="timeline-label" title="${escapeHtml(activities[entry.activity_id].name)}">${escapeHtml(entry.activity_id)} · ${escapeHtml(activities[entry.activity_id].name)}</div><div class="timeline-track">${entry.periods.map(([start, finish]) => `<span class="timeline-segment ${kind}" title="Productive: ${compactTick(start)} to ${compactTick(finish)}" style="left:${((start - axisStart) / span) * 100}%;width:${((finish - start) / span) * 100}%"></span>`).join("")}</div></div>`).join("");
+  const statusLine = statused ? `<span class="timeline-status-point" title="Status point: ${tickLabel(plan.status_point)}" style="left:${((plan.status_point - axisStart) / span) * 100}%"></span>` : "";
+  const axis = `${statused ? `<p class="guidance">ACTUAL · status point ${tickLabel(plan.status_point)} · FORECAST</p>` : ""}<div class="timeline-axis"><div class="timeline-label"><strong>${kind === "proposal" ? "Proposal" : "Approved plan"}</strong></div><div class="timeline-track">${markers.map((tick) => `<span class="axis-label" style="left:${((tick - axisStart) / span) * 100}%">${compactTick(tick)}</span>`).join("")}</div></div>`;
+  const rows = plan.entries.map((entry) => {
+    const segments = statused
+      ? [...entry.actual_periods.map(([start, finish]) => `<span class="timeline-segment actual" title="ACTUAL: ${compactTick(start)} to ${compactTick(finish)}" style="left:${((start - axisStart) / span) * 100}%;width:${((finish - start) / span) * 100}%"></span>`),
+         ...entry.forecast_periods.map(([start, finish]) => `<span class="timeline-segment forecast" title="FORECAST: ${compactTick(start)} to ${compactTick(finish)}" style="left:${((start - axisStart) / span) * 100}%;width:${((finish - start) / span) * 100}%"></span>`)]
+      : entry.periods.map(([start, finish]) => `<span class="timeline-segment ${kind}" title="Productive: ${compactTick(start)} to ${compactTick(finish)}" style="left:${((start - axisStart) / span) * 100}%;width:${((finish - start) / span) * 100}%"></span>`);
+    if (statused && !segments.length) {
+      const tick = entry.execution_state === "COMPLETED" ? entry.actual_finish : entry.forecast_finish;
+      segments.push(`<span class="timeline-milestone ${entry.execution_state === "COMPLETED" ? "actual" : "forecast"}" title="${entry.execution_state === "COMPLETED" ? "ACTUAL completed" : "FORECAST unconfirmed"}: ${compactTick(tick)}" style="left:${((tick - axisStart) / span) * 100}%">◆</span>`);
+    }
+    return `<div class="timeline-row"><div class="timeline-label" title="${escapeHtml(activities[entry.activity_id].name)}">${escapeHtml(entry.activity_id)} · ${escapeHtml(activities[entry.activity_id].name)}</div><div class="timeline-track">${statusLine}${segments.join("")}</div></div>`;
+  }).join("");
   $("#timeline").innerHTML = axis + rows;
 }
 
 function renderHistory() {
   const history = current.workspace.plan_history;
-  $("#history").innerHTML = history.length ? history.map((plan, index) => `<div class="history-row"><strong>Prior approval ${index + 1}</strong><span>${tickLabel(plan.project_finish)} · ${escapeHtml(plan.plan_hash.slice(0, 12))}…</span><span>Approved by ${escapeHtml(plan.approved_by)} at ${escapeHtml(plan.approved_at)}</span></div>`).join("") : '<p class="empty">No previous approved plans. Replaced approvals appear here.</p>';
+  const approvals = history.length ? history.map((plan, index) => `<div class="history-row"><strong>Prior approval ${index + 1}</strong><span>${tickLabel(plan.project_finish)} · ${escapeHtml(plan.plan_hash.slice(0, 12))}…</span><span>Approved by ${escapeHtml(plan.approved_by)} at ${escapeHtml(plan.approved_at)}</span></div>`).join("") : '<p class="empty">No previous approved plans. Replaced approvals appear here.</p>';
+  const updates = current.workspace.schema === "pm-native-planning-workspace/2" ? current.workspace.execution.updates.filter((update) => update.status === "ACCEPTED") : [];
+  const currentIds = new Set(Object.values(currentExecutionUpdates(current.workspace)).map((update) => update.id));
+  const execution = updates.length ? updates.map((update) => `<div class="history-row"><strong>${escapeHtml(update.id)} · ${escapeHtml(update.activity_id)}<br>${currentIds.has(update.id) ? "CURRENT" : "SUPERSEDED"}</strong><span>${escapeHtml(update.execution_state)}${update.supersedes_update_id ? ` · supersedes ${escapeHtml(update.supersedes_update_id)}` : ""}<br>${escapeHtml(update.reason)}<br>ACTUAL: ${escapeHtml(periodsInput(update.actual_periods)) || "No productive periods"}<br>Remaining forecast: ${update.remaining_processing_ticks == null ? "Current unstarted estimate" : `${update.remaining_processing_ticks / 2} h`} · mode ${escapeHtml(update.mode_id || "Unselected")}<br>Occurred ${tickLabel(update.occurred_at)}</span><span>Asserted by ${escapeHtml(update.asserted_by)} at ${escapeHtml(update.asserted_at)}<br>Accepted by ${escapeHtml(update.accepted_by)} at ${escapeHtml(update.accepted_at)}</span></div>`).join("") : '<p class="empty">No accepted execution assertions.</p>';
+  $("#history").innerHTML = `<h3>Approved plan history</h3>${approvals}<h3>Accepted execution provenance</h3>${execution}`;
 }
 
 function syncActions() {
   if (!current) return;
-  $$(".project-panel input, .project-panel select, .project-panel button, .workflow-panel input, .workflow-panel select, .workflow-panel button").forEach((control) => {
+  $$(".project-panel input, .project-panel select, .project-panel button, .status-panel input, .status-panel select, .status-panel button, .workflow-panel input, .workflow-panel select, .workflow-panel button").forEach((control) => {
     control.disabled = busy;
   });
   const blocked = busy || invalidating || draftConflict;
@@ -697,6 +883,9 @@ function syncActions() {
   $("#add-group").disabled = busy || !draft?.resource_groups;
   $$('#report-form input, #report-form select, #report-form button').forEach(control => {
     control.disabled = blocked || draftDirty || !current.workspace.project.resources?.length;
+  });
+  $$('.status-panel input, .status-panel select, .status-panel button').forEach(control => {
+    control.disabled = blocked || draftDirty;
   });
 }
 

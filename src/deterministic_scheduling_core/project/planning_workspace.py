@@ -4,12 +4,15 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 from hashlib import sha256
+from itertools import combinations
+from math import comb
 import json
 from pathlib import Path
 from typing import Any
 
 SCHEMA = "pm-native-planning-workspace/0"
 GROUP_SCHEMA = "pm-native-planning-workspace/1"
+STATUS_SCHEMA = "pm-native-planning-workspace/2"
 POLICY = "finish-mode-preservation-start-movement-assignment-preservation-timing/0"
 Workspace = dict[str, Any]
 
@@ -36,9 +39,11 @@ def _ids(items: list[dict], label: str) -> set[str]:
 
 def validate(workspace: Workspace) -> None:
     """Validate the deliberately small editable input, not a general project schema."""
-    if workspace.get("schema") not in {SCHEMA, GROUP_SCHEMA}:
-        raise ValueError(f"expected schema {SCHEMA} or {GROUP_SCHEMA}")
-    grouped = workspace["schema"] == GROUP_SCHEMA
+    if workspace.get("schema") not in {SCHEMA, GROUP_SCHEMA, STATUS_SCHEMA}:
+        raise ValueError(f"expected schema {SCHEMA}, {GROUP_SCHEMA} or {STATUS_SCHEMA}")
+    if workspace["schema"] != STATUS_SCHEMA and "execution" in workspace:
+        raise ValueError("execution fields require an explicit version-two workspace")
+    grouped = workspace["schema"] in {GROUP_SCHEMA, STATUS_SCHEMA}
     project = workspace["project"]
     allowed = {"id", "name", "horizon_ticks", "calendars", "resources", "activities", "objective_activity_id", "pool_riggers"}
     if grouped:
@@ -155,6 +160,132 @@ def validate(workspace: Workspace) -> None:
             raise ValueError("report needs an actor and reason")
         if report["status"] == "ACCEPTED" and not report.get("accepted_by"):
             raise ValueError("accepted report needs an accepting actor")
+    if workspace["schema"] == STATUS_SCHEMA:
+        _validate_execution(workspace)
+        # Import and edits must not trust assertions that acceptance
+        # would reject. Missing activity statuses still remain UNKNOWN.
+        validate_accepted_history(workspace, require_complete=False)
+
+
+EXECUTION_STATES = {"NOT_STARTED", "IN_PROGRESS", "COMPLETED"}
+
+
+def _pairs(value: Any, label: str) -> list[list[str]]:
+    if not isinstance(value, list) or any(
+        not isinstance(row, list) or len(row) != 2
+        or not all(isinstance(item, str) and item for item in row)
+        for row in value
+    ):
+        raise ValueError(f"{label} must be an array of nonempty string pairs")
+    if len({row[0] for row in value}) != len(value):
+        raise ValueError(f"{label} requirement IDs must be unique")
+    return value
+
+
+def _validate_execution(workspace: Workspace) -> None:
+    execution = workspace.get("execution")
+    if not isinstance(execution, dict) or set(execution) != {"status_point", "updates"}:
+        raise ValueError("version two requires execution status_point and updates")
+    status_point = execution["status_point"]
+    _integer(status_point, "status_point")
+    if status_point > workspace["project"]["horizon_ticks"]:
+        raise ValueError("status_point must lie inside the planning horizon")
+    updates = execution["updates"]
+    if not isinstance(updates, list):
+        raise ValueError("execution updates must be an array")
+    update_ids = _ids(updates, "status update")
+    activity_ids = {activity["id"] for activity in workspace["project"]["activities"]}
+    by_id = {update["id"]: update for update in updates}
+    allowed = {
+        "id", "activity_id", "status", "execution_state", "actual_start",
+        "actual_finish", "actual_periods", "mode_id", "named_assignments",
+        "remaining_processing_ticks", "occurred_at", "asserted_by", "asserted_at",
+        "accepted_by", "accepted_at", "supersedes_update_id", "reason",
+        "execution_context",
+    }
+    for update in updates:
+        if set(update) != allowed:
+            raise ValueError(f"status update {update.get('id', '<unknown>')} has unsupported or missing fields")
+        if update["activity_id"] not in activity_ids:
+            raise ValueError("status update refers to an unknown activity")
+        if update["status"] not in {"REPORTED", "ACCEPTED"} or update["execution_state"] not in EXECUTION_STATES:
+            raise ValueError("status update needs an explicit lifecycle and execution state")
+        _integer(update["occurred_at"], "status occurrence")
+        if update["occurred_at"] > status_point:
+            raise ValueError("status occurrence cannot be after the accepted status point")
+        if not isinstance(update["asserted_by"], str) or not update["asserted_by"].strip() or not isinstance(update["asserted_at"], str) or not update["asserted_at"]:
+            raise ValueError("status update needs assertion provenance")
+        if not isinstance(update["reason"], str) or not update["reason"].strip():
+            raise ValueError("status update needs a reason")
+        if update["status"] == "ACCEPTED":
+            if not isinstance(update["accepted_by"], str) or not update["accepted_by"].strip() or not isinstance(update["accepted_at"], str) or not update["accepted_at"]:
+                raise ValueError("accepted status update needs acceptance provenance")
+        elif update["accepted_by"] is not None or update["accepted_at"] is not None:
+            raise ValueError("reported status update cannot carry acceptance provenance")
+        supersedes = update["supersedes_update_id"]
+        if supersedes is not None:
+            if supersedes not in update_ids or supersedes == update["id"]:
+                raise ValueError("superseded status update must exist and be different")
+            if by_id[supersedes]["activity_id"] != update["activity_id"]:
+                raise ValueError("a correction can supersede only the same activity")
+        periods = update["actual_periods"]
+        if not isinstance(periods, list):
+            raise ValueError("actual_periods must be an array")
+        previous_finish = -1
+        for period in periods:
+            if not isinstance(period, list) or len(period) != 2:
+                raise ValueError("actual period must be a start/finish pair")
+            start, finish = period
+            _integer(start, "actual period start")
+            _integer(finish, "actual period finish", 1)
+            if start >= finish or finish > status_point or start < previous_finish:
+                raise ValueError("actual periods must be ordered, disjoint and no later than the status point")
+            previous_finish = finish
+        actual_start, actual_finish = update["actual_start"], update["actual_finish"]
+        if actual_start is not None:
+            _integer(actual_start, "actual_start")
+            if actual_start > status_point or (periods and actual_start > periods[0][0]):
+                raise ValueError("actual_start must precede accepted productive history")
+        if actual_finish is not None:
+            _integer(actual_finish, "actual_finish")
+            if actual_finish > status_point or (actual_start is not None and actual_finish < actual_start) or (periods and actual_finish < periods[-1][1]):
+                raise ValueError("actual_finish must contain accepted productive history before the status point")
+        _pairs(update["named_assignments"], "named_assignments")
+        state = update["execution_state"]
+        remaining = update["remaining_processing_ticks"]
+        if state == "NOT_STARTED":
+            if any(value not in (None, [], {}) for value in (actual_start, actual_finish, periods, update["mode_id"], update["named_assignments"], remaining, update["execution_context"])):
+                raise ValueError("NOT_STARTED cannot carry accepted execution history")
+        else:
+            if not isinstance(update["mode_id"], str) or not update["mode_id"] or not isinstance(update["execution_context"], dict):
+                raise ValueError("begun work needs its accepted mode and execution context")
+            if actual_start is None:
+                raise ValueError("begun work needs an actual_start")
+            if state == "IN_PROGRESS":
+                _integer(remaining, "remaining_processing_ticks")
+                if actual_finish is not None:
+                    raise ValueError("IN_PROGRESS cannot carry an actual_finish")
+            else:
+                if remaining != 0 or actual_finish is None:
+                    raise ValueError("COMPLETED needs explicit actual_finish and zero remaining work")
+    # Accepted supersession is resolved by identity, never by occurrence time.
+    accepted = [update for update in updates if update["status"] == "ACCEPTED"]
+    accepted_ids = {update["id"] for update in accepted}
+    for update in accepted:
+        if update["supersedes_update_id"] is not None and update["supersedes_update_id"] not in accepted_ids:
+            raise ValueError("an accepted correction must supersede an accepted assertion")
+    for update in updates:
+        visited = set()
+        cursor = update["id"]
+        while cursor is not None:
+            if cursor in visited:
+                raise ValueError("status supersession cycle")
+            visited.add(cursor)
+            cursor = by_id[cursor]["supersedes_update_id"]
+    parents = [update["supersedes_update_id"] for update in accepted if update["supersedes_update_id"] is not None]
+    if len(parents) != len(set(parents)):
+        raise ValueError("competing accepted corrections fork the same assertion")
+    current_status_records(workspace, require_complete=False)
 
 
 def trusted_input(workspace: Workspace) -> dict:
@@ -164,8 +295,13 @@ def trusted_input(workspace: Workspace) -> dict:
         "policy": POLICY,
     }
     # Version zero's source snapshots/hashes remain byte-for-byte meaningful.
-    if workspace["schema"] == GROUP_SCHEMA:
-        result["workspace_schema"] = GROUP_SCHEMA
+    if workspace["schema"] in {GROUP_SCHEMA, STATUS_SCHEMA}:
+        result["workspace_schema"] = workspace["schema"]
+    if workspace["schema"] == STATUS_SCHEMA:
+        result["execution"] = {
+            "status_point": workspace["execution"]["status_point"],
+            "accepted_updates": [deepcopy(update) for update in workspace["execution"]["updates"] if update["status"] == "ACCEPTED"],
+        }
     return result
 
 
@@ -189,7 +325,7 @@ def save(workspace: Workspace, path: str | Path) -> None:
 
 
 def report_unavailable(workspace: Workspace, resource_id: str, start: int, finish: int, actor: str, reason: str) -> str:
-    report_id = f"E{len(workspace['reports']) + 1:03d}"
+    report_id = _next_record_id(workspace["reports"], "E")
     candidate = deepcopy(workspace)
     candidate["reports"].append({
         "id": report_id, "resource_id": resource_id, "start": start, "finish": finish,
@@ -210,6 +346,336 @@ def accept_report(workspace: Workspace, report_id: str, actor: str) -> None:
     report.update(status="ACCEPTED", accepted_by=actor, accepted_at=now())
     workspace["proposal"] = None
     # Keep the old approved plan, now visibly stale, even if no recovery exists.
+
+
+def _next_record_id(records: list[dict], prefix: str) -> str:
+    used = {record.get("id") for record in records}
+    number = 1
+    while f"{prefix}{number:03d}" in used:
+        number += 1
+    return f"{prefix}{number:03d}"
+
+
+def enable_status_tracking(workspace: Workspace, status_point: int) -> None:
+    """Explicitly opt a legacy workspace into accepted-progress semantics.
+
+    Existing approved plans retain their original snapshots and hashes.  This
+    operation changes current trusted input, so any calculated proposal is
+    discarded while the last approval remains available as stale history.
+    """
+    if workspace.get("schema") == STATUS_SCHEMA:
+        raise ValueError("status tracking is already enabled")
+    if workspace.get("schema") not in {SCHEMA, GROUP_SCHEMA}:
+        raise ValueError("only a valid version-zero or version-one workspace can be statused")
+    _integer(status_point, "status_point")
+    candidate = deepcopy(workspace)
+    if candidate["schema"] == SCHEMA:
+        candidate["project"]["resource_groups"] = []
+        for activity in candidate["project"]["activities"]:
+            for mode in activity["modes"]:
+                mode["group_requirements"] = []
+    candidate["schema"] = STATUS_SCHEMA
+    candidate["execution"] = {"status_point": status_point, "updates": []}
+    candidate["proposal"] = None
+    validate(candidate)
+    workspace.clear()
+    workspace.update(candidate)
+
+
+def current_status_records(workspace: Workspace, *, require_complete: bool = False) -> dict[str, dict]:
+    """Return accepted, non-superseded assertions by activity identity."""
+    if workspace.get("schema") != STATUS_SCHEMA:
+        raise ValueError("accepted execution state requires a version-two workspace")
+    accepted = [update for update in workspace["execution"]["updates"] if update["status"] == "ACCEPTED"]
+    superseded = {update["supersedes_update_id"] for update in accepted if update["supersedes_update_id"] is not None}
+    current: dict[str, dict] = {}
+    for update in accepted:
+        if update["id"] in superseded:
+            continue
+        activity_id = update["activity_id"]
+        if activity_id in current:
+            raise ValueError(f"activity {activity_id} has competing accepted status assertions")
+        current[activity_id] = update
+    if require_complete:
+        expected = {activity["id"] for activity in workspace["project"]["activities"]}
+        missing = sorted(expected - set(current))
+        if missing:
+            raise ValueError(f"authoritative statused recovery requires an explicit status for every activity; UNKNOWN: {', '.join(missing)}")
+    return current
+
+
+def _context_for_update(workspace: Workspace, activity: dict, mode: dict, named_assignments: list[list[str]]) -> dict:
+    project = workspace["project"]
+    calendars = {calendar["id"]: calendar for calendar in project["calendars"]}
+    resources = {resource["id"]: resource for resource in project["resources"]}
+    groups = {group["id"]: group for group in project.get("resource_groups", [])}
+    resource_ids = {resource_id for _, resource_id in named_assignments}
+    calendar_ids = {mode["calendar_id"]}
+    for resource_id in resource_ids:
+        calendar_ids.add(resources[resource_id]["calendar_id"])
+    for demand in mode.get("group_requirements", []):
+        calendar_ids.add(groups[demand["group_id"]]["calendar_id"])
+    return {
+        "activity_id": activity["id"],
+        "mode": deepcopy(mode),
+        "calendars": [deepcopy(calendars[key]) for key in sorted(calendar_ids)],
+        "named_resources": [deepcopy(resources[key]) for key in sorted(resource_ids)],
+        "resource_groups": [deepcopy(groups[demand["group_id"]]) for demand in mode.get("group_requirements", [])],
+        "accepted_outages": [deepcopy(report) for report in workspace["reports"]
+                             if report["status"] == "ACCEPTED" and report["resource_id"] in resource_ids],
+    }
+
+
+def report_status_update(
+    workspace: Workspace,
+    activity_id: str,
+    execution_state: str,
+    actor: str,
+    reason: str,
+    *,
+    actual_start: int | None = None,
+    actual_finish: int | None = None,
+    actual_periods: list[list[int]] | None = None,
+    mode_id: str | None = None,
+    named_assignments: list[list[str]] | None = None,
+    remaining_processing_ticks: int | None = None,
+    occurred_at: int | None = None,
+    supersedes_update_id: str | None = None,
+) -> str:
+    """Record a reviewable assertion without changing trusted project state."""
+    if workspace.get("schema") != STATUS_SCHEMA:
+        raise ValueError("enable status tracking before recording execution")
+    if execution_state not in EXECUTION_STATES:
+        raise ValueError("execution_state must be NOT_STARTED, IN_PROGRESS or COMPLETED")
+    if not actor.strip() or not reason.strip():
+        raise ValueError("status update needs an asserting actor and reason")
+    activity = next((item for item in workspace["project"]["activities"] if item["id"] == activity_id), None)
+    if activity is None:
+        raise ValueError("unknown activity")
+    periods = deepcopy(actual_periods or [])
+    assignments = deepcopy(named_assignments or [])
+    mode = None
+    context = None
+    if execution_state != "NOT_STARTED":
+        prior = next((item for item in workspace["execution"]["updates"] if item["id"] == supersedes_update_id), None)
+        same_choices = (prior and prior["status"] == "ACCEPTED" and prior["activity_id"] == activity_id
+                        and prior["mode_id"] == mode_id
+                        and sorted(_pairs(prior["named_assignments"], "named_assignments")) == sorted(_pairs(assignments, "named_assignments"))
+                        and prior["execution_context"])
+        mode = next((item for item in activity["modes"] if item["id"] == mode_id), None)
+        if mode is None and same_choices and execution_state == "COMPLETED":
+            mode = prior["execution_context"]["mode"]
+        if mode is None:
+            raise ValueError("begun work needs an authorised current mode")
+        if same_choices:
+            # Revising an estimate must not recapture today's forecast calendar
+            # as the historical calendar of work that already happened.
+            context = deepcopy(prior["execution_context"])
+        else:
+            context = _context_for_update(workspace, activity, mode, assignments)
+    update_id = _next_record_id(workspace["execution"]["updates"], "U")
+    record = {
+        "id": update_id,
+        "activity_id": activity_id,
+        "status": "REPORTED",
+        "execution_state": execution_state,
+        "actual_start": actual_start,
+        "actual_finish": actual_finish,
+        "actual_periods": periods,
+        "mode_id": mode_id if execution_state != "NOT_STARTED" else None,
+        "named_assignments": assignments,
+        "remaining_processing_ticks": remaining_processing_ticks if execution_state != "NOT_STARTED" else None,
+        "occurred_at": workspace["execution"]["status_point"] if occurred_at is None else occurred_at,
+        "asserted_by": actor,
+        "asserted_at": now(),
+        "accepted_by": None,
+        "accepted_at": None,
+        "supersedes_update_id": supersedes_update_id,
+        "reason": reason,
+        "execution_context": context,
+    }
+    candidate = deepcopy(workspace)
+    candidate["execution"]["updates"].append(record)
+    validate(candidate)
+    workspace["execution"]["updates"] = candidate["execution"]["updates"]
+    return update_id
+
+
+def _daily_slots(calendar: dict, horizon: int) -> set[int]:
+    return {
+        day * 48 + tick
+        for day in range((horizon + 47) // 48)
+        for start, finish in calendar["daily_windows"]
+        for tick in range(start, finish)
+        if day * 48 + tick < horizon
+    }
+
+
+def validate_accepted_history(workspace: Workspace, *, require_complete: bool = False) -> dict[str, dict]:
+    """Validate accepted facts against their captured historical context."""
+    current = current_status_records(workspace, require_complete=require_complete)
+    horizon = workspace["project"]["horizon_ticks"]
+    named_occupancy: dict[tuple[str, int], str] = {}
+    group_occupancy: dict[tuple[str, int], int] = {}
+    group_capacity: dict[tuple[str, int], int] = {}
+    group_tasks: dict[str, list[tuple[str, int, frozenset[int], int]]] = {}
+    for activity_id, update in current.items():
+        if update["execution_state"] == "NOT_STARTED":
+            continue
+        context = update["execution_context"]
+        required_context = {"activity_id", "mode", "calendars", "named_resources", "resource_groups"}
+        if (not isinstance(context, dict) or not required_context <= set(context)
+                or set(context) - required_context - {"accepted_outages"} or context["activity_id"] != activity_id):
+            raise ValueError(f"{activity_id}: invalid accepted execution context")
+        mode = context["mode"]
+        if not isinstance(mode, dict) or mode.get("id") != update["mode_id"]:
+            raise ValueError(f"{activity_id}: accepted mode context disagrees")
+        calendars = {calendar["id"]: calendar for calendar in context["calendars"]}
+        resources = {resource["id"]: resource for resource in context["named_resources"]}
+        groups = {group["id"]: group for group in context["resource_groups"]}
+        if mode.get("calendar_id") not in calendars:
+            raise ValueError(f"{activity_id}: historical activity calendar is missing")
+        activity_slots = _daily_slots(calendars[mode["calendar_id"]], horizon)
+        joint_slots = set(activity_slots)
+        occupied = [tick for start, finish in update["actual_periods"] for tick in range(start, finish)]
+        if update["execution_state"] == "COMPLETED" and mode["processing_ticks"] > 0 and not occupied:
+            continuity = mode.get("continuity", "SUSPENDABLE_AT_AVAILABILITY_GAPS")
+            raise ValueError(f"{activity_id}: completed {continuity} productive work needs at least one actual period")
+        if any(tick not in activity_slots for tick in occupied):
+            raise ValueError(f"{activity_id}: accepted productive history lies outside its historical activity calendar")
+        requirements = {requirement["id"]: requirement for requirement in mode.get("requirements", [])}
+        assignments = dict(_pairs(update["named_assignments"], "named_assignments"))
+        if set(assignments) != set(requirements):
+            raise ValueError(f"{activity_id}: accepted named assignments must cover the begun mode exactly")
+        if len(set(assignments.values())) != len(assignments):
+            raise ValueError(f"{activity_id}: simultaneous slots require distinct accepted named resources")
+        for requirement_id, resource_id in assignments.items():
+            if resource_id.startswith("@group/"):
+                raise ValueError("anonymous compiler units cannot be accepted as historical worker identities")
+            requirement = requirements[requirement_id]
+            if resource_id not in requirement["eligible_resource_ids"] or resource_id not in resources:
+                raise ValueError(f"{activity_id}/{requirement_id}: accepted named assignment is ineligible")
+            resource = resources[resource_id]
+            if not set(requirement["pool_ids"]) <= set(resource["capabilities"]):
+                raise ValueError(f"{activity_id}/{requirement_id}: accepted named resource lacks historical qualifications")
+            if resource["calendar_id"] not in calendars:
+                raise ValueError(f"{activity_id}/{requirement_id}: historical resource calendar is missing")
+            resource_slots = _daily_slots(calendars[resource["calendar_id"]], horizon)
+            joint_slots.intersection_update(resource_slots)
+            if any(tick not in resource_slots for tick in occupied):
+                raise ValueError(f"{activity_id}/{requirement_id}: accepted history lies outside historical resource availability")
+            for tick in occupied:
+                key = (resource_id, tick)
+                if key in named_occupancy:
+                    raise ValueError(f"accepted named resource {resource_id} is double-booked at tick {tick}")
+                named_occupancy[key] = activity_id
+        for demand in mode.get("group_requirements", []):
+            group_id, quantity = demand["group_id"], demand["demand"]
+            if group_id not in groups or groups[group_id]["calendar_id"] not in calendars:
+                raise ValueError(f"{activity_id}: historical group context is missing")
+            group = groups[group_id]
+            slots = _daily_slots(calendars[group["calendar_id"]], horizon)
+            joint_slots.intersection_update(slots)
+            if any(tick not in slots for tick in occupied):
+                raise ValueError(f"{activity_id}: accepted group work lies outside its historical calendar")
+            for tick in occupied:
+                key = (group_id, tick)
+                group_occupancy[key] = group_occupancy.get(key, 0) + quantity
+                group_capacity[key] = min(group_capacity.get(key, group["capacity"]), group["capacity"])
+                if group_occupancy[key] > group_capacity[key]:
+                    raise ValueError(f"accepted group {group_id} capacity is exceeded at tick {tick}")
+            if occupied:
+                group_tasks.setdefault(group_id, []).append((activity_id, quantity, frozenset(occupied), group["capacity"]))
+        # Old v2 snapshots have no captured outages; never retrofit today's
+        # availability into them or rewrite their hashes.
+        outages = context.get("accepted_outages", [])
+        if not isinstance(outages, list):
+            raise ValueError(f"{activity_id}: historical accepted outages must be an array")
+        for outage in outages:
+            if (not isinstance(outage, dict) or outage.get("status") != "ACCEPTED"
+                    or outage.get("resource_id") not in assignments.values() or not outage.get("accepted_by")):
+                raise ValueError(f"{activity_id}: invalid historical accepted outage")
+            _integer(outage["start"], "historical outage start")
+            _integer(outage["finish"], "historical outage finish", 1)
+            if outage["start"] >= outage["finish"]:
+                raise ValueError(f"{activity_id}: invalid historical outage interval")
+            joint_slots.difference_update(range(outage["start"], outage["finish"]))
+        if any(tick not in joint_slots for tick in occupied):
+            raise ValueError(f"{activity_id}: accepted work contradicts captured historical availability")
+        if mode.get("continuity") == "CONTINUOUS":
+            end = update["actual_finish"] if update["execution_state"] == "COMPLETED" else workspace["execution"]["status_point"]
+            if occupied != list(range(update["actual_start"], end)):
+                raise ValueError(f"{activity_id}: continuous actual periods must fill the actual envelope through completion or the status point")
+        elif occupied or (update["execution_state"] == "IN_PROGRESS" and update["remaining_processing_ticks"] > 0):
+            # Positive remaining work cannot hide an arbitrary suspension before
+            # the status boundary. Zero remaining is still not completion, but
+            # does not assert that productive work continued until that point.
+            end = (workspace["execution"]["status_point"]
+                   if update["execution_state"] == "IN_PROGRESS" and update["remaining_processing_ticks"] > 0
+                   else occupied[-1] + 1)
+            expected = sorted(tick for tick in joint_slots if update["actual_start"] <= tick < end)
+            if occupied != expected:
+                raise ValueError(f"{activity_id}: historical suspension gap contains executable productive time")
+    validate_group_allocation(group_tasks, "accepted history")
+    if require_complete:
+        for activity in workspace["project"]["activities"]:
+            record = current[activity["id"]]
+            if record["execution_state"] in {"IN_PROGRESS", "COMPLETED"}:
+                for predecessor in activity.get("predecessors", []):
+                    if current[predecessor]["execution_state"] != "COMPLETED":
+                        raise ValueError(f"{activity['id']}: begun work requires predecessor {predecessor} to be explicitly COMPLETED")
+                    if current[predecessor]["actual_finish"] > record["actual_start"]:
+                        raise ValueError(f"{activity['id']}: out-of-sequence actual start before predecessor {predecessor} finish is unsupported")
+    return current
+
+
+def validate_group_allocation(tasks: dict[str, list[tuple[str, int, frozenset[int], int]]], label: str) -> None:
+    """Prove fixed anonymous sets exist; never persist their identities."""
+    for group_id, group_tasks in tasks.items():
+        used: dict[int, set[int]] = {}
+        ordered = sorted(group_tasks, key=lambda task: (-len(task[2]), -task[1], task[0]))
+        if any(comb(capacity, demand) > 64 for _, demand, _, capacity in ordered):
+            raise ValueError("bounded historical group proof supports at most 64 allocation sets")
+
+        def assign(index: int) -> bool:
+            if index == len(ordered):
+                return True
+            _, demand, occupied, capacity = ordered[index]
+            for units in combinations(range(capacity), demand):
+                if any(occupied & used.get(unit, set()) for unit in units):
+                    continue
+                for unit in units:
+                    used.setdefault(unit, set()).update(occupied)
+                if assign(index + 1):
+                    return True
+                for unit in units:
+                    used[unit].difference_update(occupied)
+            return False
+
+        if not assign(0):
+            raise ValueError(f"{label}: group {group_id} has no consistent anonymous no-handover allocation")
+
+
+def accept_status_update(workspace: Workspace, update_id: str, actor: str) -> None:
+    """Accept a reported assertion atomically and stale, but never approve, plans."""
+    if not actor.strip():
+        raise ValueError("status acceptance needs an actor")
+    candidate = deepcopy(workspace)
+    update = next((item for item in candidate.get("execution", {}).get("updates", []) if item["id"] == update_id), None)
+    if update is None or update["status"] != "REPORTED":
+        raise ValueError("status update must exist and be awaiting acceptance")
+    if update["supersedes_update_id"] is not None:
+        current = current_status_records(candidate)
+        prior = current.get(update["activity_id"])
+        if prior is None or prior["id"] != update["supersedes_update_id"]:
+            raise ValueError("a correction must supersede the current accepted assertion")
+    elif update["activity_id"] in current_status_records(candidate):
+        raise ValueError("a new accepted assertion must explicitly supersede the current one")
+    update.update(status="ACCEPTED", accepted_by=actor, accepted_at=now())
+    candidate["proposal"] = None
+    validate(candidate)
+    workspace.clear()
+    workspace.update(candidate)
 
 
 def set_processing(workspace: Workspace, activity_id: str, mode_id: str, ticks: int) -> None:

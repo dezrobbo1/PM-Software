@@ -128,3 +128,11 @@ test("group result shows quantity, never compiler unit names; milestone guidance
   run("draft = {calendars:[{id:'DAY'}],resources:[]}");
   assert.match(run("modeCard({modes:[{}]}, {id:'FIXED',processing_ticks:0,calendar_id:'DAY'},0)"),/Zero-work milestone/);
 });
+
+test("status remaining estimate must be explicit, including an explicit zero", () => {
+  const {run} = editor();
+  assert.throws(() => run("parseRemainingHours('')"), /explicit remaining/);
+  assert.throws(() => run("parseRemainingHours('1.2')"), /explicit remaining/);
+  assert.equal(run("parseRemainingHours('0')"), 0);
+  assert.equal(run("parseRemainingHours('8')"), 16);
+});
