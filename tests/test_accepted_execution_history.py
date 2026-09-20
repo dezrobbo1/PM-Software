@@ -227,7 +227,7 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
         record["actual_periods"] = [[20, 22], [24, 26]]
         record["execution_context"]["named_resources"].append(deepcopy(workspace["project"]["resources"][1]))
         record["execution_context"]["accepted_outages"] = [deepcopy(next(r for r in workspace["reports"] if r["id"] == outage))]
-        with self.assertRaisesRegex(ValueError, "historical.*(outage|resources)"):
+        with self.assertRaisesRegex(ValueError, "historical.*(outage|resource)"):
             validate(invalid)
         session = BrowserSession(); before = deepcopy(session.workspace)
         with self.assertRaises(ValueError): dispatch_action("/api/open", {"workspace": invalid}, session)
