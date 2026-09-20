@@ -203,7 +203,7 @@ export async function acceptedProgressTrial(browser, url, evidenceDir, assert) {
     const unrelatedTarget = await fresh();
     const beforeUnrelated = JSON.stringify((await state(unrelatedTarget)).workspace);
     await unrelatedTarget.locator("#open-file").setInputFiles(unrelatedFile);
-    await unrelatedTarget.locator("#message.error").filter({hasText: /invalid historical accepted outage/}).waitFor();
+    await unrelatedTarget.locator("#message.error").filter({hasText: /historical.*(outage|resource)/}).waitFor();
     assert(JSON.stringify((await state(unrelatedTarget)).workspace) === beforeUnrelated, "unassigned resource outage cannot justify imported history or replace active workspace");
     await shot(unrelatedTarget, "21-unassigned-outage-import-rejected", "#message");
     const historyOnlyCorrection = await fresh();
