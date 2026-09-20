@@ -149,6 +149,93 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
         _accept(workspace, "H", "NOT_STARTED")
         return workspace
 
+    def test_suspendable_in_progress_checks_eligible_time_through_status(self):
+        for periods in ([[20, 22]], []):
+            with self.subTest(periods=periods):
+                workspace = self.history_case()
+                update = report_status_update(workspace, "X", "IN_PROGRESS", "planner", "trailing gap",
+                    actual_start=20, actual_periods=periods, mode_id="USED", remaining_processing_ticks=2)
+                before = deepcopy(workspace)
+                with self.assertRaisesRegex(ValueError, "suspension gap"):
+                    accept_status_update(workspace, update, "planner")
+                self.assertEqual(workspace, before)
+                invalid = deepcopy(workspace)
+                invalid["execution"]["updates"][-1].update(status="ACCEPTED", accepted_by="planner", accepted_at="test")
+                with self.assertRaisesRegex(ValueError, "suspension gap"):
+                    validate(invalid)
+        for periods, start, remaining, windows in (
+            ([[20, 22]], 20, 2, [[20, 22], [26, 30]]),
+            ([], 20, 2, [[26, 30]]),
+            ([], 26, 2, [[0, 48]]),
+            ([[20, 22]], 20, 0, [[0, 48]]),
+        ):
+            with self.subTest(periods=periods, remaining=remaining, windows=windows):
+                workspace = self.history_case()
+                workspace["project"]["calendars"][0]["daily_windows"] = windows
+                _accept(workspace, "X", "IN_PROGRESS", actual_start=start, actual_periods=periods,
+                    mode_id="USED", remaining_processing_ticks=remaining)
+                plan = propose(workspace)
+                validate_plan(workspace, plan)
+                self.assertEqual(current_status_records(workspace)["X"]["execution_state"], "IN_PROGRESS")
+
+    def named_history_case(self):
+        workspace = self.history_case()
+        workspace["project"]["resources"] = [{"id": rid, "capabilities": ["Q"], "calendar_id": "ALL", "capacity": 1}
+            for rid in ("R1", "R2")]
+        workspace["project"]["activities"][0]["modes"][0]["requirements"] = [
+            {"id": slot, "pool_ids": ["Q"], "eligible_resource_ids": [rid]}
+            for slot, rid in (("ONE", "R1"), ("TWO", "R2"))]
+        return workspace
+
+    def test_assignment_row_order_preserves_historical_context_on_correction(self):
+        workspace = self.named_history_case()
+        pairs = [["ONE", "R1"], ["TWO", "R2"]]
+        prior_id = _accept(workspace, "X", "COMPLETED", actual_start=20, actual_finish=26,
+            actual_periods=[[20, 26]], mode_id="USED", named_assignments=pairs, remaining_processing_ticks=0)
+        prior = deepcopy(current_status_records(workspace)["X"])
+        propose(workspace); approve(workspace, "planner")
+        outage = report_unavailable(workspace, "R2", 22, 24, "planner", "later availability")
+        accept_report(workspace, outage, "planner")
+        for ordered in (pairs, pairs[::-1]):
+            with self.subTest(assignments=ordered):
+                candidate = deepcopy(workspace)
+                update = report_status_update(candidate, "X", "COMPLETED", "planner", "invalid gap correction",
+                    actual_start=20, actual_finish=26, actual_periods=[[20, 22], [24, 26]], mode_id="USED",
+                    named_assignments=ordered, remaining_processing_ticks=0, supersedes_update_id=prior_id)
+                before = deepcopy(candidate)
+                with self.assertRaisesRegex(ValueError, "suspension gap"):
+                    accept_status_update(candidate, update, "planner")
+                self.assertEqual(candidate, before)
+        _accept(workspace, "X", "COMPLETED", actual_start=20, actual_finish=26, actual_periods=[[20, 26]],
+            mode_id="USED", named_assignments=pairs[::-1], remaining_processing_ticks=0, supersedes_update_id=prior_id)
+        self.assertEqual(current_status_records(workspace)["X"]["execution_context"], prior["execution_context"])
+        self.assertIn(prior, workspace["execution"]["updates"])
+        validate_plan(workspace, propose(workspace)); approve(workspace, "planner")
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "reordered.json"; save(workspace, path)
+            self.assertEqual(load(path), workspace)
+
+    def test_import_rejects_outage_for_unassigned_historical_resource(self):
+        workspace = self.named_history_case()
+        workspace["project"]["activities"][0]["modes"][0]["requirements"].pop()
+        _accept(workspace, "X", "COMPLETED", actual_start=20, actual_finish=26, actual_periods=[[20, 26]],
+            mode_id="USED", named_assignments=[["ONE", "R1"]], remaining_processing_ticks=0)
+        outage = report_unavailable(workspace, "R2", 22, 24, "planner", "unrelated availability")
+        accept_report(workspace, outage, "planner")
+        invalid = deepcopy(workspace)
+        record = current_status_records(invalid)["X"]
+        record["actual_periods"] = [[20, 22], [24, 26]]
+        record["execution_context"]["named_resources"].append(deepcopy(workspace["project"]["resources"][1]))
+        record["execution_context"]["accepted_outages"] = [deepcopy(next(r for r in workspace["reports"] if r["id"] == outage))]
+        with self.assertRaisesRegex(ValueError, "historical.*(outage|resources)"):
+            validate(invalid)
+        session = BrowserSession(); before = deepcopy(session.workspace)
+        with self.assertRaises(ValueError): dispatch_action("/api/open", {"workspace": invalid}, session)
+        self.assertEqual(session.workspace, before)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "invalid.json"; path.write_text(json.dumps(invalid))
+            with self.assertRaises(ValueError): load(path)
+
     def test_continuous_in_progress_must_reach_status_boundary(self):
         for periods in ([[20, 22]], []):
             with self.subTest(periods=periods):

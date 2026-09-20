@@ -459,7 +459,8 @@ def report_status_update(
     if execution_state != "NOT_STARTED":
         prior = next((item for item in workspace["execution"]["updates"] if item["id"] == supersedes_update_id), None)
         same_choices = (prior and prior["status"] == "ACCEPTED" and prior["activity_id"] == activity_id
-                        and prior["mode_id"] == mode_id and prior["named_assignments"] == assignments
+                        and prior["mode_id"] == mode_id
+                        and sorted(_pairs(prior["named_assignments"], "named_assignments")) == sorted(_pairs(assignments, "named_assignments"))
                         and prior["execution_context"])
         mode = next((item for item in activity["modes"] if item["id"] == mode_id), None)
         if mode is None and same_choices and execution_state == "COMPLETED":
@@ -592,7 +593,7 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
             raise ValueError(f"{activity_id}: historical accepted outages must be an array")
         for outage in outages:
             if (not isinstance(outage, dict) or outage.get("status") != "ACCEPTED"
-                    or outage.get("resource_id") not in resources or not outage.get("accepted_by")):
+                    or outage.get("resource_id") not in assignments.values() or not outage.get("accepted_by")):
                 raise ValueError(f"{activity_id}: invalid historical accepted outage")
             _integer(outage["start"], "historical outage start")
             _integer(outage["finish"], "historical outage finish", 1)
@@ -605,8 +606,14 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
             end = update["actual_finish"] if update["execution_state"] == "COMPLETED" else workspace["execution"]["status_point"]
             if occupied != list(range(update["actual_start"], end)):
                 raise ValueError(f"{activity_id}: continuous actual periods must fill the actual envelope through completion or the status point")
-        elif occupied:
-            expected = sorted(tick for tick in joint_slots if update["actual_start"] <= tick <= occupied[-1])
+        elif occupied or (update["execution_state"] == "IN_PROGRESS" and update["remaining_processing_ticks"] > 0):
+            # Positive remaining work cannot hide an arbitrary suspension before
+            # the status boundary. Zero remaining is still not completion, but
+            # does not assert that productive work continued until that point.
+            end = (workspace["execution"]["status_point"]
+                   if update["execution_state"] == "IN_PROGRESS" and update["remaining_processing_ticks"] > 0
+                   else occupied[-1] + 1)
+            expected = sorted(tick for tick in joint_slots if update["actual_start"] <= tick < end)
             if occupied != expected:
                 raise ValueError(f"{activity_id}: historical suspension gap contains executable productive time")
     validate_group_allocation(group_tasks, "accepted history")

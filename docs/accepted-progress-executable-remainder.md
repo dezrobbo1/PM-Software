@@ -65,7 +65,17 @@ New assertions also capture the accepted named-resource outages applicable to
 their historical assignments. This optional version-2 context field is never
 backfilled into older assertions or plan snapshots. A context without it makes
 no historical outage claim; current outages cannot retrospectively justify a
-gap. Corrections retaining execution choices retain that historical context.
+gap. Corrections retaining execution choices retain that historical context;
+named assignment row order does not change the slot-to-resource mapping.
+Captured outages must belong to the accepted named assignments. An extra
+unassigned resource in imported context cannot justify a historical gap.
+
+Suspendable in-progress work with a positive remaining estimate must account for
+every historically eligible productive tick from its actual start through the
+status point. Empty history is valid only when that interval has no executable
+opportunity. Completed work and explicitly zero remaining work are checked
+through their recorded productive periods; zero remaining does not confirm
+completion or assert continued processing up to the status point.
 Future work still uses current calendars, accepted named-resource outages,
 capacities, precedence, continuity and the retained objective hierarchy.
 
