@@ -1,5 +1,6 @@
 """Accepted history -> executable remainder semantic contract."""
 from copy import deepcopy
+from hashlib import sha256
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -235,6 +236,83 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "invalid.json"; path.write_text(json.dumps(invalid))
             with self.assertRaises(ValueError): load(path)
+
+    def test_merged_v2_snapshot_reopens_without_normalizing_or_rehashing(self):
+        fixture = Path(__file__).parent / "fixtures/accepted-history/merged-v2-metadata-duplicates.json"
+        original = fixture.read_bytes()
+        self.assertEqual(sha256(original).hexdigest(), "3cd832702e114ad01d5a64ecd793623490d5f0ff8721c3e1b77ff9c37a519d4f")
+        workspace = load(fixture)
+        self.assertEqual(workspace, json.loads(original))
+        self.assertEqual(state_hash(workspace), "96cdd690d9f09e83a909f4c6f9fe2b6196d34970e6b081db147636b923bee8cb")
+        self.assertEqual(workspace["approved_plan"]["plan_hash"], "e41133340a29f8fa3273dded833e53ea904eabf905bc45a218340fd219e1f828")
+        before = deepcopy(workspace)
+        validate_stored_plans(workspace)
+        session = BrowserSession(); dispatch_action("/api/open", {"workspace": workspace}, session)
+        self.assertEqual(session.workspace, before)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "reopened.json"; save(workspace, path)
+            self.assertEqual(path.read_bytes(), original)
+            self.assertEqual(load(path), before)
+        self.assertEqual(workspace, before)
+        validate_plan(workspace, propose(workspace))
+        self.assertEqual(workspace["execution"], before["execution"])
+
+    def test_accepted_project_metadata_and_duplicate_qualifications_allow_progress(self):
+        for kind in ("calendar", "capabilities", "qualifications"):
+            with self.subTest(kind=kind):
+                workspace = self.named_history_case()
+                project = deepcopy(workspace["project"])
+                if kind == "calendar": project["calendars"][0]["name"] = "Legacy display metadata"
+                if kind == "capabilities": project["resources"][0]["capabilities"] = ["Q", "Q"]
+                if kind == "qualifications": project["activities"][0]["modes"][0]["requirements"][0]["pool_ids"] = ["Q", "Q"]
+                replace_project(workspace, project)
+                _accept(workspace, "X", "COMPLETED", actual_start=20, actual_finish=26, actual_periods=[[20, 26]],
+                    mode_id="USED", named_assignments=[["ONE", "R1"], ["TWO", "R2"]], remaining_processing_ticks=0)
+                self.assertEqual(workspace["project"], project)
+                context = current_status_records(workspace)["X"]["execution_context"]
+                self.assertEqual(context["calendars"], project["calendars"])
+                self.assertEqual(context["named_resources"], project["resources"])
+                self.assertEqual(context["mode"], project["activities"][0]["modes"][0])
+                validate_plan(workspace, propose(workspace))
+
+    def test_superseded_accepted_context_structure_is_validated(self):
+        workspace = self.named_history_case()
+        values = dict(actual_start=20, actual_finish=26, actual_periods=[[20, 26]], mode_id="USED",
+            named_assignments=[["ONE", "R1"], ["TWO", "R2"]], remaining_processing_ticks=0)
+        old_id = _accept(workspace, "X", "COMPLETED", **values)
+        _accept(workspace, "X", "COMPLETED", supersedes_update_id=old_id, **values)
+        for kind in ("processing", "calendar", "resource", "outage"):
+            with self.subTest(kind=kind):
+                invalid = deepcopy(workspace)
+                context = next(u for u in invalid["execution"]["updates"] if u["id"] == old_id)["execution_context"]
+                if kind == "processing": context["mode"]["processing_ticks"] = -1
+                if kind == "calendar": context["calendars"][0]["daily_windows"] = [[22, 20]]
+                if kind == "resource": context["named_resources"][0]["capacity"] = 2
+                if kind == "outage": context["accepted_outages"] = [{"status": "ACCEPTED", "resource_id": "R1", "accepted_by": "planner", "start": 22, "finish": 20}]
+                with self.assertRaises(ValueError): validate(invalid)
+                with TemporaryDirectory() as directory:
+                    path = Path(directory) / "invalid.json"; path.write_text(json.dumps(invalid))
+                    with self.assertRaises(ValueError): load(path)
+
+    def test_corrected_factual_history_is_retained_but_not_current_feasibility(self):
+        workspace, _ = named_statused()
+        old = deepcopy(current_status_records(workspace)["A01"])
+        _accept(workspace, "A01", "COMPLETED", actual_start=14, actual_finish=16, actual_periods=[[14, 16]],
+            mode_id="FIXED", remaining_processing_ticks=0, supersedes_update_id=old["id"])
+        # Imported correction: the original assertion was factually wrong,
+        # outside its historical calendar, but its captured structure is valid.
+        prior = next(u for u in workspace["execution"]["updates"] if u["id"] == old["id"])
+        prior.update(actual_start=0, actual_finish=2, actual_periods=[[0, 2]])
+        before = deepcopy(workspace["execution"])
+        validate(workspace); validate_plan(workspace, propose(workspace))
+        self.assertEqual(workspace["execution"], before)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "corrected.json"; save(workspace, path)
+            self.assertEqual(load(path), workspace)
+        invalid = deepcopy(workspace)
+        invalid["execution"]["updates"].pop()  # The erroneous assertion is current again.
+        with self.assertRaisesRegex(ValueError, "historical activity calendar"):
+            validate(invalid)
 
     def test_import_rejects_malformed_captured_native_context(self):
         named = self.named_history_case()

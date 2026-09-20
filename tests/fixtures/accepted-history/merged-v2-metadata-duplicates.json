@@ -1,0 +1,1440 @@
+{
+  "schema": "pm-native-planning-workspace/2",
+  "project": {
+    "id": "native-recovery-demo",
+    "name": "Editable native repair plan",
+    "horizon_ticks": 144,
+    "objective_activity_id": "A08",
+    "pool_riggers": true,
+    "calendars": [
+      {
+        "id": "DAY",
+        "daily_windows": [
+          [
+            14,
+            24
+          ],
+          [
+            25,
+            34
+          ]
+        ],
+        "name": "Retained legacy calendar metadata"
+      },
+      {
+        "id": "NIGHT",
+        "daily_windows": [
+          [
+            36,
+            48
+          ]
+        ],
+        "name": "Retained legacy calendar metadata"
+      }
+    ],
+    "resources": [
+      {
+        "id": "M1",
+        "capabilities": [
+          "MECH",
+          "MECH"
+        ],
+        "calendar_id": "DAY"
+      },
+      {
+        "id": "M2",
+        "capabilities": [
+          "MECH",
+          "INSPECT",
+          "SPECIALIST",
+          "MECH"
+        ],
+        "calendar_id": "DAY"
+      },
+      {
+        "id": "N1",
+        "capabilities": [
+          "MECH",
+          "MECH"
+        ],
+        "calendar_id": "NIGHT"
+      },
+      {
+        "id": "R1",
+        "capabilities": [
+          "RIGGER",
+          "RIGGER"
+        ],
+        "calendar_id": "DAY"
+      },
+      {
+        "id": "R2",
+        "capabilities": [
+          "RIGGER",
+          "RIGGER"
+        ],
+        "calendar_id": "DAY"
+      }
+    ],
+    "activities": [
+      {
+        "id": "A01",
+        "name": "Prepare workfront",
+        "modes": [
+          {
+            "id": "FIXED",
+            "processing_ticks": 2,
+            "calendar_id": "DAY",
+            "requirements": [],
+            "group_requirements": []
+          }
+        ],
+        "predecessors": []
+      },
+      {
+        "id": "A02",
+        "name": "Initial inspection",
+        "modes": [
+          {
+            "id": "FIXED",
+            "processing_ticks": 4,
+            "calendar_id": "DAY",
+            "requirements": [
+              {
+                "id": "INSPECT",
+                "pool_ids": [
+                  "INSPECT",
+                  "INSPECT",
+                  "INSPECT"
+                ],
+                "eligible_resource_ids": [
+                  "M2"
+                ]
+              }
+            ],
+            "group_requirements": []
+          }
+        ],
+        "predecessors": [
+          "A01"
+        ]
+      },
+      {
+        "id": "A03",
+        "name": "Repair assembly",
+        "predecessors": [
+          "A02"
+        ],
+        "modes": [
+          {
+            "id": "NORMAL",
+            "processing_ticks": 12,
+            "calendar_id": "DAY",
+            "requirements": [
+              {
+                "id": "MECH",
+                "pool_ids": [
+                  "MECH",
+                  "MECH",
+                  "MECH",
+                  "MECH",
+                  "MECH"
+                ],
+                "eligible_resource_ids": [
+                  "M1",
+                  "M2",
+                  "N1"
+                ]
+              }
+            ],
+            "group_requirements": []
+          },
+          {
+            "id": "SPECIALIST",
+            "processing_ticks": 6,
+            "calendar_id": "DAY",
+            "requirements": [
+              {
+                "id": "MECH",
+                "pool_ids": [
+                  "MECH",
+                  "MECH",
+                  "MECH",
+                  "MECH",
+                  "MECH"
+                ],
+                "eligible_resource_ids": [
+                  "M1",
+                  "M2",
+                  "N1"
+                ]
+              },
+              {
+                "id": "SPECIALIST",
+                "pool_ids": [
+                  "SPECIALIST",
+                  "SPECIALIST"
+                ],
+                "eligible_resource_ids": [
+                  "M2"
+                ]
+              }
+            ],
+            "group_requirements": []
+          }
+        ]
+      },
+      {
+        "id": "A04",
+        "name": "Final inspection",
+        "modes": [
+          {
+            "id": "FIXED",
+            "processing_ticks": 2,
+            "calendar_id": "DAY",
+            "requirements": [
+              {
+                "id": "INSPECT",
+                "pool_ids": [
+                  "INSPECT",
+                  "INSPECT",
+                  "INSPECT"
+                ],
+                "eligible_resource_ids": [
+                  "M2"
+                ]
+              }
+            ],
+            "group_requirements": []
+          }
+        ],
+        "predecessors": [
+          "A03"
+        ]
+      },
+      {
+        "id": "A05",
+        "name": "Rigging branch one",
+        "modes": [
+          {
+            "id": "FIXED",
+            "processing_ticks": 6,
+            "calendar_id": "DAY",
+            "requirements": [
+              {
+                "id": "RIGGER",
+                "pool_ids": [
+                  "RIGGER",
+                  "RIGGER",
+                  "RIGGER"
+                ],
+                "eligible_resource_ids": [
+                  "R1",
+                  "R2"
+                ]
+              }
+            ],
+            "group_requirements": []
+          }
+        ],
+        "predecessors": [
+          "A01"
+        ]
+      },
+      {
+        "id": "A06",
+        "name": "Rigging branch two",
+        "modes": [
+          {
+            "id": "FIXED",
+            "processing_ticks": 6,
+            "calendar_id": "DAY",
+            "requirements": [
+              {
+                "id": "RIGGER",
+                "pool_ids": [
+                  "RIGGER",
+                  "RIGGER",
+                  "RIGGER"
+                ],
+                "eligible_resource_ids": [
+                  "R1",
+                  "R2"
+                ]
+              }
+            ],
+            "group_requirements": []
+          }
+        ],
+        "predecessors": [
+          "A01"
+        ]
+      },
+      {
+        "id": "A07",
+        "name": "Calibrate controls",
+        "modes": [
+          {
+            "id": "FIXED",
+            "processing_ticks": 3,
+            "calendar_id": "DAY",
+            "requirements": [
+              {
+                "id": "MECH",
+                "pool_ids": [
+                  "MECH",
+                  "MECH",
+                  "MECH",
+                  "MECH",
+                  "MECH"
+                ],
+                "eligible_resource_ids": [
+                  "M1",
+                  "M2",
+                  "N1"
+                ]
+              }
+            ],
+            "group_requirements": []
+          }
+        ],
+        "predecessors": [
+          "A01"
+        ]
+      },
+      {
+        "id": "A08",
+        "name": "Hand back equipment",
+        "modes": [
+          {
+            "id": "FIXED",
+            "processing_ticks": 1,
+            "calendar_id": "DAY",
+            "requirements": [
+              {
+                "id": "MECH",
+                "pool_ids": [
+                  "MECH",
+                  "MECH",
+                  "MECH",
+                  "MECH",
+                  "MECH"
+                ],
+                "eligible_resource_ids": [
+                  "M1",
+                  "M2",
+                  "N1"
+                ]
+              }
+            ],
+            "group_requirements": []
+          }
+        ],
+        "predecessors": [
+          "A04",
+          "A05",
+          "A06",
+          "A07"
+        ]
+      }
+    ],
+    "resource_groups": []
+  },
+  "reports": [],
+  "approved_plan": {
+    "source_state_hash": "bcf04a48a9f67e97d016369b6f415872d797d569f8cda2eb0f5b25b658f62fbe",
+    "source_snapshot": {
+      "project": {
+        "id": "native-recovery-demo",
+        "name": "Editable native repair plan",
+        "horizon_ticks": 144,
+        "objective_activity_id": "A08",
+        "pool_riggers": true,
+        "calendars": [
+          {
+            "id": "DAY",
+            "daily_windows": [
+              [
+                14,
+                24
+              ],
+              [
+                25,
+                34
+              ]
+            ]
+          },
+          {
+            "id": "NIGHT",
+            "daily_windows": [
+              [
+                36,
+                48
+              ]
+            ]
+          }
+        ],
+        "resources": [
+          {
+            "id": "M1",
+            "capabilities": [
+              "MECH"
+            ],
+            "calendar_id": "DAY"
+          },
+          {
+            "id": "M2",
+            "capabilities": [
+              "MECH",
+              "INSPECT",
+              "SPECIALIST"
+            ],
+            "calendar_id": "DAY"
+          },
+          {
+            "id": "N1",
+            "capabilities": [
+              "MECH"
+            ],
+            "calendar_id": "NIGHT"
+          },
+          {
+            "id": "R1",
+            "capabilities": [
+              "RIGGER"
+            ],
+            "calendar_id": "DAY"
+          },
+          {
+            "id": "R2",
+            "capabilities": [
+              "RIGGER"
+            ],
+            "calendar_id": "DAY"
+          }
+        ],
+        "activities": [
+          {
+            "id": "A01",
+            "name": "Prepare workfront",
+            "modes": [
+              {
+                "id": "FIXED",
+                "processing_ticks": 2,
+                "calendar_id": "DAY",
+                "requirements": []
+              }
+            ],
+            "predecessors": []
+          },
+          {
+            "id": "A02",
+            "name": "Initial inspection",
+            "modes": [
+              {
+                "id": "FIXED",
+                "processing_ticks": 4,
+                "calendar_id": "DAY",
+                "requirements": [
+                  {
+                    "id": "INSPECT",
+                    "pool_ids": [
+                      "INSPECT"
+                    ],
+                    "eligible_resource_ids": [
+                      "M2"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "predecessors": [
+              "A01"
+            ]
+          },
+          {
+            "id": "A03",
+            "name": "Repair assembly",
+            "predecessors": [
+              "A02"
+            ],
+            "modes": [
+              {
+                "id": "NORMAL",
+                "processing_ticks": 12,
+                "calendar_id": "DAY",
+                "requirements": [
+                  {
+                    "id": "MECH",
+                    "pool_ids": [
+                      "MECH"
+                    ],
+                    "eligible_resource_ids": [
+                      "M1",
+                      "M2",
+                      "N1"
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "SPECIALIST",
+                "processing_ticks": 6,
+                "calendar_id": "DAY",
+                "requirements": [
+                  {
+                    "id": "MECH",
+                    "pool_ids": [
+                      "MECH"
+                    ],
+                    "eligible_resource_ids": [
+                      "M1",
+                      "M2",
+                      "N1"
+                    ]
+                  },
+                  {
+                    "id": "SPECIALIST",
+                    "pool_ids": [
+                      "SPECIALIST"
+                    ],
+                    "eligible_resource_ids": [
+                      "M2"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "A04",
+            "name": "Final inspection",
+            "modes": [
+              {
+                "id": "FIXED",
+                "processing_ticks": 2,
+                "calendar_id": "DAY",
+                "requirements": [
+                  {
+                    "id": "INSPECT",
+                    "pool_ids": [
+                      "INSPECT"
+                    ],
+                    "eligible_resource_ids": [
+                      "M2"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "predecessors": [
+              "A03"
+            ]
+          },
+          {
+            "id": "A05",
+            "name": "Rigging branch one",
+            "modes": [
+              {
+                "id": "FIXED",
+                "processing_ticks": 6,
+                "calendar_id": "DAY",
+                "requirements": [
+                  {
+                    "id": "RIGGER",
+                    "pool_ids": [
+                      "RIGGER"
+                    ],
+                    "eligible_resource_ids": [
+                      "R1",
+                      "R2"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "predecessors": [
+              "A01"
+            ]
+          },
+          {
+            "id": "A06",
+            "name": "Rigging branch two",
+            "modes": [
+              {
+                "id": "FIXED",
+                "processing_ticks": 6,
+                "calendar_id": "DAY",
+                "requirements": [
+                  {
+                    "id": "RIGGER",
+                    "pool_ids": [
+                      "RIGGER"
+                    ],
+                    "eligible_resource_ids": [
+                      "R1",
+                      "R2"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "predecessors": [
+              "A01"
+            ]
+          },
+          {
+            "id": "A07",
+            "name": "Calibrate controls",
+            "modes": [
+              {
+                "id": "FIXED",
+                "processing_ticks": 3,
+                "calendar_id": "DAY",
+                "requirements": [
+                  {
+                    "id": "MECH",
+                    "pool_ids": [
+                      "MECH"
+                    ],
+                    "eligible_resource_ids": [
+                      "M1",
+                      "M2",
+                      "N1"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "predecessors": [
+              "A01"
+            ]
+          },
+          {
+            "id": "A08",
+            "name": "Hand back equipment",
+            "modes": [
+              {
+                "id": "FIXED",
+                "processing_ticks": 1,
+                "calendar_id": "DAY",
+                "requirements": [
+                  {
+                    "id": "MECH",
+                    "pool_ids": [
+                      "MECH"
+                    ],
+                    "eligible_resource_ids": [
+                      "M1",
+                      "M2",
+                      "N1"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "predecessors": [
+              "A04",
+              "A05",
+              "A06",
+              "A07"
+            ]
+          }
+        ]
+      },
+      "accepted_reports": [],
+      "policy": "finish-mode-preservation-start-movement-assignment-preservation-timing/0"
+    },
+    "reference_plan_hash": null,
+    "selected_modes": {
+      "A01": "FIXED",
+      "A02": "FIXED",
+      "A03": "SPECIALIST",
+      "A04": "FIXED",
+      "A05": "FIXED",
+      "A06": "FIXED",
+      "A07": "FIXED",
+      "A08": "FIXED"
+    },
+    "entries": [
+      {
+        "activity_id": "A01",
+        "start": 14,
+        "finish": 16,
+        "periods": [
+          [
+            14,
+            16
+          ]
+        ],
+        "assignments": []
+      },
+      {
+        "activity_id": "A02",
+        "start": 16,
+        "finish": 20,
+        "periods": [
+          [
+            16,
+            20
+          ]
+        ],
+        "assignments": [
+          [
+            "INSPECT",
+            "M2"
+          ]
+        ]
+      },
+      {
+        "activity_id": "A03",
+        "start": 20,
+        "finish": 27,
+        "periods": [
+          [
+            20,
+            24
+          ],
+          [
+            25,
+            27
+          ]
+        ],
+        "assignments": [
+          [
+            "MECH",
+            "M1"
+          ],
+          [
+            "SPECIALIST",
+            "M2"
+          ]
+        ]
+      },
+      {
+        "activity_id": "A04",
+        "start": 27,
+        "finish": 29,
+        "periods": [
+          [
+            27,
+            29
+          ]
+        ],
+        "assignments": [
+          [
+            "INSPECT",
+            "M2"
+          ]
+        ]
+      },
+      {
+        "activity_id": "A05",
+        "start": 16,
+        "finish": 22,
+        "periods": [
+          [
+            16,
+            22
+          ]
+        ],
+        "assignments": [
+          [
+            "RIGGER",
+            null
+          ]
+        ]
+      },
+      {
+        "activity_id": "A06",
+        "start": 16,
+        "finish": 22,
+        "periods": [
+          [
+            16,
+            22
+          ]
+        ],
+        "assignments": [
+          [
+            "RIGGER",
+            null
+          ]
+        ]
+      },
+      {
+        "activity_id": "A07",
+        "start": 16,
+        "finish": 19,
+        "periods": [
+          [
+            16,
+            19
+          ]
+        ],
+        "assignments": [
+          [
+            "MECH",
+            "M1"
+          ]
+        ]
+      },
+      {
+        "activity_id": "A08",
+        "start": 29,
+        "finish": 30,
+        "periods": [
+          [
+            29,
+            30
+          ]
+        ],
+        "assignments": [
+          [
+            "MECH",
+            "M1"
+          ]
+        ]
+      }
+    ],
+    "objective": [
+      30,
+      0,
+      0,
+      0,
+      734
+    ],
+    "project_finish": 30,
+    "policy": "finish-mode-preservation-start-movement-assignment-preservation-timing/0",
+    "pooled_riggers": true,
+    "allocation_witness": [
+      [
+        "A02",
+        "INSPECT",
+        "M2"
+      ],
+      [
+        "A03",
+        "MECH",
+        "M1"
+      ],
+      [
+        "A03",
+        "SPECIALIST",
+        "M2"
+      ],
+      [
+        "A04",
+        "INSPECT",
+        "M2"
+      ],
+      [
+        "A05",
+        "RIGGER",
+        "R1"
+      ],
+      [
+        "A06",
+        "RIGGER",
+        "R2"
+      ],
+      [
+        "A07",
+        "MECH",
+        "M1"
+      ],
+      [
+        "A08",
+        "MECH",
+        "M1"
+      ]
+    ],
+    "physical_status": "PROVEN_FEASIBLE",
+    "alternatives": [
+      {
+        "modes": {
+          "A01": "FIXED",
+          "A02": "FIXED",
+          "A03": "NORMAL",
+          "A04": "FIXED",
+          "A05": "FIXED",
+          "A06": "FIXED",
+          "A07": "FIXED",
+          "A08": "FIXED"
+        },
+        "status": "OPTIMAL",
+        "objective": [
+          64,
+          0,
+          0,
+          0,
+          1030
+        ]
+      },
+      {
+        "modes": {
+          "A01": "FIXED",
+          "A02": "FIXED",
+          "A03": "SPECIALIST",
+          "A04": "FIXED",
+          "A05": "FIXED",
+          "A06": "FIXED",
+          "A07": "FIXED",
+          "A08": "FIXED"
+        },
+        "status": "OPTIMAL",
+        "objective": [
+          30,
+          0,
+          0,
+          0,
+          734
+        ]
+      }
+    ],
+    "solver": {
+      "name": "CP-SAT",
+      "version": "9.15.6755",
+      "workers": 1,
+      "seed": 0,
+      "compiler": "native-workflow/0",
+      "feasible_branch_solver_calls": 4,
+      "proof": "all feasible mode combinations and objective stages proven optimal",
+      "repeatability": "same-environment observation only; equivalent assignments need not be unique"
+    },
+    "plan_hash": "e41133340a29f8fa3273dded833e53ea904eabf905bc45a218340fd219e1f828",
+    "approved_by": "baseline-planner",
+    "approved_at": "2026-09-20T17:19:14.562481+00:00"
+  },
+  "proposal": null,
+  "plan_history": [],
+  "execution": {
+    "status_point": 22,
+    "updates": [
+      {
+        "id": "U001",
+        "activity_id": "A01",
+        "status": "ACCEPTED",
+        "execution_state": "COMPLETED",
+        "actual_start": 14,
+        "actual_finish": 16,
+        "actual_periods": [
+          [
+            14,
+            16
+          ]
+        ],
+        "mode_id": "FIXED",
+        "named_assignments": [],
+        "remaining_processing_ticks": 0,
+        "occurred_at": 22,
+        "asserted_by": "synthetic-base-fixture",
+        "asserted_at": "2026-09-20T17:19:14.580017+00:00",
+        "accepted_by": "synthetic-base-fixture",
+        "accepted_at": "2026-09-20T17:19:14.581065+00:00",
+        "supersedes_update_id": null,
+        "reason": "Merged-v2 compatibility control",
+        "execution_context": {
+          "activity_id": "A01",
+          "mode": {
+            "id": "FIXED",
+            "processing_ticks": 2,
+            "calendar_id": "DAY",
+            "requirements": [],
+            "group_requirements": []
+          },
+          "calendars": [
+            {
+              "id": "DAY",
+              "daily_windows": [
+                [
+                  14,
+                  24
+                ],
+                [
+                  25,
+                  34
+                ]
+              ],
+              "name": "Retained legacy calendar metadata"
+            }
+          ],
+          "named_resources": [],
+          "resource_groups": [],
+          "accepted_outages": []
+        }
+      },
+      {
+        "id": "U002",
+        "activity_id": "A02",
+        "status": "ACCEPTED",
+        "execution_state": "COMPLETED",
+        "actual_start": 16,
+        "actual_finish": 20,
+        "actual_periods": [
+          [
+            16,
+            20
+          ]
+        ],
+        "mode_id": "FIXED",
+        "named_assignments": [
+          [
+            "INSPECT",
+            "M2"
+          ]
+        ],
+        "remaining_processing_ticks": 0,
+        "occurred_at": 22,
+        "asserted_by": "synthetic-base-fixture",
+        "asserted_at": "2026-09-20T17:19:14.581279+00:00",
+        "accepted_by": "synthetic-base-fixture",
+        "accepted_at": "2026-09-20T17:19:14.582608+00:00",
+        "supersedes_update_id": null,
+        "reason": "Merged-v2 compatibility control",
+        "execution_context": {
+          "activity_id": "A02",
+          "mode": {
+            "id": "FIXED",
+            "processing_ticks": 4,
+            "calendar_id": "DAY",
+            "requirements": [
+              {
+                "id": "INSPECT",
+                "pool_ids": [
+                  "INSPECT",
+                  "INSPECT",
+                  "INSPECT"
+                ],
+                "eligible_resource_ids": [
+                  "M2"
+                ]
+              }
+            ],
+            "group_requirements": []
+          },
+          "calendars": [
+            {
+              "id": "DAY",
+              "daily_windows": [
+                [
+                  14,
+                  24
+                ],
+                [
+                  25,
+                  34
+                ]
+              ],
+              "name": "Retained legacy calendar metadata"
+            }
+          ],
+          "named_resources": [
+            {
+              "id": "M2",
+              "capabilities": [
+                "MECH",
+                "INSPECT",
+                "SPECIALIST",
+                "MECH"
+              ],
+              "calendar_id": "DAY"
+            }
+          ],
+          "resource_groups": [],
+          "accepted_outages": []
+        }
+      },
+      {
+        "id": "U003",
+        "activity_id": "A03",
+        "status": "ACCEPTED",
+        "execution_state": "IN_PROGRESS",
+        "actual_start": 20,
+        "actual_finish": null,
+        "actual_periods": [
+          [
+            20,
+            22
+          ]
+        ],
+        "mode_id": "SPECIALIST",
+        "named_assignments": [
+          [
+            "MECH",
+            "M1"
+          ],
+          [
+            "SPECIALIST",
+            "M2"
+          ]
+        ],
+        "remaining_processing_ticks": 4,
+        "occurred_at": 22,
+        "asserted_by": "synthetic-base-fixture",
+        "asserted_at": "2026-09-20T17:19:14.583024+00:00",
+        "accepted_by": "synthetic-base-fixture",
+        "accepted_at": "2026-09-20T17:19:14.584277+00:00",
+        "supersedes_update_id": null,
+        "reason": "Merged-v2 compatibility control",
+        "execution_context": {
+          "activity_id": "A03",
+          "mode": {
+            "id": "SPECIALIST",
+            "processing_ticks": 6,
+            "calendar_id": "DAY",
+            "requirements": [
+              {
+                "id": "MECH",
+                "pool_ids": [
+                  "MECH",
+                  "MECH",
+                  "MECH",
+                  "MECH",
+                  "MECH"
+                ],
+                "eligible_resource_ids": [
+                  "M1",
+                  "M2",
+                  "N1"
+                ]
+              },
+              {
+                "id": "SPECIALIST",
+                "pool_ids": [
+                  "SPECIALIST",
+                  "SPECIALIST"
+                ],
+                "eligible_resource_ids": [
+                  "M2"
+                ]
+              }
+            ],
+            "group_requirements": []
+          },
+          "calendars": [
+            {
+              "id": "DAY",
+              "daily_windows": [
+                [
+                  14,
+                  24
+                ],
+                [
+                  25,
+                  34
+                ]
+              ],
+              "name": "Retained legacy calendar metadata"
+            }
+          ],
+          "named_resources": [
+            {
+              "id": "M1",
+              "capabilities": [
+                "MECH",
+                "MECH"
+              ],
+              "calendar_id": "DAY"
+            },
+            {
+              "id": "M2",
+              "capabilities": [
+                "MECH",
+                "INSPECT",
+                "SPECIALIST",
+                "MECH"
+              ],
+              "calendar_id": "DAY"
+            }
+          ],
+          "resource_groups": [],
+          "accepted_outages": []
+        }
+      },
+      {
+        "id": "U004",
+        "activity_id": "A04",
+        "status": "ACCEPTED",
+        "execution_state": "NOT_STARTED",
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "mode_id": null,
+        "named_assignments": [],
+        "remaining_processing_ticks": null,
+        "occurred_at": 22,
+        "asserted_by": "synthetic-base-fixture",
+        "asserted_at": "2026-09-20T17:19:14.584508+00:00",
+        "accepted_by": "synthetic-base-fixture",
+        "accepted_at": "2026-09-20T17:19:14.585851+00:00",
+        "supersedes_update_id": null,
+        "reason": "Merged-v2 compatibility control",
+        "execution_context": null
+      },
+      {
+        "id": "U005",
+        "activity_id": "A05",
+        "status": "ACCEPTED",
+        "execution_state": "COMPLETED",
+        "actual_start": 16,
+        "actual_finish": 22,
+        "actual_periods": [
+          [
+            16,
+            22
+          ]
+        ],
+        "mode_id": "FIXED",
+        "named_assignments": [
+          [
+            "RIGGER",
+            "R1"
+          ]
+        ],
+        "remaining_processing_ticks": 0,
+        "occurred_at": 22,
+        "asserted_by": "synthetic-base-fixture",
+        "asserted_at": "2026-09-20T17:19:14.586199+00:00",
+        "accepted_by": "synthetic-base-fixture",
+        "accepted_at": "2026-09-20T17:19:14.587632+00:00",
+        "supersedes_update_id": null,
+        "reason": "Merged-v2 compatibility control",
+        "execution_context": {
+          "activity_id": "A05",
+          "mode": {
+            "id": "FIXED",
+            "processing_ticks": 6,
+            "calendar_id": "DAY",
+            "requirements": [
+              {
+                "id": "RIGGER",
+                "pool_ids": [
+                  "RIGGER",
+                  "RIGGER",
+                  "RIGGER"
+                ],
+                "eligible_resource_ids": [
+                  "R1",
+                  "R2"
+                ]
+              }
+            ],
+            "group_requirements": []
+          },
+          "calendars": [
+            {
+              "id": "DAY",
+              "daily_windows": [
+                [
+                  14,
+                  24
+                ],
+                [
+                  25,
+                  34
+                ]
+              ],
+              "name": "Retained legacy calendar metadata"
+            }
+          ],
+          "named_resources": [
+            {
+              "id": "R1",
+              "capabilities": [
+                "RIGGER",
+                "RIGGER"
+              ],
+              "calendar_id": "DAY"
+            }
+          ],
+          "resource_groups": [],
+          "accepted_outages": []
+        }
+      },
+      {
+        "id": "U006",
+        "activity_id": "A06",
+        "status": "ACCEPTED",
+        "execution_state": "COMPLETED",
+        "actual_start": 16,
+        "actual_finish": 22,
+        "actual_periods": [
+          [
+            16,
+            22
+          ]
+        ],
+        "mode_id": "FIXED",
+        "named_assignments": [
+          [
+            "RIGGER",
+            "R2"
+          ]
+        ],
+        "remaining_processing_ticks": 0,
+        "occurred_at": 22,
+        "asserted_by": "synthetic-base-fixture",
+        "asserted_at": "2026-09-20T17:19:14.587952+00:00",
+        "accepted_by": "synthetic-base-fixture",
+        "accepted_at": "2026-09-20T17:19:14.589789+00:00",
+        "supersedes_update_id": null,
+        "reason": "Merged-v2 compatibility control",
+        "execution_context": {
+          "activity_id": "A06",
+          "mode": {
+            "id": "FIXED",
+            "processing_ticks": 6,
+            "calendar_id": "DAY",
+            "requirements": [
+              {
+                "id": "RIGGER",
+                "pool_ids": [
+                  "RIGGER",
+                  "RIGGER",
+                  "RIGGER"
+                ],
+                "eligible_resource_ids": [
+                  "R1",
+                  "R2"
+                ]
+              }
+            ],
+            "group_requirements": []
+          },
+          "calendars": [
+            {
+              "id": "DAY",
+              "daily_windows": [
+                [
+                  14,
+                  24
+                ],
+                [
+                  25,
+                  34
+                ]
+              ],
+              "name": "Retained legacy calendar metadata"
+            }
+          ],
+          "named_resources": [
+            {
+              "id": "R2",
+              "capabilities": [
+                "RIGGER",
+                "RIGGER"
+              ],
+              "calendar_id": "DAY"
+            }
+          ],
+          "resource_groups": [],
+          "accepted_outages": []
+        }
+      },
+      {
+        "id": "U007",
+        "activity_id": "A07",
+        "status": "ACCEPTED",
+        "execution_state": "COMPLETED",
+        "actual_start": 16,
+        "actual_finish": 19,
+        "actual_periods": [
+          [
+            16,
+            19
+          ]
+        ],
+        "mode_id": "FIXED",
+        "named_assignments": [
+          [
+            "MECH",
+            "M1"
+          ]
+        ],
+        "remaining_processing_ticks": 0,
+        "occurred_at": 22,
+        "asserted_by": "synthetic-base-fixture",
+        "asserted_at": "2026-09-20T17:19:14.590258+00:00",
+        "accepted_by": "synthetic-base-fixture",
+        "accepted_at": "2026-09-20T17:19:14.592006+00:00",
+        "supersedes_update_id": null,
+        "reason": "Merged-v2 compatibility control",
+        "execution_context": {
+          "activity_id": "A07",
+          "mode": {
+            "id": "FIXED",
+            "processing_ticks": 3,
+            "calendar_id": "DAY",
+            "requirements": [
+              {
+                "id": "MECH",
+                "pool_ids": [
+                  "MECH",
+                  "MECH",
+                  "MECH",
+                  "MECH",
+                  "MECH"
+                ],
+                "eligible_resource_ids": [
+                  "M1",
+                  "M2",
+                  "N1"
+                ]
+              }
+            ],
+            "group_requirements": []
+          },
+          "calendars": [
+            {
+              "id": "DAY",
+              "daily_windows": [
+                [
+                  14,
+                  24
+                ],
+                [
+                  25,
+                  34
+                ]
+              ],
+              "name": "Retained legacy calendar metadata"
+            }
+          ],
+          "named_resources": [
+            {
+              "id": "M1",
+              "capabilities": [
+                "MECH",
+                "MECH"
+              ],
+              "calendar_id": "DAY"
+            }
+          ],
+          "resource_groups": [],
+          "accepted_outages": []
+        }
+      },
+      {
+        "id": "U008",
+        "activity_id": "A08",
+        "status": "ACCEPTED",
+        "execution_state": "NOT_STARTED",
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "mode_id": null,
+        "named_assignments": [],
+        "remaining_processing_ticks": null,
+        "occurred_at": 22,
+        "asserted_by": "synthetic-base-fixture",
+        "asserted_at": "2026-09-20T17:19:14.592564+00:00",
+        "accepted_by": "synthetic-base-fixture",
+        "accepted_at": "2026-09-20T17:19:14.594447+00:00",
+        "supersedes_update_id": null,
+        "reason": "Merged-v2 compatibility control",
+        "execution_context": null
+      }
+    ]
+  }
+}

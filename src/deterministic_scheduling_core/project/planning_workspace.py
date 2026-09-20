@@ -534,7 +534,9 @@ def _validate_historical_execution_context(
         raise ValueError(f"{activity_id}: historical calendars must be an array")
     calendars: dict[str, dict] = {}
     for calendar in captured_calendars:
-        if not isinstance(calendar, dict) or set(calendar) != {"id", "daily_windows"}:
+        # The merged v2 project contract permits calendar metadata. Preserve it
+        # verbatim; executable eligibility depends only on ID and windows.
+        if not isinstance(calendar, dict) or not {"id", "daily_windows"} <= set(calendar):
             raise ValueError(f"{activity_id}: invalid historical calendar snapshot")
         calendar_id = calendar["id"]
         if not isinstance(calendar_id, str) or not calendar_id.strip() or calendar_id in calendars:
@@ -567,9 +569,8 @@ def _validate_historical_execution_context(
                 or resource_id in resources):
             raise ValueError(f"{activity_id}: historical named-resource IDs must be nonempty, unique and non-anonymous")
         if (not isinstance(capabilities, list) or not capabilities
-                or any(not isinstance(capability, str) or not capability.strip() for capability in capabilities)
-                or len(capabilities) != len(set(capabilities))):
-            raise ValueError(f"{activity_id}/{resource_id}: historical capabilities must be nonempty and unique")
+                or any(not isinstance(capability, str) or not capability.strip() for capability in capabilities)):
+            raise ValueError(f"{activity_id}/{resource_id}: historical capabilities must be nonempty strings")
         if "capacity" in resource and (type(resource["capacity"]) is not int or resource["capacity"] != 1):
             raise ValueError(f"{activity_id}/{resource_id}: historical named resources have capacity one")
         if (not isinstance(resource["calendar_id"], str) or not resource["calendar_id"].strip()
@@ -614,9 +615,8 @@ def _validate_historical_execution_context(
                 or requirement_id.startswith("@group/") or requirement_id in requirement_ids):
             raise ValueError(f"{activity_id}: historical requirement IDs must be nonempty, unique and non-anonymous")
         if (not isinstance(pools, list) or not pools
-                or any(not isinstance(value, str) or not value.strip() for value in pools)
-                or len(pools) != len(set(pools))):
-            raise ValueError(f"{activity_id}/{requirement_id}: historical qualifications must be nonempty and unique")
+                or any(not isinstance(value, str) or not value.strip() for value in pools)):
+            raise ValueError(f"{activity_id}/{requirement_id}: historical qualifications must be nonempty strings")
         if (not isinstance(eligible, list) or not eligible
                 or any(not isinstance(value, str) or not value.strip() for value in eligible)
                 or len(eligible) != len(set(eligible))):
@@ -654,6 +654,20 @@ def _validate_historical_execution_context(
     if set(calendars) != required_calendar_ids:
         raise ValueError(f"{activity_id}: historical calendar context must match the begun execution choices exactly")
 
+    # Validate captured outage structure for superseded provenance as well.
+    # Applying its availability to actual execution belongs to current history.
+    outages = context.get("accepted_outages", [])
+    if not isinstance(outages, list):
+        raise ValueError(f"{activity_id}: historical accepted outages must be an array")
+    for outage in outages:
+        if (not isinstance(outage, dict) or outage.get("status") != "ACCEPTED"
+                or outage.get("resource_id") not in assignments.values() or not outage.get("accepted_by")):
+            raise ValueError(f"{activity_id}: invalid historical accepted outage")
+        _integer(outage.get("start"), "historical outage start")
+        _integer(outage.get("finish"), "historical outage finish", 1)
+        if outage["start"] >= outage["finish"]:
+            raise ValueError(f"{activity_id}: invalid historical outage interval")
+
     return mode, calendars, resources, groups
 
 def _daily_slots(calendar: dict, horizon: int) -> set[int]:
@@ -670,6 +684,13 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
     """Validate accepted facts against their captured historical context."""
     current = current_status_records(workspace, require_complete=require_complete)
     horizon = workspace["project"]["horizon_ticks"]
+    contexts = {
+        update["id"]: _validate_historical_execution_context(
+            update["activity_id"], update, update["execution_context"], horizon
+        )
+        for update in workspace["execution"]["updates"]
+        if update["status"] == "ACCEPTED" and update["execution_state"] != "NOT_STARTED"
+    }
     named_occupancy: dict[tuple[str, int], str] = {}
     group_occupancy: dict[tuple[str, int], int] = {}
     group_capacity: dict[tuple[str, int], int] = {}
@@ -678,9 +699,7 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
         if update["execution_state"] == "NOT_STARTED":
             continue
         context = update["execution_context"]
-        mode, calendars, resources, groups = _validate_historical_execution_context(
-            activity_id, update, context, horizon
-        )
+        mode, calendars, resources, groups = contexts[update["id"]]
         activity_slots = _daily_slots(calendars[mode["calendar_id"]], horizon)
         joint_slots = set(activity_slots)
         occupied = [tick for start, finish in update["actual_periods"] for tick in range(start, finish)]
@@ -734,17 +753,7 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
                 group_tasks.setdefault(group_id, []).append((activity_id, quantity, frozenset(occupied), group["capacity"]))
         # Old v2 snapshots have no captured outages; never retrofit today's
         # availability into them or rewrite their hashes.
-        outages = context.get("accepted_outages", [])
-        if not isinstance(outages, list):
-            raise ValueError(f"{activity_id}: historical accepted outages must be an array")
-        for outage in outages:
-            if (not isinstance(outage, dict) or outage.get("status") != "ACCEPTED"
-                    or outage.get("resource_id") not in assignments.values() or not outage.get("accepted_by")):
-                raise ValueError(f"{activity_id}: invalid historical accepted outage")
-            _integer(outage["start"], "historical outage start")
-            _integer(outage["finish"], "historical outage finish", 1)
-            if outage["start"] >= outage["finish"]:
-                raise ValueError(f"{activity_id}: invalid historical outage interval")
+        for outage in context.get("accepted_outages", []):
             joint_slots.difference_update(range(outage["start"], outage["finish"]))
         if any(tick not in joint_slots for tick in occupied):
             raise ValueError(f"{activity_id}: accepted work contradicts captured historical availability")
