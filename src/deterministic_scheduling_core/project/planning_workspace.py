@@ -570,9 +570,10 @@ def _validate_historical_execution_context(
                 or any(not isinstance(capability, str) or not capability.strip() for capability in capabilities)
                 or len(capabilities) != len(set(capabilities))):
             raise ValueError(f"{activity_id}/{resource_id}: historical capabilities must be nonempty and unique")
-        if resource.get("capacity", 1) != 1:
+        if "capacity" in resource and (type(resource["capacity"]) is not int or resource["capacity"] != 1):
             raise ValueError(f"{activity_id}/{resource_id}: historical named resources have capacity one")
-        if resource["calendar_id"] not in calendars:
+        if (not isinstance(resource["calendar_id"], str) or not resource["calendar_id"].strip()
+                or resource["calendar_id"] not in calendars):
             raise ValueError(f"{activity_id}/{resource_id}: historical resource calendar is missing")
         resources[resource_id] = resource
 
@@ -590,11 +591,14 @@ def _validate_historical_execution_context(
             raise ValueError(f"{activity_id}: historical group IDs must be nonempty, unique and distinct from named resources")
         _integer(group["capacity"], f"{activity_id}/{group_id} historical group capacity", 1)
         if (not isinstance(group["name"], str) or not group["name"].strip()
+                or not isinstance(group["calendar_id"], str) or not group["calendar_id"].strip()
                 or group["calendar_id"] not in calendars):
             raise ValueError(f"{activity_id}/{group_id}: historical group needs a name and known calendar")
         if group["disjoint"] is not True or group["interchangeable"] is not True:
             raise ValueError(f"{activity_id}/{group_id}: historical groups must remain disjoint and interchangeable")
         groups[group_id] = group
+    if len(groups) > 8 or sum(group["capacity"] for group in groups.values()) > 32:
+        raise ValueError(f"{activity_id}: historical group context exceeds the bounded native capacity profile")
 
     requirements = mode.get("requirements", [])
     if not isinstance(requirements, list):
@@ -627,7 +631,7 @@ def _validate_historical_execution_context(
         if not isinstance(demand, dict) or set(demand) != {"group_id", "demand"}:
             raise ValueError(f"{activity_id}: invalid historical group requirement")
         group_id = demand["group_id"]
-        if group_id not in groups:
+        if not isinstance(group_id, str) or not group_id.strip() or group_id not in groups:
             raise ValueError(f"{activity_id}: historical group context is missing")
         _integer(demand["demand"], f"{activity_id}/{group_id} historical group demand", 1)
         if group_id in demanded_groups or demand["demand"] > groups[group_id]["capacity"]:
