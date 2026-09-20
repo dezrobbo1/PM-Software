@@ -186,8 +186,9 @@ def _solve_case(case: ra.ExperimentCase, pooled: bool, approved: dict | None, gr
         placements = (_group_placements if grouped else ra._candidate_placements)(case, activity, "C" if pooled else "B")
         record = states.get(activity.id)
         if record and record["execution_state"] == "IN_PROGRESS":
-            if activity.continuity == "CONTINUOUS" and record["actual_periods"] and activity.processing_ticks:
-                placements = tuple(p for p in placements if p.start == record["actual_periods"][-1][1])
+            if activity.continuity == "CONTINUOUS" and activity.processing_ticks:
+                continuation = record["actual_periods"][-1][1] if record["actual_periods"] else record["actual_start"]
+                placements = tuple(p for p in placements if p.start == continuation)
             historical_groups = {g["id"]: g for g in record["execution_context"]["resource_groups"]}
             placements = tuple(p for p in placements if all(
                 int(resource.rsplit("/", 1)[1]) < historical_groups[groups[int(req.id.split("/")[1])]["id"]]["capacity"]
@@ -572,8 +573,8 @@ def _validate_status_plan(workspace: Workspace, plan: dict) -> None:
         if entry["forecast_start"] < status_point or entry["forecast_start"] < spec.not_before or entry["forecast_finish"] > case.horizon:
             raise ValueError("future execution lies outside the status/horizon boundaries")
         if (record["execution_state"] == "IN_PROGRESS" and spec.continuity == "CONTINUOUS"
-                and record["actual_periods"] and spec.processing_ticks
-                and entry["forecast_start"] != record["actual_periods"][-1][1]):
+                and spec.processing_ticks
+                and entry["forecast_start"] != (record["actual_periods"][-1][1] if record["actual_periods"] else record["actual_start"])):
             raise ValueError(f"{activity_id}: continuous begun work cannot restart across an execution gap")
         if periods and (entry["forecast_start"] != periods[0][0] or entry["forecast_finish"] != periods[-1][1]):
             raise ValueError("future execution envelope disagrees with productive periods")

@@ -149,6 +149,139 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
         _accept(workspace, "H", "NOT_STARTED")
         return workspace
 
+    def test_continuous_in_progress_must_reach_status_boundary(self):
+        for periods in ([[20, 22]], []):
+            with self.subTest(periods=periods):
+                workspace = self.history_case("CONTINUOUS")
+                update = report_status_update(workspace, "X", "IN_PROGRESS", "planner", "incomplete history",
+                    actual_start=20, actual_periods=periods, mode_id="USED", remaining_processing_ticks=2)
+                before = deepcopy(workspace)
+                with self.assertRaisesRegex(ValueError, "continuous.*status"):
+                    accept_status_update(workspace, update, "planner")
+                self.assertEqual(workspace, before)
+
+    def test_continuous_status_boundary_allows_immediate_start_and_explicit_zero(self):
+        for start, periods, remaining in ((26, [], 2), (20, [[20, 26]], 2), (20, [[20, 26]], 0)):
+            with self.subTest(start=start, remaining=remaining):
+                workspace = self.history_case("CONTINUOUS")
+                _accept(workspace, "X", "IN_PROGRESS", actual_start=start, actual_periods=periods,
+                    mode_id="USED", remaining_processing_ticks=remaining)
+                plan = propose(workspace); validate_plan(workspace, plan)
+                entry = next(e for e in plan["entries"] if e["activity_id"] == "X")
+                self.assertEqual(entry["execution_state"], "IN_PROGRESS")
+                self.assertEqual(entry["forecast_periods"], [[26, 28]] if remaining else [])
+                self.assertEqual(entry["actual_periods"], periods)
+
+    def test_completed_productive_work_requires_recorded_periods(self):
+        for continuity in ("CONTINUOUS", "SUSPENDABLE_AT_AVAILABILITY_GAPS", None):
+            for finish in (20, 22):
+                with self.subTest(continuity=continuity, finish=finish):
+                    workspace = self.history_case(continuity or "SUSPENDABLE_AT_AVAILABILITY_GAPS")
+                    if continuity is None:
+                        del workspace["project"]["activities"][0]["modes"][0]["continuity"]
+                    update = report_status_update(workspace, "X", "COMPLETED", "planner", "missing actual work",
+                        actual_start=20, actual_finish=finish, actual_periods=[], mode_id="USED", remaining_processing_ticks=0)
+                    before = deepcopy(workspace)
+                    with self.assertRaisesRegex(ValueError, "completed.*productive.*period"):
+                        accept_status_update(workspace, update, "planner")
+                    self.assertEqual(workspace, before)
+
+    def test_continuous_start_at_status_cannot_be_delayed_into_a_later_window(self):
+        workspace = self.history_case("CONTINUOUS")
+        _accept(workspace, "X", "IN_PROGRESS", actual_start=26, actual_periods=[],
+            mode_id="USED", remaining_processing_ticks=2)
+        plan = propose(workspace)
+        corrupted = deepcopy(plan)
+        entry = next(e for e in corrupted["entries"] if e["activity_id"] == "X")
+        entry.update(start=30, finish=32, periods=[[30, 32]], forecast_start=30,
+            forecast_finish=32, forecast_periods=[[30, 32]])
+        handoff = next(e for e in corrupted["entries"] if e["activity_id"] == "H")
+        handoff.update(start=32, finish=32, forecast_start=32, forecast_finish=32)
+        corrupted["project_finish"] = 32
+        corrupted["plan_hash"] = _plan_hash(corrupted)
+        with self.assertRaisesRegex(ValueError, "continuous.*gap"):
+            validate_plan(workspace, corrupted)
+        changed = deepcopy(workspace["project"])
+        changed["calendars"][0]["daily_windows"] = [[30, 40]]
+        replace_project(workspace, changed)
+        with self.assertRaisesRegex(SchedulingError, "no executable future"):
+            propose(workspace)
+
+    def test_retired_in_progress_mode_can_be_confirmed_completed(self):
+        workspace, _ = named_statused()
+        prior = deepcopy(current_status_records(workspace)["A03"])
+        project = deepcopy(workspace["project"])
+        activity = next(a for a in project["activities"] if a["id"] == "A03")
+        activity["modes"] = [m for m in activity["modes"] if m["id"] != "SPECIALIST"]
+        replace_project(workspace, project)
+        with self.assertRaisesRegex(ValueError, "no longer authorised"):
+            propose(workspace)
+        _accept(workspace, "A03", "COMPLETED", actual_start=20, actual_finish=22,
+            actual_periods=[[20, 22]], mode_id="SPECIALIST", named_assignments=prior["named_assignments"],
+            remaining_processing_ticks=0, supersedes_update_id=prior["id"])
+        current = current_status_records(workspace)["A03"]
+        self.assertEqual(current["execution_context"], prior["execution_context"])
+        self.assertIn(prior, workspace["execution"]["updates"])
+        plan = propose(workspace); validate_plan(workspace, plan)
+        entry = next(e for e in plan["entries"] if e["activity_id"] == "A03")
+        self.assertEqual(entry["forecast_periods"], [])
+        self.assertEqual(plan["selected_modes"]["A03"], "SPECIALIST")
+        approve(workspace, "test-only")
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "completion.json"; save(workspace, path)
+            reopened = load(path); validate_stored_plans(reopened)
+            self.assertEqual(reopened, workspace)
+
+    def test_empty_history_cannot_assign_one_person_to_two_slots(self):
+        workspace = self.history_case()
+        workspace["project"]["resources"] = [{"id": rid, "capabilities": ["Q"], "calendar_id": "ALL", "capacity": 1}
+            for rid in ("R1", "R2")]
+        workspace["project"]["activities"][0]["modes"][0]["requirements"] = [
+            {"id": slot, "pool_ids": ["Q"], "eligible_resource_ids": ["R1", "R2"]} for slot in ("ONE", "TWO")]
+        update = report_status_update(workspace, "X", "IN_PROGRESS", "planner", "duplicate person",
+            actual_start=26, actual_periods=[], mode_id="USED", remaining_processing_ticks=2,
+            named_assignments=[["ONE", "R1"], ["TWO", "R1"]])
+        before = deepcopy(workspace)
+        with self.assertRaisesRegex(ValueError, "distinct.*named"):
+            accept_status_update(workspace, update, "planner")
+        self.assertEqual(workspace, before)
+        _accept(workspace, "X", "IN_PROGRESS", actual_start=26, actual_periods=[], mode_id="USED",
+            remaining_processing_ticks=2, named_assignments=[["ONE", "R1"], ["TWO", "R2"]])
+        validate_plan(workspace, propose(workspace))
+
+    def test_import_checks_current_history_without_requiring_all_statuses(self):
+        workspace = new_demo_workspace(); enable_status_tracking(workspace, 22)
+        _accept(workspace, "A01", "COMPLETED", actual_start=14, actual_finish=16,
+            actual_periods=[[14, 16]], mode_id="FIXED", remaining_processing_ticks=0)
+        # Missing statuses remain UNKNOWN, but a valid partial workspace opens.
+        session = BrowserSession()
+        dispatch_action("/api/open", {"workspace": workspace}, session)
+        self.assertEqual(session.workspace, workspace)
+        corruptions = []
+        outside = deepcopy(workspace)
+        outside["execution"]["updates"][0].update(actual_start=0, actual_finish=2, actual_periods=[[0, 2]])
+        corruptions.append(outside)
+        named, _ = named_statused(outage=False)
+        named["approved_plan"] = named["proposal"] = None
+        current_status_records(named)["A06"]["named_assignments"] = [["RIGGER", "R1"]]
+        current_status_records(named)["A06"]["execution_context"] = deepcopy(current_status_records(named)["A05"]["execution_context"])
+        current_status_records(named)["A06"]["execution_context"]["activity_id"] = "A06"
+        corruptions.append(named)
+        grouped = pooled_statused()
+        record = current_status_records(grouped)["N10"]
+        record.update(actual_start=17, actual_periods=[[17, 25]])
+        corruptions.append(grouped)
+        with TemporaryDirectory() as directory:
+            for index, invalid in enumerate(corruptions):
+                with self.subTest(index=index):
+                    before = deepcopy(session.workspace)
+                    with self.assertRaises(ValueError):
+                        dispatch_action("/api/open", {"workspace": invalid}, session)
+                    self.assertEqual(session.workspace, before)
+                    path = Path(directory) / "invalid.json"; path.write_text(json.dumps(invalid))
+                    with self.assertRaises(ValueError): load(path)
+                    with self.assertRaises(ValueError): validate(invalid)
+
     def test_continuous_history_requires_complete_actual_envelope_atomically(self):
         for start, finish, periods in ((20, 24, [[22, 24]]), (22, 26, [[22, 24]]),
                                        (20, 26, []), (20, 24, [[20, 21], [23, 24]])):

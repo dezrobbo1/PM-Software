@@ -46,13 +46,14 @@ export async function acceptedProgressTrial(browser, url, evidenceDir, assert) {
     await page.locator("#status-point-input").fill(tick(point));
     await click(page, "#enable-status");
   }
-  async function update(page, id, executionState, periods = [], remaining = null, mode = "FIXED", assignments = [], occurred = null) {
+  async function update(page, id, executionState, periods = [], remaining = null, mode = "FIXED", assignments = [], occurred = null, rejection = null) {
     await click(page, `[data-status-activity="${id}"]`);
     await page.locator("#execution-state").selectOption(executionState);
     if (executionState !== "NOT_STARTED") {
       await page.locator("#execution-mode").selectOption(mode);
-      await page.locator("#actual-start").fill(tick(periods[0][0]));
-      if (executionState === "COMPLETED") await page.locator("#actual-finish").fill(tick(periods.at(-1)[1]));
+      const point = (await state(page)).workspace.execution.status_point;
+      await page.locator("#actual-start").fill(tick(periods[0]?.[0] ?? point));
+      if (executionState === "COMPLETED") await page.locator("#actual-finish").fill(tick(periods.at(-1)?.[1] ?? point));
       await page.locator("#actual-periods").fill(periods.map(([s, f]) => `${tick(s)}-${tick(f)}`).join("; "));
       await page.locator("#remaining-hours").fill(remaining == null ? "" : String(remaining / 2));
       if (await page.locator("#actual-assignments").isVisible()) await page.locator("#actual-assignments").fill(assignments.map(([s, r]) => `${s}=${r}`).join(", "));
@@ -66,6 +67,12 @@ export async function acceptedProgressTrial(browser, url, evidenceDir, assert) {
     assert(reported.trusted_input_hash === before.trusted_input_hash, `${id}: reported update leaves trusted state unchanged`);
     const record = reported.workspace.execution.updates.at(-1);
     await page.locator(`[data-status-acceptance-actor="${record.id}"]`).fill(actor);
+    if (rejection) {
+      await page.locator(`[data-accept-status="${record.id}"]`).click();
+      await page.locator("#message.error").filter({hasText: rejection}).waitFor();
+      assert(JSON.stringify((await state(page)).workspace) === JSON.stringify(reported.workspace), `${id}: rejected acceptance preserves the reported assertion and entire previous workspace`);
+      return;
+    }
     await click(page, `[data-accept-status="${record.id}"]`);
     assert((await state(page)).workspace.proposal === null, `${id}: acceptance invalidates proposal without approval`);
   }
@@ -113,6 +120,55 @@ export async function acceptedProgressTrial(browser, url, evidenceDir, assert) {
     await save(named, "named-calculated");
     await approve(named);
     await save(named, "named-approved");
+    const retiredCompletion = await fresh();
+    await open(retiredCompletion, path.join(dir, "named-approved.json"));
+    await retiredCompletion.locator('.activity-row[data-activity-id="A03"]').click();
+    const specialistIndex = (await state(retiredCompletion)).workspace.project.activities.find((a) => a.id === "A03").modes.findIndex((m) => m.id === "SPECIALIST");
+    await retiredCompletion.locator(`[data-remove-mode="${specialistIndex}"]`).click();
+    await click(retiredCompletion, "#apply-project");
+    await update(retiredCompletion, "A03", "COMPLETED", [[20, 22]], 0, "SPECIALIST", [["MECH", "M1"], ["SPECIALIST", "M2"]]);
+    await click(retiredCompletion, "#calculate");
+    const completedEntry = (await state(retiredCompletion)).workspace.proposal.entries.find((e) => e.activity_id === "A03");
+    assert(completedEntry.execution_state === "COMPLETED" && completedEntry.forecast_periods.length === 0, "in-progress activity can be confirmed completed using its retired historical mode");
+    await approve(retiredCompletion);
+    const completedFile = await save(retiredCompletion, "retired-in-progress-completion-TEST-ONLY");
+    await shot(retiredCompletion, "14-retired-mode-completion", ".status-panel");
+    const completedReopen = await fresh();
+    await open(completedReopen, completedFile);
+    assert(JSON.stringify((await state(completedReopen)).workspace) === JSON.stringify(JSON.parse(fs.readFileSync(completedFile, "utf8"))), "retired-mode completion preserves provenance and approval on fresh reopen");
+
+    const incompleteContinuous = await fresh();
+    await incompleteContinuous.locator('.activity-row[data-activity-id="A01"]').click();
+    await incompleteContinuous.locator('[data-mode-continuity="0"]').selectOption("CONTINUOUS");
+    await click(incompleteContinuous, "#apply-project");
+    await enable(incompleteContinuous, 22);
+    await update(incompleteContinuous, "A01", "IN_PROGRESS", [[14, 16]], 2, "FIXED", [], null, /continuous.*status/);
+    await shot(incompleteContinuous, "15-incomplete-continuous-history-rejected", "#message");
+    const reportedFile = await save(incompleteContinuous, "rejected-continuous-still-reported");
+    const reportedReopen = await fresh();
+    await open(reportedReopen, reportedFile);
+    assert((await state(reportedReopen)).workspace.execution.updates[0].status === "REPORTED", "invalid reported history remains inspectable after reopen without becoming trusted");
+
+    const emptyCompleted = await fresh();
+    await enable(emptyCompleted, 22);
+    await update(emptyCompleted, "A01", "COMPLETED", [], 0, "FIXED", [], null, /completed.*productive.*period/);
+    await shot(emptyCompleted, "16-empty-completion-rejected", "#message");
+    const duplicateNamed = await fresh();
+    await enable(duplicateNamed, 22);
+    await update(duplicateNamed, "A03", "IN_PROGRESS", [], 4, "SPECIALIST", [["MECH", "M2"], ["SPECIALIST", "M2"]], null, /distinct.*named/);
+    await shot(duplicateNamed, "17-duplicate-named-assignment-rejected", "#message");
+
+    const invalidImport = JSON.parse(fs.readFileSync(path.join(dir, "named-approved.json"), "utf8"));
+    invalidImport.approved_plan = invalidImport.proposal = null; invalidImport.plan_history = [];
+    Object.assign(invalidImport.execution.updates.find((u) => u.activity_id === "A01"), {actual_start: 0, actual_finish: 2, actual_periods: [[0, 2]]});
+    const invalidFile = path.join(dir, "INVALID-import-calendar-history-EXPECTED-REJECTION.json");
+    fs.writeFileSync(invalidFile, JSON.stringify(invalidImport, null, 2));
+    const importTarget = await fresh();
+    const beforeImport = JSON.stringify((await state(importTarget)).workspace);
+    await importTarget.locator("#open-file").setInputFiles(invalidFile);
+    await importTarget.locator("#message.error").filter({hasText: /Cannot open.*historical activity calendar/}).waitFor();
+    assert(JSON.stringify((await state(importTarget)).workspace) === beforeImport, "invalid accepted history is rejected on open without replacing the active workspace");
+    await shot(importTarget, "18-invalid-history-import-rejected", "#message");
     const historyOnlyCorrection = await fresh();
     await open(historyOnlyCorrection, path.join(dir, "named-approved.json"));
     await update(historyOnlyCorrection, "A03", "IN_PROGRESS", [[21, 22]], 4, "SPECIALIST", [["MECH", "M1"], ["SPECIALIST", "M2"]], 20);

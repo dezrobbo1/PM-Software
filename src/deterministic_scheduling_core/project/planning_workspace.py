@@ -162,6 +162,9 @@ def validate(workspace: Workspace) -> None:
             raise ValueError("accepted report needs an accepting actor")
     if workspace["schema"] == STATUS_SCHEMA:
         _validate_execution(workspace)
+        # Import and edits must not trust assertions that acceptance
+        # would reject. Missing activity statuses still remain UNKNOWN.
+        validate_accepted_history(workspace, require_complete=False)
 
 
 EXECUTION_STATES = {"NOT_STARTED", "IN_PROGRESS", "COMPLETED"}
@@ -459,7 +462,7 @@ def report_status_update(
                         and prior["mode_id"] == mode_id and prior["named_assignments"] == assignments
                         and prior["execution_context"])
         mode = next((item for item in activity["modes"] if item["id"] == mode_id), None)
-        if mode is None and same_choices and execution_state == prior["execution_state"] == "COMPLETED":
+        if mode is None and same_choices and execution_state == "COMPLETED":
             mode = prior["execution_context"]["mode"]
         if mode is None:
             raise ValueError("begun work needs an authorised current mode")
@@ -534,12 +537,17 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
         activity_slots = _daily_slots(calendars[mode["calendar_id"]], horizon)
         joint_slots = set(activity_slots)
         occupied = [tick for start, finish in update["actual_periods"] for tick in range(start, finish)]
+        if update["execution_state"] == "COMPLETED" and mode["processing_ticks"] > 0 and not occupied:
+            continuity = mode.get("continuity", "SUSPENDABLE_AT_AVAILABILITY_GAPS")
+            raise ValueError(f"{activity_id}: completed {continuity} productive work needs at least one actual period")
         if any(tick not in activity_slots for tick in occupied):
             raise ValueError(f"{activity_id}: accepted productive history lies outside its historical activity calendar")
         requirements = {requirement["id"]: requirement for requirement in mode.get("requirements", [])}
         assignments = dict(_pairs(update["named_assignments"], "named_assignments"))
         if set(assignments) != set(requirements):
             raise ValueError(f"{activity_id}: accepted named assignments must cover the begun mode exactly")
+        if len(set(assignments.values())) != len(assignments):
+            raise ValueError(f"{activity_id}: simultaneous slots require distinct accepted named resources")
         for requirement_id, resource_id in assignments.items():
             if resource_id.startswith("@group/"):
                 raise ValueError("anonymous compiler units cannot be accepted as historical worker identities")
@@ -594,9 +602,9 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
         if any(tick not in joint_slots for tick in occupied):
             raise ValueError(f"{activity_id}: accepted work contradicts captured historical availability")
         if mode.get("continuity") == "CONTINUOUS":
-            end = update["actual_finish"] if update["execution_state"] == "COMPLETED" else (occupied[-1] + 1 if occupied else update["actual_start"])
+            end = update["actual_finish"] if update["execution_state"] == "COMPLETED" else workspace["execution"]["status_point"]
             if occupied != list(range(update["actual_start"], end)):
-                raise ValueError(f"{activity_id}: continuous actual periods must fill the accepted execution envelope")
+                raise ValueError(f"{activity_id}: continuous actual periods must fill the actual envelope through completion or the status point")
         elif occupied:
             expected = sorted(tick for tick in joint_slots if update["actual_start"] <= tick <= occupied[-1])
             if occupied != expected:
@@ -659,7 +667,6 @@ def accept_status_update(workspace: Workspace, update_id: str, actor: str) -> No
     update.update(status="ACCEPTED", accepted_by=actor, accepted_at=now())
     candidate["proposal"] = None
     validate(candidate)
-    validate_accepted_history(candidate)
     workspace.clear()
     workspace.update(candidate)
 

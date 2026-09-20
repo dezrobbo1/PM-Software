@@ -98,17 +98,32 @@ An inconsistent assertion remains reported for inspection; it is not committed
 to trusted history and misdiagnosed later as future infeasibility.
 
 Continuous completed history fills its entire actual-start/actual-finish
-envelope; continuous in-progress history fills through its last productive
-tick. Adjacent recorded periods are permitted, but leading, internal and
+envelope; continuous in-progress history fills through the status point.
+An activity starting exactly at that point may have no elapsed history yet.
+Its positive continuous remainder must start there; current unavailability makes
+recovery infeasible instead of moving that accepted start into a later window.
+Adjacent recorded periods are permitted, but leading, internal and
 completed trailing gaps are not. Suspendable history may omit only ticks that
 were unavailable under the captured joint activity/resource conditions.
+Completed positive-processing work requires recorded productive periods; an
+explicit zero-duration milestone may have none. This is not a requirement that
+actual processing equal its original forecast. Distinct simultaneous named
+slots require distinct resource identities even before any productive period.
 
 Completed activities use their captured mode even if it is later retired from
-current planning choices. In-progress remainder still requires its already-used
+current planning choices. An in-progress assertion may also be superseded by
+explicit completion using that same historical mode and assignments after
+retirement. In-progress remainder still requires its already-used
 mode to remain authorised. Recovery comparisons combine actual and forecast
 execution (including named assignments and group quantities), so completing
 work exactly as approved is not a move, and correcting history is not hidden
 by an unchanged future remainder.
+
+Opening or validating a version-2 workspace checks current accepted history
+against captured historical conditions, even when no stored plan exists.
+Partial status entry remains valid: missing statuses block calculation, not
+opening. Reported assertions remain reviewable and superseded assertions retain
+their provenance; neither is reinterpreted as current accepted execution.
 
 ## Planner workflow
 
