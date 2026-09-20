@@ -258,7 +258,9 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
             ("bad continuity", named, lambda ctx: ctx["mode"].__setitem__("continuity", "ARBITRARY")),
             ("bad calendar", named, lambda ctx: ctx["calendars"][0].__setitem__("daily_windows", [[20, 20]])),
             ("bad named capacity", named, lambda ctx: ctx["named_resources"][0].__setitem__("capacity", 2)),
+            ("bad named capacity type", named, lambda ctx: ctx["named_resources"][0].__setitem__("capacity", True)),
             ("bad group capacity", grouped, lambda ctx: ctx["resource_groups"][0].__setitem__("capacity", 0)),
+            ("oversized group capacity", grouped, lambda ctx: ctx["resource_groups"][0].__setitem__("capacity", 33)),
         ]
         for label, source, corrupt in corruptions:
             with self.subTest(label=label):
