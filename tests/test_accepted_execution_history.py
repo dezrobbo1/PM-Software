@@ -236,6 +236,51 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
             path = Path(directory) / "invalid.json"; path.write_text(json.dumps(invalid))
             with self.assertRaises(ValueError): load(path)
 
+    def test_import_rejects_malformed_captured_native_context(self):
+        named = self.named_history_case()
+        _accept(named, "X", "COMPLETED", actual_start=20, actual_finish=26,
+                actual_periods=[[20, 26]], mode_id="USED",
+                named_assignments=[["ONE", "R1"], ["TWO", "R2"]],
+                remaining_processing_ticks=0)
+        grouped = self.history_case(grouped=True)
+        _accept(grouped, "X", "COMPLETED", actual_start=20, actual_finish=26,
+                actual_periods=[[20, 26]], mode_id="USED",
+                named_assignments=[], remaining_processing_ticks=0)
+
+        def current(workspace):
+            return current_status_records(workspace)["X"]["execution_context"]
+
+        corruptions = [
+            ("negative processing", named, lambda ctx: (
+                ctx["mode"].__setitem__("processing_ticks", -1),
+                current_status_records(invalid)["X"].__setitem__("actual_periods", []),
+            )),
+            ("bad continuity", named, lambda ctx: ctx["mode"].__setitem__("continuity", "ARBITRARY")),
+            ("bad calendar", named, lambda ctx: ctx["calendars"][0].__setitem__("daily_windows", [[20, 20]])),
+            ("bad named capacity", named, lambda ctx: ctx["named_resources"][0].__setitem__("capacity", 2)),
+            ("bad group capacity", grouped, lambda ctx: ctx["resource_groups"][0].__setitem__("capacity", 0)),
+        ]
+        for label, source, corrupt in corruptions:
+            with self.subTest(label=label):
+                invalid = deepcopy(source)
+                corrupt(current(invalid))
+                with self.assertRaises(ValueError):
+                    validate(invalid)
+
+        invalid = deepcopy(named)
+        current(invalid)["mode"]["processing_ticks"] = -1
+        current_status_records(invalid)["X"]["actual_periods"] = []
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "invalid-captured-context.json"
+            path.write_text(json.dumps(invalid))
+            with self.assertRaises(ValueError):
+                load(path)
+        session = BrowserSession()
+        before = deepcopy(session.workspace)
+        with self.assertRaises(ValueError):
+            dispatch_action("/api/open", {"workspace": invalid}, session)
+        self.assertEqual(session.workspace, before)
+
     def test_continuous_in_progress_must_reach_status_boundary(self):
         for periods in ([[20, 22]], []):
             with self.subTest(periods=periods):
