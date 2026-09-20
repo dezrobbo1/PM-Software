@@ -257,6 +257,10 @@ class HostedNativePlanningUiTests(unittest.TestCase):
     def test_independent_native_case_uses_existing_resource_and_mode_policy(self):
         self.call("new")
         project = deepcopy(self.state["workspace"]["project"])
+        # This explicit-eligibility case owns its roster; New no longer invents one.
+        from deterministic_scheduling_core.project.planning_workspace import new_demo_workspace
+        project["resources"] = new_demo_workspace()["project"]["resources"]
+        project["pool_riggers"] = True
         by_id = {activity["id"]: activity for activity in project["activities"]}
         for identifier, predecessors in {
             "N01": [], "N02": ["N01"], "N03": ["N01"], "N04": ["N02", "N03"],

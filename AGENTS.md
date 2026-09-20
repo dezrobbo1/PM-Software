@@ -257,6 +257,13 @@ The experiment is deliberately isolated in `src/deterministic_scheduling_core/re
 
 ### Native planning trial interface
 
+The planner-capacity profile extends this productive-calendar workflow with declared
+disjoint interchangeable groups and quantities. Anonymous compilation/checking units
+are not planner records or recovery assignment changes. The retained conditional
+15-item workfront matched its old objective and productive periods with fewer input
+records; calendar/capacity/scope judgements remain conditional. Version-zero workspaces
+and their historical hashes are preserved. See `docs/planner-resource-capacity.md`.
+
 The bounded browser trial demonstrated that a planner can edit an 8–15 activity native project, calculate and inspect productive segments and physical assignments, separately report/accept availability, compare and approve a recovery, and download/reopen the complete workspace without editing Python or JSON. Chromium replay preserved the original example results (`SPECIALIST` at Day 1 15:00; accepted M2 outage recovery using `NORMAL` at Day 2 08:30) and solved a separately entered project at Day 1 15:00 with distinct mechanics and a lunch-suspended pooled-rigging activity. Prototype 3 retained the same Python workflow behind a protected Vercel Preview using browser-carried workspace state and a stateless Python Function; it did not introduce a second scheduler or database. This is usability/deployment evidence only: it does not expand the native schema, scheduler, resource architecture, identity model or production-readiness claim.
 
 ## Current position

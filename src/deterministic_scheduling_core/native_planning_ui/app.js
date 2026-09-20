@@ -271,7 +271,7 @@ function renderProjectSettings() {
     <label>Project name<input id="project-name" value="${escapeHtml(draft.name)}" maxlength="100"></label>
     <label>Horizon (days)<input id="project-horizon" type="number" min="1" max="14" step="1" value="${draft.horizon_ticks / 48}"></label>
     <label>Controlling completion<select id="objective-activity">${draft.activities.map((activity) => `<option value="${escapeHtml(activity.id)}" ${activity.id === draft.objective_activity_id ? "selected" : ""}>${escapeHtml(activity.id)} · ${escapeHtml(activity.name)}</option>`).join("")}</select></label>
-    <label class="checkbox-label"><input id="pool-riggers" type="checkbox" ${draft.pool_riggers ? "checked" : ""}> Defer interchangeable RIGGER identity</label>`;
+    <label class="checkbox-label" ${draft.resources.some(r => r.capabilities.includes("RIGGER")) ? "" : "hidden"}><input id="pool-riggers" type="checkbox" ${draft.pool_riggers ? "checked" : ""}> Defer interchangeable RIGGER identity (legacy)</label>`;
   $("#project-id").addEventListener("input", (event) => { draft.id = event.target.value; markDraftDirty(); });
   $("#project-name").addEventListener("input", (event) => { draft.name = event.target.value; markDraftDirty(); });
   $("#project-horizon").addEventListener("change", (event) => {
@@ -320,7 +320,7 @@ function renderActivityEditor() {
     </div>
     <p id="relative-time-help" class="guidance">Not-before uses relative day@time, for example 1@07:00. Values move in 30-minute increments.</p>
     <div class="predecessor-box" aria-label="Finish-to-start predecessors">
-      ${draft.activities.filter((other) => other.id !== activity.id).map((other) => `<label class="checkbox-label"><input type="checkbox" data-predecessor="${escapeHtml(other.id)}" ${(activity.predecessors || []).includes(other.id) ? "checked" : ""}> ${escapeHtml(other.id)}</label>`).join("")}
+      ${draft.activities.filter((other) => other.id !== activity.id).map((other) => `<label class="checkbox-label"><input type="checkbox" data-predecessor="${escapeHtml(other.id)}" ${(activity.predecessors || []).includes(other.id) ? "checked" : ""}> ${escapeHtml(other.id)} · ${escapeHtml(other.name)}</label>`).join("")}
     </div>
     <div class="mode-list">${activity.modes.map((mode, modeIndex) => modeCard(activity, mode, modeIndex)).join("")}</div>
     <div class="editor-actions"><button id="add-mode" type="button">Add authorised mode</button>&nbsp;<button id="delete-activity" class="danger" type="button">Remove activity</button></div>`;
@@ -344,15 +344,22 @@ function modeCard(activity, mode, modeIndex) {
   const requirements = mode.requirements || [];
   return `<article class="mode-card" data-mode-card="${modeIndex}">
     <div class="mode-fields">
-      <label>Mode ID<input data-mode-id="${modeIndex}" value="${escapeHtml(mode.id)}" maxlength="20"></label>
-      <label>Work (hours)<input data-mode-work="${modeIndex}" type="number" min="0" max="72" step="0.5" value="${mode.processing_ticks / 2}"></label>
+      <label class="${activity.modes?.length === 1 ? "single-mode-id" : ""}">${activity.modes?.length === 1 ? "Method ID (one method)" : "Mode ID"}<input data-mode-id="${modeIndex}" value="${escapeHtml(mode.id)}" maxlength="20"></label>
+      <label>Productive activity duration (hours)<input data-mode-work="${modeIndex}" type="number" min="0" max="72" step="0.5" value="${mode.processing_ticks / 2}"></label>
       <label>Activity calendar<select data-mode-calendar="${modeIndex}">${calendarOptions(mode.calendar_id)}</select></label>
       <label>Continuity<select data-mode-continuity="${modeIndex}"><option value="SUSPENDABLE_AT_AVAILABILITY_GAPS" ${continuity === "SUSPENDABLE_AT_AVAILABILITY_GAPS" ? "selected" : ""}>Suspend at availability gaps</option><option value="CONTINUOUS" ${continuity === "CONTINUOUS" ? "selected" : ""}>Continuous productive execution</option></select></label>
       <button type="button" class="danger" data-remove-mode="${modeIndex}">Remove mode</button>
     </div>
+    <p class="guidance">Duration is productive processing, not total resource-hours. Capacity and quantity never change it automatically. Zero hours means a milestone with no resource requirements.</p>
+    ${draft.resource_groups ? `<div class="requirements"><div class="subheading-row"><strong>Group quantities — required simultaneously</strong><button type="button" data-add-group-requirement="${modeIndex}">Add group quantity</button></div>
+      ${(mode.group_requirements || []).map((r, ri) => `<div class="group-demand-row">
+        <label>Group<select data-demand-group="${modeIndex}:${ri}">${draft.resource_groups.map(g => `<option value="${escapeHtml(g.id)}" ${g.id === r.group_id ? "selected" : ""}>${escapeHtml(g.id)} · ${escapeHtml(g.name)}</option>`).join("")}</select></label>
+        <label>Quantity<input data-group-demand="${modeIndex}:${ri}" type="number" min="1" step="1" value="${r.demand}"></label>
+        <button type="button" data-remove-group-requirement="${modeIndex}:${ri}">Remove quantity</button></div>`).join("")}
+      <p class="slot-note">One row per group; quantity 2 means two units together, not two eligible alternatives. No individual eligibility entry.</p></div>` : ""}
     <div class="requirements">
       <div class="subheading-row"><strong>Simultaneous requirement slots</strong><button type="button" data-add-requirement="${modeIndex}">Add slot</button></div>
-      ${requirements.length ? requirements.map((requirement, requirementIndex) => requirementRow(requirement, modeIndex, requirementIndex)).join("") : '<p class="slot-note">No resource slot: this mode currently consumes productive time without a physical resource.</p>'}
+      ${requirements.length ? requirements.map((requirement, requirementIndex) => requirementRow(requirement, modeIndex, requirementIndex)).join("") : `<p class="slot-note">${mode.processing_ticks === 0 ? "Zero-work milestone: no productive time or resource occupancy." : (mode.group_requirements || []).length ? "No named-resource slots. Group quantities above provide the capacity requirements." : "No resource slot: this mode currently consumes productive time without a physical resource."}</p>`}
       <p class="slot-note">One row is one physical slot. Checked resources are alternatives for that slot. Multiple rows are required simultaneously.</p>
     </div>
   </article>`;
@@ -372,6 +379,18 @@ function requirementRow(requirement, modeIndex, requirementIndex) {
 }
 
 function bindModeEditors(activity) {
+  $$('[data-add-group-requirement]').forEach(button => button.addEventListener("click", () => addGroupRequirement(activity, Number(button.dataset.addGroupRequirement))));
+  for (const [attribute, key] of [["data-demand-group", "group_id"], ["data-group-demand", "demand"]]) {
+    $$(`[${attribute}]`).forEach(input => input.addEventListener("change", () => {
+      const [mi, ri] = input.getAttribute(attribute).split(":").map(Number);
+      activity.modes[mi].group_requirements[ri][key] = key === "demand" ? Number(input.value) : input.value;
+      markDraftDirty();
+    }));
+  }
+  $$('[data-remove-group-requirement]').forEach(button => button.addEventListener("click", () => {
+    const [mi, ri] = button.dataset.removeGroupRequirement.split(":").map(Number);
+    activity.modes[mi].group_requirements.splice(ri, 1); markDraftDirty(); renderActivityEditor();
+  }));
   $$('[data-mode-id]').forEach((input) => input.addEventListener("input", (event) => {
     activity.modes[Number(input.dataset.modeId)].id = event.target.value; markDraftDirty();
   }));
@@ -451,6 +470,7 @@ function deleteActivity(activity) {
 }
 
 function renderResources() {
+  renderGroups();
   $("#resource-editor").innerHTML = draft.resources.map((resource, index) => `<div class="resource-row">
     <label>Resource ID<input value="${escapeHtml(resource.id)}" readonly></label>
     <label>Capabilities<input data-resource-capabilities="${index}" value="${escapeHtml(resource.capabilities.join(", "))}"></label>
@@ -464,6 +484,43 @@ function renderResources() {
     draft.resources[Number(input.dataset.resourceCalendar)].calendar_id = event.target.value; markDraftDirty();
   }));
   $$('[data-remove-resource]').forEach((button) => button.addEventListener("click", () => removeResource(Number(button.dataset.removeResource))));
+}
+
+function addGroupRequirement(activity, modeIndex) {
+  const mode = activity.modes[modeIndex];
+  const available = (draft.resource_groups || []).find(g => !(mode.group_requirements || []).some(r => r.group_id === g.id));
+  if (!available) return showMessage("Add a resource group first, or edit the existing quantity row for that group.", "error");
+  mode.group_requirements ??= [];
+  mode.group_requirements.push({group_id: available.id, demand: 1});
+  markDraftDirty(); renderActivityEditor();
+}
+
+function renderGroups() {
+  $("#group-editor").innerHTML = (draft.resource_groups || []).map((g, i) => `<div class="group-row">
+    <label>Group ID<input value="${escapeHtml(g.id)}" readonly></label>
+    <label>Name<input data-group-name="${i}" value="${escapeHtml(g.name)}" maxlength="100"></label>
+    <label>Capacity<input data-group-capacity="${i}" type="number" min="1" max="32" step="1" value="${g.capacity}"></label>
+    <label>Calendar<select data-group-calendar="${i}">${calendarOptions(g.calendar_id)}</select></label>
+    <button type="button" data-remove-group="${i}">Remove group</button></div>`).join("")
+    || '<p class="guidance">No groups entered.</p>';
+  $("#group-profile-help").textContent = draft.resource_groups
+    ? "Declared disjoint and internally interchangeable; no outside demand assumed unless included in available capacity. At most 8 groups / 32 total units and 64 assignment/set combinations per activity-mode. Groups are not worker rosters."
+    : "Legacy workspace retained unchanged. Use New project for the group-capacity profile; no automatic conversion of old resources, approvals or history.";
+  for (const [attribute, key] of [["data-group-name", "name"], ["data-group-capacity", "capacity"], ["data-group-calendar", "calendar_id"]]) {
+    $$(`[${attribute}]`).forEach(input => input.addEventListener(key === "name" ? "input" : "change", () => {
+      draft.resource_groups[Number(input.getAttribute(attribute))][key] = key === "capacity" ? Number(input.value) : input.value;
+      markDraftDirty();
+    }));
+  }
+  $$('[data-remove-group]').forEach(button => button.addEventListener("click", () => removeGroup(Number(button.dataset.removeGroup))));
+}
+
+function removeGroup(index) {
+  const id = draft.resource_groups[index].id;
+  for (const a of draft.activities) for (const m of a.modes) {
+    if ((m.group_requirements || []).some(r => r.group_id === id)) return showMessage(`${id} is still required by ${a.id}. Remove that quantity row first.`, "error");
+  }
+  draft.resource_groups.splice(index, 1); markDraftDirty(); renderResources(); renderActivityEditor();
 }
 
 function removeResource(index) {
@@ -490,7 +547,7 @@ function renderCalendars() {
 
 function removeCalendar(index) {
   const id = draft.calendars[index].id;
-  const resource = draft.resources.find((item) => item.calendar_id === id);
+  const resource = [...draft.resources, ...(draft.resource_groups || [])].find((item) => item.calendar_id === id);
   if (resource) return showMessage(`${id} is still used by resource ${resource.id}. Change that reference first.`, "error");
   for (const activity of draft.activities) for (const mode of activity.modes) {
     if (mode.calendar_id === id) return showMessage(`${id} is still used by ${activity.id}/${mode.id}. Change that reference first.`, "error");
@@ -506,8 +563,8 @@ function planCard(title, plan, status) {
     <div class="metric-row">
       <div class="metric"><strong>${tickLabel(plan.project_finish)}</strong><span>Controlling finish</span></div>
       <div class="metric"><strong>${escapeHtml(plan.physical_status)}</strong><span>Physical checker</span></div>
-      <div class="metric"><strong>${plan.pooled_riggers ? "Deferred pool" : "Named"}</strong><span>Rigging identity</span></div>
-    </div>${actor}
+      ${plan.source_snapshot.project.resources.some(r => r.capabilities.includes("RIGGER")) ? `<div class="metric"><strong>${plan.pooled_riggers ? "Deferred pool" : "Named"}</strong><span>Rigging identity (legacy)</span></div>` : ""}
+    </div>${actor}<details><summary>Solver / audit details</summary><p class="guidance">${escapeHtml(plan.group_proof || "Exact physical assignment check under the declared roster and no-handover rule.")}</p><p class="guidance">${escapeHtml(plan.solver.name)} ${escapeHtml(plan.solver.version)} · ${escapeHtml(plan.solver.proof)}<br>Policy result: ${escapeHtml(JSON.stringify(plan.objective))}<br>Plan hash: ${escapeHtml(plan.plan_hash)}</p></details>
   </article>`;
 }
 
@@ -546,6 +603,7 @@ function renderComparison() {
     <div class="comparison-grid">
       <div class="change-box"><h4>Changed modes</h4>${listOrNone(comparison.changed_modes, (item) => `${escapeHtml(item.activity_id)}: ${escapeHtml(item.old ?? "not present")} → ${escapeHtml(item.new ?? "not present")}`)}</div>
       <div class="change-box"><h4>Changed assignments</h4>${listOrNone(comparison.changed_assignments, (item) => escapeHtml(item.activity_id))}</div>
+      <div class="change-box"><h4>Changed group quantities</h4>${listOrNone(comparison.changed_group_demands || [], (item) => `${escapeHtml(item.activity_id)}: ${escapeHtml(JSON.stringify(item.old))} → ${escapeHtml(JSON.stringify(item.new))}`)}</div>
       <div class="change-box"><h4>Changed timing / execution periods</h4>${listOrNone(comparison.changed_periods, (item) => `${escapeHtml(item.activity_id)}: ${timingChangeLabel(item.old_start, item.old_finish)} → ${timingChangeLabel(item.new_start, item.new_finish)}`)}</div>
       <div class="change-box"><h4>Unchanged activities</h4>${listOrNone(comparison.unchanged_activity_ids, (item) => escapeHtml(item))}</div>
     </div><p class="guidance">These are computed changes and evaluated alternatives, not a causal explanation.</p>`;
@@ -574,11 +632,12 @@ function assignmentLabel(activity, plan, entry) {
   const modeId = plan.selected_modes[activity.id];
   const mode = activity.modes.find((item) => item.id === modeId);
   const requirements = Object.fromEntries((mode?.requirements || []).map((requirement) => [requirement.id, requirement]));
-  if (!entry.assignments.length) return "No physical slot";
-  return entry.assignments.map(([slot, resource]) => {
+  const groups = (entry.group_demands || []).map(([id, quantity]) => `${escapeHtml(id)} × ${quantity} (group capacity)`);
+  if (!entry.assignments.length && !groups.length) return "No resource demand";
+  return [...groups, ...entry.assignments.map(([slot, resource]) => {
     if (resource !== null) return `${escapeHtml(slot)}: ${escapeHtml(resource)}`;
     return `<span class="deferred">${escapeHtml(slot)}: deferred ${escapeHtml((requirements[slot]?.pool_ids || []).join("+") || "pool")}</span>`;
-  }).join("<br>");
+  })].join("<br>");
 }
 
 function renderResults() {
@@ -599,7 +658,7 @@ function renderResults() {
   $("#plan-table").innerHTML = plan.entries.map((entry) => {
     const activity = activities[entry.activity_id];
     const periods = entry.periods.length ? entry.periods.map(([start, finish]) => `${compactTick(start)}–${compactTick(finish)}`).join("; ") : "Milestone";
-    return `<tr><td><strong>${escapeHtml(entry.activity_id)}</strong> · ${escapeHtml(activity.name)}</td><td>${escapeHtml(plan.selected_modes[entry.activity_id])}</td><td>${tickLabel(entry.start)}</td><td>${tickLabel(entry.finish)}</td><td class="period-list">${escapeHtml(periods)}</td><td>${assignmentLabel(activity, plan, entry)}</td></tr>`;
+    return `<tr><td><strong>${escapeHtml(entry.activity_id)}</strong> · ${escapeHtml(activity.name)}</td><td>${activity.modes.length === 1 && plan.selected_modes[entry.activity_id] === "FIXED" ? '<span class="guidance" title="FIXED — sole authorised method">Single method</span>' : escapeHtml(plan.selected_modes[entry.activity_id])}</td><td>${tickLabel(entry.start)}</td><td>${tickLabel(entry.finish)}</td><td class="period-list">${escapeHtml(periods)}</td><td>${assignmentLabel(activity, plan, entry)}</td></tr>`;
   }).join("");
   renderTimeline(plan, kind, activities);
 }
@@ -635,6 +694,10 @@ function syncActions() {
   $("#open-file").disabled = blocked;
   $("#reload-inputs").disabled = busy || invalidating;
   $$('.workflow-panel button').forEach((button) => { if (button.id !== "calculate" && button.id !== "approve") button.disabled = blocked; });
+  $("#add-group").disabled = busy || !draft?.resource_groups;
+  $$('#report-form input, #report-form select, #report-form button').forEach(control => {
+    control.disabled = blocked || draftDirty || !current.workspace.project.resources?.length;
+  });
 }
 
 async function applyDraft(message = "Trusted project inputs applied. Calculate a new proposal.") {
@@ -736,12 +799,27 @@ $("#add-activity").addEventListener("click", () => {
 $("#add-resource").addEventListener("click", () => {
   try {
     const id = requireIdentifier($("#new-resource-id").value, "Resource ID");
-    if (draft.resources.some((resource) => resource.id === id)) throw new Error(`Resource ID ${id} already exists.`);
+    if ([...draft.resources, ...(draft.resource_groups || [])].some((resource) => resource.id === id)) throw new Error(`Resource ID ${id} already exists.`);
     const capabilities = $("#new-resource-capabilities").value.split(",").map((value) => value.trim()).filter(Boolean);
     if (!capabilities.length) throw new Error("Enter at least one explicit capability.");
     draft.resources.push({id, capabilities, calendar_id: draft.calendars[0]?.id || "DAY"});
-    markDraftDirty(); renderResources(); renderActivityEditor(); renderWorkflow();
+    markDraftDirty(); renderResources(); renderActivityEditor(); renderWorkflow(); renderProjectSettings();
     $("#new-resource-id").value = ""; $("#new-resource-capabilities").value = "";
+  } catch (error) { showMessage(error.message, "error"); }
+});
+
+$("#add-group").addEventListener("click", () => {
+  try {
+    if (!draft.resource_groups) throw new Error("Use New project for the group-capacity profile.");
+    const id = requireIdentifier($("#new-group-id").value, "Group ID");
+    if ([...draft.resource_groups, ...draft.resources].some(g => g.id === id)) throw new Error(`Resource/group ID ${id} already exists.`);
+    const name = $("#new-group-name").value.trim();
+    const capacity = Number($("#new-group-capacity").value);
+    if (!name || !Number.isInteger(capacity) || capacity < 1) throw new Error("Enter a group name and positive whole-number capacity.");
+    if (!$("#new-group-declared").checked) throw new Error("Confirm this group is disjoint from every other group and named resource, and internally interchangeable.");
+    draft.resource_groups.push({id, name, capacity, calendar_id: draft.calendars[0]?.id || "DAY", disjoint: true, interchangeable: true});
+    markDraftDirty(); renderResources(); renderActivityEditor();
+    $("#new-group-id").value = ""; $("#new-group-name").value = ""; $("#new-group-declared").checked = false;
   } catch (error) { showMessage(error.message, "error"); }
 });
 

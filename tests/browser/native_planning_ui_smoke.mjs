@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import {correctionRegressions} from "./native_planning_ui_corrections.mjs";
+import {capacityTrial} from "./planner_resource_capacity.mjs";
 
 const playwrightImport = process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES
   ? path.join(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES, "playwright", "index.mjs")
@@ -129,6 +130,7 @@ async function exampleLifecycle(browser, url) {
   await saveDownload(page, savedPath);
   await page.getByRole("button", {name: "New project"}).click();
   await page.getByText(/New eight-activity starter/).waitFor();
+
   await reopen(page, savedPath);
   const reopened = await page.evaluate(() => window.__pmTrialState.workspace);
   assert(reopened.approved_plan.selected_modes.A03 === "NORMAL", "downloaded recovery reopens with its approval intact");
@@ -201,6 +203,16 @@ async function independentCase(browser, url) {
     N07: "Independent validation",
     N08: "Independent controlling handoff",
   };
+  // New projects no longer inject an artificial example roster. This legacy
+  // eligibility regression explicitly enters the roster its case requires.
+  await page.getByText("Resources and calendars", {exact:true}).click();
+  for (const [id, capabilities] of [["M1","MECH"],["M2","MECH, INSPECT"],["N1","MECH"],["R1","RIGGER"],["R2","RIGGER"]]) {
+    await page.locator("#new-resource-id").fill(id);
+    await page.locator("#new-resource-capabilities").fill(capabilities);
+    await page.locator("#add-resource").click();
+  }
+  await page.locator('[data-resource-calendar="2"]').selectOption("NIGHT");
+  await page.locator("#pool-riggers").check();
   for (const [id, name] of Object.entries(names)) {
     await clickActivity(page, id);
     await fillAndBlur(page.locator("#activity-name"), name);
@@ -328,6 +340,7 @@ try {
   await durationEdit(browser, server.url);
   await independentCase(browser, server.url);
   await failurePaths(browser, server.url);
+  await capacityTrial(browser, server.url, evidenceDir, assert, consoleErrors);
   await correctionRegressions(browser, server.url, evidenceDir, assert, observations);
   const unexpectedConsoleErrors = consoleErrors.filter((message) => !/failure: Failed to load resource: the server responded with a status of (400|422)/.test(message));
   observations.push(`OBSERVED: ${consoleErrors.length - unexpectedConsoleErrors.length} expected console network diagnostics from the deliberately exercised HTTP 400/422 responses`);

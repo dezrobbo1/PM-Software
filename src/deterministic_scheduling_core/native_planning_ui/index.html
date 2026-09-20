@@ -11,7 +11,7 @@
     <div>
       <p class="eyebrow">PM-Software</p>
       <h1>Native planning trial</h1>
-      <p class="subtitle">30-minute relative project time · capacity-one physical resources</p>
+      <p class="subtitle">30-minute relative project time · resource-group quantities and schedule-critical named resources</p>
     </div>
     <div class="file-actions" aria-label="Workspace file actions">
       <button id="load-example" type="button">Load example</button>
@@ -69,10 +69,23 @@
 
       <details class="input-details">
         <summary>Resources and calendars</summary>
-        <p class="guidance">Capabilities are explicit facts. Eligibility is set per requirement slot; it is never inferred from a resource name.</p>
+        <p class="guidance">Available group capacity is a planning input. Groups must be disjoint from each other and all named resources, with interchangeable units under the declared calendar and continuity. The engine cannot discover unreported overlap.</p>
+        <div class="group-section">
+          <h3>Resource groups</h3>
+          <div id="group-editor"></div>
+          <div class="add-row group-add">
+            <label>Group ID<input id="new-group-id" maxlength="20" placeholder="CREW"></label>
+            <label>Group name<input id="new-group-name" maxlength="100" placeholder="Mechanical team"></label>
+            <label>Capacity<input id="new-group-capacity" type="number" min="1" max="32" step="1" value="2"></label>
+            <label class="checkbox-label"><input id="new-group-declared" type="checkbox"> Disjoint and internally interchangeable</label>
+            <button id="add-group" type="button">Add group</button>
+          </div>
+          <p id="group-profile-help" class="guidance">Up to 8 groups / 32 total capacity units; bounded assignment expansion. Group changes do not change productive activity duration. Group quantities do not identify people.</p>
+        </div>
         <div class="resource-calendar-grid">
           <div>
-            <div class="subheading-row"><h3>Physical resources</h3><span>capacity 1 each</span></div>
+            <div class="subheading-row"><h3>Named / explicit-eligibility resources</h3><span>capacity 1 each</span></div>
+            <p class="guidance">Keep these where identity or differing qualifications/availability matters. Do not also count them in group capacity. Capabilities and eligibility remain explicit facts, not inferred from names.</p>
             <div id="resource-editor"></div>
             <div class="add-row">
               <label>Resource ID <input id="new-resource-id" maxlength="20" placeholder="M3"></label>
@@ -109,6 +122,7 @@
       <div class="workflow-grid">
         <form id="report-form" class="outage-form">
           <h3>Report resource unavailable</h3>
+          <p id="pool-report-help" class="guidance">Reports apply only to named resources. Edit group capacity through project inputs; timed partial-pool outages are not supported.</p>
           <div class="form-grid">
             <label>Resource <select id="outage-resource"></select></label>
             <label>Start <input id="outage-start" value="1@10:00" placeholder="1@10:00"></label>
@@ -141,7 +155,7 @@
       <p class="guidance">Only productive execution periods are drawn. Blank space inside an activity envelope is calendar suspension and consumes no resource capacity.</p>
       <div class="table-scroll plan-table-region">
         <table class="plan-table">
-          <thead><tr><th>Activity</th><th>Mode</th><th>Start</th><th>Finish</th><th>Productive periods</th><th>Assignment</th></tr></thead>
+          <thead><tr><th>Activity</th><th>Mode</th><th>Start</th><th>Finish</th><th>Productive periods</th><th>Group demand / named assignment</th></tr></thead>
           <tbody id="plan-table"></tbody>
         </table>
       </div>
