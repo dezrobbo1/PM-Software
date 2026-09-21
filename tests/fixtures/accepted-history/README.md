@@ -31,22 +31,25 @@ accepted progress and a superseding correction for resource-free productive
 work and an empty-calendar zero-duration milestone, calculated and independently
 validated a recovery, approved it, and completed an exact-byte save/reopen.
 
-The current project in this fixture uses the semantically equivalent empty-list
-forms so the bounded browser editor can display it. Every retained X execution
-context keeps `requirements: {}` and every retained M execution context keeps
-`daily_windows: {}`. This explicit project edit did not rewrite captured history.
+The current eight-activity project in this fixture uses the semantically
+equivalent empty-list forms so the bounded browser editor can display and open
+it under its existing 8–15 activity trial limit. Five zero-duration filler
+milestones have explicit `NOT_STARTED` statuses and add no compatibility
+semantics. Every retained X execution context keeps `requirements: {}` and
+every retained M execution context keeps `daily_windows: {}`. This explicit
+project edit did not rewrite captured history.
 
 Frozen empty-iterable fixture SHA-256:
-`472333fa38b1286b4d4880812b0ac2ee5630c96d18a26fe0304e98a146c824d8`
+`6f1d2c21aedab1dd48d2513743c442774ef0e19727aa90aa6442ecd9224f5156`
 
 Trusted-input hash:
-`d26d6f278b883685359e944684ffbddc07c81d402ebcd446fae345761274458b`
+`8d61edc3e469ee749c33948ca2559123b4267324f6262e0f3dfe7f16b9c5d255`
 
 Approved recovery hash:
-`492175fc10616a9b3a464d7be72736e786669a147e1f824cde435c10c92f9cd5`
+`1afabee1743157aa75008dcd84b7b665438588df847571065800e9eafd153796`
 
 Retained baseline history hash:
-`e7874c57bc4200b27270ce4cbac1d3ccc152aaf25bc0c192b8aa9a1140282599`
+`d7cddfee4571f2657bc1bfe1cdb1e0c739341d792bee0944f3c486c2c18b50d5`
 
 The oracle also rejected non-empty mappings for either field. Tests preserve
 that boundary and apply scheduling-feasibility checks only to current accepted

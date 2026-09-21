@@ -57,11 +57,96 @@
         ]
       },
       {
+        "id": "F1",
+        "name": "Browser-bound filler milestone 1",
+        "predecessors": [],
+        "not_before": 0,
+        "modes": [
+          {
+            "id": "ZERO",
+            "processing_ticks": 0,
+            "calendar_id": "ALL",
+            "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+            "requirements": [],
+            "group_requirements": []
+          }
+        ]
+      },
+      {
+        "id": "F2",
+        "name": "Browser-bound filler milestone 2",
+        "predecessors": [],
+        "not_before": 0,
+        "modes": [
+          {
+            "id": "ZERO",
+            "processing_ticks": 0,
+            "calendar_id": "ALL",
+            "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+            "requirements": [],
+            "group_requirements": []
+          }
+        ]
+      },
+      {
+        "id": "F3",
+        "name": "Browser-bound filler milestone 3",
+        "predecessors": [],
+        "not_before": 0,
+        "modes": [
+          {
+            "id": "ZERO",
+            "processing_ticks": 0,
+            "calendar_id": "ALL",
+            "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+            "requirements": [],
+            "group_requirements": []
+          }
+        ]
+      },
+      {
+        "id": "F4",
+        "name": "Browser-bound filler milestone 4",
+        "predecessors": [],
+        "not_before": 0,
+        "modes": [
+          {
+            "id": "ZERO",
+            "processing_ticks": 0,
+            "calendar_id": "ALL",
+            "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+            "requirements": [],
+            "group_requirements": []
+          }
+        ]
+      },
+      {
+        "id": "F5",
+        "name": "Browser-bound filler milestone 5",
+        "predecessors": [],
+        "not_before": 0,
+        "modes": [
+          {
+            "id": "ZERO",
+            "processing_ticks": 0,
+            "calendar_id": "ALL",
+            "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+            "requirements": [],
+            "group_requirements": []
+          }
+        ]
+      },
+      {
         "id": "H",
         "name": "Controlling handoff",
         "predecessors": [
           "X",
-          "M"
+          "M",
+          "F1",
+          "F2",
+          "F3",
+          "F4",
+          "F5"
         ],
         "not_before": 0,
         "modes": [
@@ -79,7 +164,7 @@
   },
   "reports": [],
   "approved_plan": {
-    "source_state_hash": "4317e81fc32ea1773c40f5328a332e0294f49cdf4178054eb2f133dae941d7b0",
+    "source_state_hash": "5a6152f0269107318cb0959f791688c18c9ba390621794b8716013f0c89a17ba",
     "source_snapshot": {
       "project": {
         "id": "merged-v2-empty-iterables",
@@ -138,11 +223,96 @@
             ]
           },
           {
+            "id": "F1",
+            "name": "Browser-bound filler milestone 1",
+            "predecessors": [],
+            "not_before": 0,
+            "modes": [
+              {
+                "id": "ZERO",
+                "processing_ticks": 0,
+                "calendar_id": "ALL",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                "requirements": [],
+                "group_requirements": []
+              }
+            ]
+          },
+          {
+            "id": "F2",
+            "name": "Browser-bound filler milestone 2",
+            "predecessors": [],
+            "not_before": 0,
+            "modes": [
+              {
+                "id": "ZERO",
+                "processing_ticks": 0,
+                "calendar_id": "ALL",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                "requirements": [],
+                "group_requirements": []
+              }
+            ]
+          },
+          {
+            "id": "F3",
+            "name": "Browser-bound filler milestone 3",
+            "predecessors": [],
+            "not_before": 0,
+            "modes": [
+              {
+                "id": "ZERO",
+                "processing_ticks": 0,
+                "calendar_id": "ALL",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                "requirements": [],
+                "group_requirements": []
+              }
+            ]
+          },
+          {
+            "id": "F4",
+            "name": "Browser-bound filler milestone 4",
+            "predecessors": [],
+            "not_before": 0,
+            "modes": [
+              {
+                "id": "ZERO",
+                "processing_ticks": 0,
+                "calendar_id": "ALL",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                "requirements": [],
+                "group_requirements": []
+              }
+            ]
+          },
+          {
+            "id": "F5",
+            "name": "Browser-bound filler milestone 5",
+            "predecessors": [],
+            "not_before": 0,
+            "modes": [
+              {
+                "id": "ZERO",
+                "processing_ticks": 0,
+                "calendar_id": "ALL",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                "requirements": [],
+                "group_requirements": []
+              }
+            ]
+          },
+          {
             "id": "H",
             "name": "Controlling handoff",
             "predecessors": [
               "X",
-              "M"
+              "M",
+              "F1",
+              "F2",
+              "F3",
+              "F4",
+              "F5"
             ],
             "not_before": 0,
             "modes": [
@@ -182,9 +352,9 @@
             "remaining_processing_ticks": 0,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:03:50.638943+00:00",
+            "asserted_at": "2026-09-21T22:24:59.418339+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:03:50.639525+00:00",
+            "accepted_at": "2026-09-21T22:24:59.421465+00:00",
             "supersedes_update_id": null,
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": {
@@ -231,9 +401,9 @@
             "remaining_processing_ticks": 0,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:03:50.639647+00:00",
+            "asserted_at": "2026-09-21T22:24:59.421633+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:03:50.640024+00:00",
+            "accepted_at": "2026-09-21T22:24:59.422302+00:00",
             "supersedes_update_id": "U001",
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": {
@@ -275,9 +445,9 @@
             "remaining_processing_ticks": 0,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:03:50.640116+00:00",
+            "asserted_at": "2026-09-21T22:24:59.437359+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:03:50.640487+00:00",
+            "accepted_at": "2026-09-21T22:24:59.438103+00:00",
             "supersedes_update_id": null,
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": {
@@ -314,9 +484,9 @@
             "remaining_processing_ticks": 0,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:03:50.640579+00:00",
+            "asserted_at": "2026-09-21T22:24:59.438239+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:03:50.641068+00:00",
+            "accepted_at": "2026-09-21T22:24:59.441017+00:00",
             "supersedes_update_id": "U003",
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": {
@@ -353,9 +523,109 @@
             "remaining_processing_ticks": null,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:03:50.641148+00:00",
+            "asserted_at": "2026-09-21T22:24:59.441201+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:03:50.641588+00:00",
+            "accepted_at": "2026-09-21T22:24:59.442734+00:00",
+            "supersedes_update_id": null,
+            "reason": "merged-v2 compatibility reproduction",
+            "execution_context": null
+          },
+          {
+            "id": "U006",
+            "activity_id": "F1",
+            "status": "ACCEPTED",
+            "execution_state": "NOT_STARTED",
+            "actual_start": null,
+            "actual_finish": null,
+            "actual_periods": [],
+            "mode_id": null,
+            "named_assignments": [],
+            "remaining_processing_ticks": null,
+            "occurred_at": 2,
+            "asserted_by": "oracle-reproducer",
+            "asserted_at": "2026-09-21T22:24:59.442903+00:00",
+            "accepted_by": "oracle-acceptor",
+            "accepted_at": "2026-09-21T22:24:59.443585+00:00",
+            "supersedes_update_id": null,
+            "reason": "merged-v2 compatibility reproduction",
+            "execution_context": null
+          },
+          {
+            "id": "U007",
+            "activity_id": "F2",
+            "status": "ACCEPTED",
+            "execution_state": "NOT_STARTED",
+            "actual_start": null,
+            "actual_finish": null,
+            "actual_periods": [],
+            "mode_id": null,
+            "named_assignments": [],
+            "remaining_processing_ticks": null,
+            "occurred_at": 2,
+            "asserted_by": "oracle-reproducer",
+            "asserted_at": "2026-09-21T22:24:59.443698+00:00",
+            "accepted_by": "oracle-acceptor",
+            "accepted_at": "2026-09-21T22:24:59.445412+00:00",
+            "supersedes_update_id": null,
+            "reason": "merged-v2 compatibility reproduction",
+            "execution_context": null
+          },
+          {
+            "id": "U008",
+            "activity_id": "F3",
+            "status": "ACCEPTED",
+            "execution_state": "NOT_STARTED",
+            "actual_start": null,
+            "actual_finish": null,
+            "actual_periods": [],
+            "mode_id": null,
+            "named_assignments": [],
+            "remaining_processing_ticks": null,
+            "occurred_at": 2,
+            "asserted_by": "oracle-reproducer",
+            "asserted_at": "2026-09-21T22:24:59.445544+00:00",
+            "accepted_by": "oracle-acceptor",
+            "accepted_at": "2026-09-21T22:24:59.447677+00:00",
+            "supersedes_update_id": null,
+            "reason": "merged-v2 compatibility reproduction",
+            "execution_context": null
+          },
+          {
+            "id": "U009",
+            "activity_id": "F4",
+            "status": "ACCEPTED",
+            "execution_state": "NOT_STARTED",
+            "actual_start": null,
+            "actual_finish": null,
+            "actual_periods": [],
+            "mode_id": null,
+            "named_assignments": [],
+            "remaining_processing_ticks": null,
+            "occurred_at": 2,
+            "asserted_by": "oracle-reproducer",
+            "asserted_at": "2026-09-21T22:24:59.447817+00:00",
+            "accepted_by": "oracle-acceptor",
+            "accepted_at": "2026-09-21T22:24:59.448582+00:00",
+            "supersedes_update_id": null,
+            "reason": "merged-v2 compatibility reproduction",
+            "execution_context": null
+          },
+          {
+            "id": "U010",
+            "activity_id": "F5",
+            "status": "ACCEPTED",
+            "execution_state": "NOT_STARTED",
+            "actual_start": null,
+            "actual_finish": null,
+            "actual_periods": [],
+            "mode_id": null,
+            "named_assignments": [],
+            "remaining_processing_ticks": null,
+            "occurred_at": 2,
+            "asserted_by": "oracle-reproducer",
+            "asserted_at": "2026-09-21T22:24:59.448822+00:00",
+            "accepted_by": "oracle-acceptor",
+            "accepted_at": "2026-09-21T22:24:59.449605+00:00",
             "supersedes_update_id": null,
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": null
@@ -363,10 +633,15 @@
         ]
       }
     },
-    "reference_plan_hash": "e7874c57bc4200b27270ce4cbac1d3ccc152aaf25bc0c192b8aa9a1140282599",
+    "reference_plan_hash": "d7cddfee4571f2657bc1bfe1cdb1e0c739341d792bee0944f3c486c2c18b50d5",
     "selected_modes": {
       "X": "FREE",
       "M": "ZERO",
+      "F1": "ZERO",
+      "F2": "ZERO",
+      "F3": "ZERO",
+      "F4": "ZERO",
+      "F5": "ZERO",
       "H": "HANDOFF"
     },
     "entries": [
@@ -414,6 +689,101 @@
         "remaining_processing_ticks": 0
       },
       {
+        "activity_id": "F1",
+        "execution_state": "NOT_STARTED",
+        "status_update_id": "U006",
+        "start": 2,
+        "finish": 2,
+        "periods": [],
+        "assignments": [],
+        "group_demands": [],
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "actual_assignments": [],
+        "actual_group_demands": [],
+        "forecast_start": 2,
+        "forecast_finish": 2,
+        "forecast_periods": [],
+        "remaining_processing_ticks": 0
+      },
+      {
+        "activity_id": "F2",
+        "execution_state": "NOT_STARTED",
+        "status_update_id": "U007",
+        "start": 2,
+        "finish": 2,
+        "periods": [],
+        "assignments": [],
+        "group_demands": [],
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "actual_assignments": [],
+        "actual_group_demands": [],
+        "forecast_start": 2,
+        "forecast_finish": 2,
+        "forecast_periods": [],
+        "remaining_processing_ticks": 0
+      },
+      {
+        "activity_id": "F3",
+        "execution_state": "NOT_STARTED",
+        "status_update_id": "U008",
+        "start": 2,
+        "finish": 2,
+        "periods": [],
+        "assignments": [],
+        "group_demands": [],
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "actual_assignments": [],
+        "actual_group_demands": [],
+        "forecast_start": 2,
+        "forecast_finish": 2,
+        "forecast_periods": [],
+        "remaining_processing_ticks": 0
+      },
+      {
+        "activity_id": "F4",
+        "execution_state": "NOT_STARTED",
+        "status_update_id": "U009",
+        "start": 2,
+        "finish": 2,
+        "periods": [],
+        "assignments": [],
+        "group_demands": [],
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "actual_assignments": [],
+        "actual_group_demands": [],
+        "forecast_start": 2,
+        "forecast_finish": 2,
+        "forecast_periods": [],
+        "remaining_processing_ticks": 0
+      },
+      {
+        "activity_id": "F5",
+        "execution_state": "NOT_STARTED",
+        "status_update_id": "U010",
+        "start": 2,
+        "finish": 2,
+        "periods": [],
+        "assignments": [],
+        "group_demands": [],
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "actual_assignments": [],
+        "actual_group_demands": [],
+        "forecast_start": 2,
+        "forecast_finish": 2,
+        "forecast_periods": [],
+        "remaining_processing_ticks": 0
+      },
+      {
         "activity_id": "H",
         "execution_state": "NOT_STARTED",
         "status_update_id": "U005",
@@ -436,9 +806,9 @@
     "objective": [
       2,
       0,
+      10,
       0,
-      0,
-      6
+      66
     ],
     "project_finish": 2,
     "policy": "finish-mode-preservation-start-movement-assignment-preservation-timing/0",
@@ -452,15 +822,20 @@
         "modes": {
           "X": "FREE",
           "M": "ZERO",
+          "F1": "ZERO",
+          "F2": "ZERO",
+          "F3": "ZERO",
+          "F4": "ZERO",
+          "F5": "ZERO",
           "H": "HANDOFF"
         },
         "status": "OPTIMAL",
         "objective": [
           2,
           0,
+          10,
           0,
-          0,
-          6
+          66
         ]
       }
     ],
@@ -475,14 +850,14 @@
       "proof": "all feasible permitted future mode combinations and objective stages proven optimal",
       "repeatability": "same-environment observation only; equivalent assignments need not be unique"
     },
-    "plan_hash": "492175fc10616a9b3a464d7be72736e786669a147e1f824cde435c10c92f9cd5",
+    "plan_hash": "1afabee1743157aa75008dcd84b7b665438588df847571065800e9eafd153796",
     "approved_by": "oracle-recovery",
-    "approved_at": "2026-09-21T22:03:50.649976+00:00"
+    "approved_at": "2026-09-21T22:24:59.713927+00:00"
   },
   "proposal": null,
   "plan_history": [
     {
-      "source_state_hash": "84e2505b8c3796096715d075c6f34bc95d16743b9948e01d05a494a632938895",
+      "source_state_hash": "d74b786072ed2b0c4281631d746956d8f23d53f3b3c6a3558e6aa3eca3b6587a",
       "source_snapshot": {
         "project": {
           "id": "merged-v2-empty-iterables",
@@ -541,11 +916,96 @@
               ]
             },
             {
+              "id": "F1",
+              "name": "Browser-bound filler milestone 1",
+              "predecessors": [],
+              "not_before": 0,
+              "modes": [
+                {
+                  "id": "ZERO",
+                  "processing_ticks": 0,
+                  "calendar_id": "ALL",
+                  "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                  "requirements": [],
+                  "group_requirements": []
+                }
+              ]
+            },
+            {
+              "id": "F2",
+              "name": "Browser-bound filler milestone 2",
+              "predecessors": [],
+              "not_before": 0,
+              "modes": [
+                {
+                  "id": "ZERO",
+                  "processing_ticks": 0,
+                  "calendar_id": "ALL",
+                  "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                  "requirements": [],
+                  "group_requirements": []
+                }
+              ]
+            },
+            {
+              "id": "F3",
+              "name": "Browser-bound filler milestone 3",
+              "predecessors": [],
+              "not_before": 0,
+              "modes": [
+                {
+                  "id": "ZERO",
+                  "processing_ticks": 0,
+                  "calendar_id": "ALL",
+                  "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                  "requirements": [],
+                  "group_requirements": []
+                }
+              ]
+            },
+            {
+              "id": "F4",
+              "name": "Browser-bound filler milestone 4",
+              "predecessors": [],
+              "not_before": 0,
+              "modes": [
+                {
+                  "id": "ZERO",
+                  "processing_ticks": 0,
+                  "calendar_id": "ALL",
+                  "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                  "requirements": [],
+                  "group_requirements": []
+                }
+              ]
+            },
+            {
+              "id": "F5",
+              "name": "Browser-bound filler milestone 5",
+              "predecessors": [],
+              "not_before": 0,
+              "modes": [
+                {
+                  "id": "ZERO",
+                  "processing_ticks": 0,
+                  "calendar_id": "ALL",
+                  "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                  "requirements": [],
+                  "group_requirements": []
+                }
+              ]
+            },
+            {
               "id": "H",
               "name": "Controlling handoff",
               "predecessors": [
                 "X",
-                "M"
+                "M",
+                "F1",
+                "F2",
+                "F3",
+                "F4",
+                "F5"
               ],
               "not_before": 0,
               "modes": [
@@ -569,6 +1029,11 @@
       "selected_modes": {
         "X": "FREE",
         "M": "ZERO",
+        "F1": "ZERO",
+        "F2": "ZERO",
+        "F3": "ZERO",
+        "F4": "ZERO",
+        "F5": "ZERO",
         "H": "HANDOFF"
       },
       "entries": [
@@ -594,6 +1059,46 @@
           "group_demands": []
         },
         {
+          "activity_id": "F1",
+          "start": 0,
+          "finish": 0,
+          "periods": [],
+          "assignments": [],
+          "group_demands": []
+        },
+        {
+          "activity_id": "F2",
+          "start": 0,
+          "finish": 0,
+          "periods": [],
+          "assignments": [],
+          "group_demands": []
+        },
+        {
+          "activity_id": "F3",
+          "start": 0,
+          "finish": 0,
+          "periods": [],
+          "assignments": [],
+          "group_demands": []
+        },
+        {
+          "activity_id": "F4",
+          "start": 0,
+          "finish": 0,
+          "periods": [],
+          "assignments": [],
+          "group_demands": []
+        },
+        {
+          "activity_id": "F5",
+          "start": 0,
+          "finish": 0,
+          "periods": [],
+          "assignments": [],
+          "group_demands": []
+        },
+        {
           "activity_id": "H",
           "start": 2,
           "finish": 2,
@@ -607,7 +1112,7 @@
         0,
         0,
         0,
-        6
+        16
       ],
       "project_finish": 2,
       "policy": "finish-mode-preservation-start-movement-assignment-preservation-timing/0",
@@ -619,6 +1124,11 @@
           "modes": {
             "X": "FREE",
             "M": "ZERO",
+            "F1": "ZERO",
+            "F2": "ZERO",
+            "F3": "ZERO",
+            "F4": "ZERO",
+            "F5": "ZERO",
             "H": "HANDOFF"
           },
           "status": "OPTIMAL",
@@ -627,7 +1137,7 @@
             0,
             0,
             0,
-            6
+            16
           ]
         }
       ],
@@ -642,9 +1152,9 @@
         "repeatability": "same-environment observation only; equivalent assignments need not be unique"
       },
       "group_proof": "aggregate productive-period capacity plus exact global fixed anonymous allocation; no real-person assignment",
-      "plan_hash": "e7874c57bc4200b27270ce4cbac1d3ccc152aaf25bc0c192b8aa9a1140282599",
+      "plan_hash": "d7cddfee4571f2657bc1bfe1cdb1e0c739341d792bee0944f3c486c2c18b50d5",
       "approved_by": "oracle-baseline",
-      "approved_at": "2026-09-21T22:03:50.638697+00:00"
+      "approved_at": "2026-09-21T22:24:59.415430+00:00"
     }
   ],
   "execution": {
@@ -668,9 +1178,9 @@
         "remaining_processing_ticks": 0,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:03:50.638943+00:00",
+        "asserted_at": "2026-09-21T22:24:59.418339+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:03:50.639525+00:00",
+        "accepted_at": "2026-09-21T22:24:59.421465+00:00",
         "supersedes_update_id": null,
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": {
@@ -717,9 +1227,9 @@
         "remaining_processing_ticks": 0,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:03:50.639647+00:00",
+        "asserted_at": "2026-09-21T22:24:59.421633+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:03:50.640024+00:00",
+        "accepted_at": "2026-09-21T22:24:59.422302+00:00",
         "supersedes_update_id": "U001",
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": {
@@ -761,9 +1271,9 @@
         "remaining_processing_ticks": 0,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:03:50.640116+00:00",
+        "asserted_at": "2026-09-21T22:24:59.437359+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:03:50.640487+00:00",
+        "accepted_at": "2026-09-21T22:24:59.438103+00:00",
         "supersedes_update_id": null,
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": {
@@ -800,9 +1310,9 @@
         "remaining_processing_ticks": 0,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:03:50.640579+00:00",
+        "asserted_at": "2026-09-21T22:24:59.438239+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:03:50.641068+00:00",
+        "accepted_at": "2026-09-21T22:24:59.441017+00:00",
         "supersedes_update_id": "U003",
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": {
@@ -839,9 +1349,109 @@
         "remaining_processing_ticks": null,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:03:50.641148+00:00",
+        "asserted_at": "2026-09-21T22:24:59.441201+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:03:50.641588+00:00",
+        "accepted_at": "2026-09-21T22:24:59.442734+00:00",
+        "supersedes_update_id": null,
+        "reason": "merged-v2 compatibility reproduction",
+        "execution_context": null
+      },
+      {
+        "id": "U006",
+        "activity_id": "F1",
+        "status": "ACCEPTED",
+        "execution_state": "NOT_STARTED",
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "mode_id": null,
+        "named_assignments": [],
+        "remaining_processing_ticks": null,
+        "occurred_at": 2,
+        "asserted_by": "oracle-reproducer",
+        "asserted_at": "2026-09-21T22:24:59.442903+00:00",
+        "accepted_by": "oracle-acceptor",
+        "accepted_at": "2026-09-21T22:24:59.443585+00:00",
+        "supersedes_update_id": null,
+        "reason": "merged-v2 compatibility reproduction",
+        "execution_context": null
+      },
+      {
+        "id": "U007",
+        "activity_id": "F2",
+        "status": "ACCEPTED",
+        "execution_state": "NOT_STARTED",
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "mode_id": null,
+        "named_assignments": [],
+        "remaining_processing_ticks": null,
+        "occurred_at": 2,
+        "asserted_by": "oracle-reproducer",
+        "asserted_at": "2026-09-21T22:24:59.443698+00:00",
+        "accepted_by": "oracle-acceptor",
+        "accepted_at": "2026-09-21T22:24:59.445412+00:00",
+        "supersedes_update_id": null,
+        "reason": "merged-v2 compatibility reproduction",
+        "execution_context": null
+      },
+      {
+        "id": "U008",
+        "activity_id": "F3",
+        "status": "ACCEPTED",
+        "execution_state": "NOT_STARTED",
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "mode_id": null,
+        "named_assignments": [],
+        "remaining_processing_ticks": null,
+        "occurred_at": 2,
+        "asserted_by": "oracle-reproducer",
+        "asserted_at": "2026-09-21T22:24:59.445544+00:00",
+        "accepted_by": "oracle-acceptor",
+        "accepted_at": "2026-09-21T22:24:59.447677+00:00",
+        "supersedes_update_id": null,
+        "reason": "merged-v2 compatibility reproduction",
+        "execution_context": null
+      },
+      {
+        "id": "U009",
+        "activity_id": "F4",
+        "status": "ACCEPTED",
+        "execution_state": "NOT_STARTED",
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "mode_id": null,
+        "named_assignments": [],
+        "remaining_processing_ticks": null,
+        "occurred_at": 2,
+        "asserted_by": "oracle-reproducer",
+        "asserted_at": "2026-09-21T22:24:59.447817+00:00",
+        "accepted_by": "oracle-acceptor",
+        "accepted_at": "2026-09-21T22:24:59.448582+00:00",
+        "supersedes_update_id": null,
+        "reason": "merged-v2 compatibility reproduction",
+        "execution_context": null
+      },
+      {
+        "id": "U010",
+        "activity_id": "F5",
+        "status": "ACCEPTED",
+        "execution_state": "NOT_STARTED",
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "mode_id": null,
+        "named_assignments": [],
+        "remaining_processing_ticks": null,
+        "occurred_at": 2,
+        "asserted_by": "oracle-reproducer",
+        "asserted_at": "2026-09-21T22:24:59.448822+00:00",
+        "accepted_by": "oracle-acceptor",
+        "accepted_at": "2026-09-21T22:24:59.449605+00:00",
         "supersedes_update_id": null,
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": null

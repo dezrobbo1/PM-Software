@@ -290,18 +290,21 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
     def test_merged_v2_empty_iterable_fixture_reopens_without_rewriting_history(self):
         fixture = Path(__file__).parent / "fixtures/accepted-history/merged-v2-empty-iterables.json"
         original = fixture.read_bytes()
-        self.assertEqual(sha256(original).hexdigest(), "472333fa38b1286b4d4880812b0ac2ee5630c96d18a26fe0304e98a146c824d8")
+        self.assertEqual(sha256(original).hexdigest(), "6f1d2c21aedab1dd48d2513743c442774ef0e19727aa90aa6442ecd9224f5156")
         workspace = load(fixture)
         validate_stored_plans(workspace)
-        self.assertEqual(state_hash(workspace), "d26d6f278b883685359e944684ffbddc07c81d402ebcd446fae345761274458b")
-        self.assertEqual(workspace["approved_plan"]["plan_hash"], "492175fc10616a9b3a464d7be72736e786669a147e1f824cde435c10c92f9cd5")
+        self.assertEqual(state_hash(workspace), "8d61edc3e469ee749c33948ca2559123b4267324f6262e0f3dfe7f16b9c5d255")
+        self.assertEqual(workspace["approved_plan"]["plan_hash"], "1afabee1743157aa75008dcd84b7b665438588df847571065800e9eafd153796")
         self.assertEqual([plan["plan_hash"] for plan in workspace["plan_history"]],
-                         ["e7874c57bc4200b27270ce4cbac1d3ccc152aaf25bc0c192b8aa9a1140282599"])
+                         ["d7cddfee4571f2657bc1bfe1cdb1e0c739341d792bee0944f3c486c2c18b50d5"])
         records = workspace["execution"]["updates"]
         self.assertTrue(all(record["execution_context"]["mode"]["requirements"] == {}
                             for record in records if record["activity_id"] == "X"))
         self.assertTrue(all(record["execution_context"]["calendars"][0]["daily_windows"] == {}
                             for record in records if record["activity_id"] == "M"))
+        session = BrowserSession()
+        dispatch_action("/api/open", {"workspace": workspace, "filename": fixture.name}, session)
+        self.assertEqual(session.workspace, workspace)
         before = deepcopy(workspace)
         with TemporaryDirectory() as directory:
             path = Path(directory) / "merged-v2-empty-iterables.json"
