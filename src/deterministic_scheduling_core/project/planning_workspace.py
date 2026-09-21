@@ -568,7 +568,9 @@ def _validate_historical_execution_context(
         if (not isinstance(resource_id, str) or not resource_id.strip() or resource_id.startswith("@group/")
                 or resource_id in resources):
             raise ValueError(f"{activity_id}: historical named-resource IDs must be nonempty, unique and non-anonymous")
-        if (not isinstance(capabilities, list) or not capabilities
+        # Legacy v2 also accepts strings via set(capabilities). Retain their
+        # character-set meaning and captured representation without coercion.
+        if (not isinstance(capabilities, (list, str)) or not capabilities
                 or any(not isinstance(capability, str) or not capability.strip() for capability in capabilities)):
             raise ValueError(f"{activity_id}/{resource_id}: historical capabilities must be nonempty strings")
         # Match the existing v2 project boundary without rewriting captured values.

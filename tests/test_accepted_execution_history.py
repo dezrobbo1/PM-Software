@@ -306,6 +306,39 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
                     save(reopened, path)
                     self.assertEqual(path.read_bytes(), original_bytes)
 
+    def test_v2_string_capabilities_preserve_history_and_set_semantics(self):
+        for capabilities in ("Q", "QQ", "QR", ["Q"], ["Q", "Q"]):
+            with self.subTest(capabilities=capabilities):
+                workspace = self.named_history_case()
+                project = deepcopy(workspace["project"])
+                project["resources"][0]["capabilities"] = capabilities
+                replace_project(workspace, project)
+                values = dict(actual_start=20, actual_periods=[[20, 26]], mode_id="USED",
+                    named_assignments=[["ONE", "R1"], ["TWO", "R2"]], remaining_processing_ticks=2)
+                old_id = _accept(workspace, "X", "IN_PROGRESS", **values)
+                _accept(workspace, "X", "IN_PROGRESS", supersedes_update_id=old_id, **values)
+                for record in workspace["execution"]["updates"]:
+                    if record["activity_id"] == "X":
+                        self.assertEqual(record["execution_context"]["named_resources"][0]["capabilities"], capabilities)
+                validate_plan(workspace, propose(workspace))
+                before = deepcopy(workspace)
+                original_hash = state_hash(workspace)
+                with TemporaryDirectory() as directory:
+                    path = Path(directory) / "capabilities.json"
+                    save(workspace, path)
+                    original_bytes = path.read_bytes()
+                    reopened = load(path)
+                    self.assertEqual(reopened, before)
+                    self.assertEqual(state_hash(reopened), original_hash)
+                    save(reopened, path)
+                    self.assertEqual(path.read_bytes(), original_bytes)
+                # A scalar string retains legacy character-set semantics; it
+                # must not become one new multi-character qualification.
+                invalid = deepcopy(workspace)
+                current_status_records(invalid)["X"]["execution_context"]["mode"]["requirements"][0]["pool_ids"] = ["QR"]
+                with self.assertRaises(ValueError):
+                    validate(invalid)
+
     def test_superseded_accepted_context_structure_is_validated(self):
         workspace = self.named_history_case()
         values = dict(actual_start=20, actual_finish=26, actual_periods=[[20, 26]], mode_id="USED",
