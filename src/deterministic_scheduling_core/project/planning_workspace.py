@@ -502,6 +502,22 @@ def report_status_update(
 
 
 
+def _captured_qualification_set(value: Any, label: str) -> set:
+    """Read legacy v2 JSON qualification data without changing its representation.
+
+    The project boundary uses set(value): arrays contribute hashable items,
+    strings contribute characters and objects contribute keys. Item types and
+    spelling are not restricted there. Retained contexts must use the same
+    semantics, while rejecting structures that cannot be interpreted as sets.
+    """
+    if not isinstance(value, (list, str, dict)):
+        raise ValueError(f"{label} must support legacy v2 set semantics")
+    try:
+        return set(value)
+    except TypeError as exc:
+        raise ValueError(f"{label} must contain hashable qualification values") from exc
+
+
 def _validate_historical_execution_context(
     activity_id: str,
     update: dict,
@@ -568,11 +584,7 @@ def _validate_historical_execution_context(
         if (not isinstance(resource_id, str) or not resource_id.strip() or resource_id.startswith("@group/")
                 or resource_id in resources):
             raise ValueError(f"{activity_id}: historical named-resource IDs must be nonempty, unique and non-anonymous")
-        # Legacy v2 also accepts strings via set(capabilities). Retain their
-        # character-set meaning and captured representation without coercion.
-        if (not isinstance(capabilities, (list, str)) or not capabilities
-                or any(not isinstance(capability, str) or not capability.strip() for capability in capabilities)):
-            raise ValueError(f"{activity_id}/{resource_id}: historical capabilities must be nonempty strings")
+        _captured_qualification_set(capabilities, f"{activity_id}/{resource_id}: historical capabilities")
         # Match the existing v2 project boundary without rewriting captured values.
         if resource.get("capacity", 1) != 1:
             raise ValueError(f"{activity_id}/{resource_id}: historical named resources have capacity one")
@@ -617,10 +629,8 @@ def _validate_historical_execution_context(
         if (not isinstance(requirement_id, str) or not requirement_id.strip()
                 or requirement_id.startswith("@group/") or requirement_id in requirement_ids):
             raise ValueError(f"{activity_id}: historical requirement IDs must be nonempty, unique and non-anonymous")
-        # Match legacy v2 set-based qualification semantics without coercion.
-        if (not isinstance(pools, (list, str)) or not pools
-                or any(not isinstance(value, str) or not value.strip() for value in pools)):
-            raise ValueError(f"{activity_id}/{requirement_id}: historical qualifications must be nonempty strings")
+        if not _captured_qualification_set(pools, f"{activity_id}/{requirement_id}: historical qualifications"):
+            raise ValueError(f"{activity_id}/{requirement_id}: historical qualifications must be nonempty")
         # Legacy v2 scalar eligibility iterates individual resource-ID characters.
         if (not isinstance(eligible, (list, str)) or not eligible
                 or any(not isinstance(value, str) or not value.strip() for value in eligible)

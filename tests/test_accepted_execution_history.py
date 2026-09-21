@@ -402,6 +402,63 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         validate(invalid)
 
+    def test_v2_qualification_representation_matrix_preserves_trusted_history(self):
+        cases = [
+            (["Q", 7], ["Q"]), (["Q", 1.5, True, None, "", " "], ["Q"]),
+            (["Q", 7, 7], ["Q", 7]), (["Q", None], [None]),
+            ([True], [1]), ([1.0], [True]), ([""], [""]), ([" "], [" "]),
+            ("QQ", "Q"), ("QR", ["Q", "R"]),
+            ({"Q": {"legacy": [7]}}, {"Q": None}),
+        ]
+        for capabilities, qualifications in cases:
+            with self.subTest(capabilities=capabilities, qualifications=qualifications):
+                workspace = self.named_history_case()
+                project = deepcopy(workspace["project"])
+                project["resources"][0]["capabilities"] = capabilities
+                project["activities"][0]["modes"][0]["requirements"][0]["pool_ids"] = qualifications
+                replace_project(workspace, project)
+                values = dict(actual_start=20, actual_periods=[[20, 26]], mode_id="USED",
+                    named_assignments=[["ONE", "R1"], ["TWO", "R2"]], remaining_processing_ticks=2)
+                prior_id = _accept(workspace, "X", "IN_PROGRESS", **values)
+                _accept(workspace, "X", "IN_PROGRESS", supersedes_update_id=prior_id, **values)
+                for record in workspace["execution"]["updates"]:
+                    if record["activity_id"] == "X":
+                        context = record["execution_context"]
+                        self.assertEqual(json.dumps(context["named_resources"][0]["capabilities"]), json.dumps(capabilities))
+                        self.assertEqual(json.dumps(context["mode"]["requirements"][0]["pool_ids"]), json.dumps(qualifications))
+                validate_plan(workspace, propose(workspace))
+                original_hash = state_hash(workspace)
+                with TemporaryDirectory() as directory:
+                    path = Path(directory) / "qualification-matrix.json"
+                    save(workspace, path)
+                    original_bytes = path.read_bytes()
+                    reopened = load(path)
+                    self.assertEqual(reopened, workspace)
+                    self.assertEqual(state_hash(reopened), original_hash)
+                    save(reopened, path)
+                    self.assertEqual(path.read_bytes(), original_bytes)
+                invalid = deepcopy(workspace)
+                current_status_records(invalid)["X"]["execution_context"]["mode"]["requirements"][0]["pool_ids"] = ["MISSING"]
+                with self.assertRaisesRegex(ValueError, "historical qualifications"):
+                    validate(invalid)
+
+    def test_malformed_qualification_structure_rejected_in_all_accepted_records(self):
+        workspace = self.named_history_case()
+        values = dict(actual_start=20, actual_periods=[[20, 26]], mode_id="USED",
+            named_assignments=[["ONE", "R1"], ["TWO", "R2"]], remaining_processing_ticks=2)
+        prior_id = _accept(workspace, "X", "IN_PROGRESS", **values)
+        current_id = _accept(workspace, "X", "IN_PROGRESS", supersedes_update_id=prior_id, **values)
+        for record_id in (prior_id, current_id):
+            for field in ("capabilities", "pool_ids"):
+                for value in (None, 7, True, ["Q", []], ["Q", {}]):
+                    with self.subTest(record=record_id, field=field, value=value):
+                        invalid = deepcopy(workspace)
+                        context = next(u for u in invalid["execution"]["updates"] if u["id"] == record_id)["execution_context"]
+                        target = context["named_resources"][0] if field == "capabilities" else context["mode"]["requirements"][0]
+                        target[field] = value
+                        with self.assertRaises(ValueError):
+                            validate(invalid)
+
     def test_superseded_accepted_context_structure_is_validated(self):
         workspace = self.named_history_case()
         values = dict(actual_start=20, actual_finish=26, actual_periods=[[20, 26]], mode_id="USED",
