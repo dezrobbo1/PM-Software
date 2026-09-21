@@ -617,7 +617,8 @@ def _validate_historical_execution_context(
         if (not isinstance(requirement_id, str) or not requirement_id.strip()
                 or requirement_id.startswith("@group/") or requirement_id in requirement_ids):
             raise ValueError(f"{activity_id}: historical requirement IDs must be nonempty, unique and non-anonymous")
-        if (not isinstance(pools, list) or not pools
+        # Match legacy v2 set-based qualification semantics without coercion.
+        if (not isinstance(pools, (list, str)) or not pools
                 or any(not isinstance(value, str) or not value.strip() for value in pools)):
             raise ValueError(f"{activity_id}/{requirement_id}: historical qualifications must be nonempty strings")
         if (not isinstance(eligible, list) or not eligible
