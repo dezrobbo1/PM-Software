@@ -558,11 +558,14 @@ def _validate_historical_execution_context(
         if not isinstance(calendar_id, str) or not calendar_id.strip() or calendar_id in calendars:
             raise ValueError(f"{activity_id}: historical calendar IDs must be nonempty and unique")
         windows = calendar["daily_windows"]
-        # Merged v2 also accepts an empty mapping here: iteration yields no
-        # executable windows. Retain that representation verbatim, while
-        # rejecting nonempty mappings rather than treating their keys as
-        # window entries.
-        if isinstance(windows, dict):
+        # Merged v2 also accepts empty strings and mappings here: iteration
+        # yields no executable windows. Retain those representations verbatim,
+        # while rejecting nonempty values rather than treating their contents
+        # as window entries.
+        if isinstance(windows, str):
+            if windows:
+                raise ValueError(f"{activity_id}: historical calendar windows string must be empty")
+        elif isinstance(windows, dict):
             if windows:
                 raise ValueError(f"{activity_id}: historical calendar windows mapping must be empty")
         elif not isinstance(windows, list):
@@ -624,10 +627,13 @@ def _validate_historical_execution_context(
         raise ValueError(f"{activity_id}: historical group context exceeds the bounded native capacity profile")
 
     requirements = mode.get("requirements", [])
-    # Merged v2 treats an empty mapping as an empty iterable of requirements.
-    # Preserve the captured shape without accepting nonempty mappings whose
-    # keys would otherwise be mistaken for requirement records.
-    if isinstance(requirements, dict):
+    # Merged v2 treats empty strings and mappings as empty iterables of
+    # requirements. Preserve the captured shape without accepting nonempty
+    # values whose contents would otherwise be mistaken for records.
+    if isinstance(requirements, str):
+        if requirements:
+            raise ValueError(f"{activity_id}: historical named requirements string must be empty")
+    elif isinstance(requirements, dict):
         if requirements:
             raise ValueError(f"{activity_id}: historical named requirements mapping must be empty")
     elif not isinstance(requirements, list):

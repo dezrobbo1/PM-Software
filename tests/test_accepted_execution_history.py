@@ -413,6 +413,60 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
         with self.assertRaises((TypeError, ValueError)):
             validate(bad_project)
 
+    def test_v2_empty_string_iterables_preserve_progress_and_provenance(self):
+        workspace, baseline_hash = self.empty_iterable_history_case(requirements="", daily_windows="")
+        x_prior = _accept(workspace, "X", "COMPLETED", actual_start=0, actual_finish=2,
+                          actual_periods=[[0, 2]], mode_id="FREE", named_assignments=[],
+                          remaining_processing_ticks=0)
+        x_current = _accept(workspace, "X", "COMPLETED", actual_start=0, actual_finish=2,
+                            actual_periods=[[0, 2]], mode_id="FREE", named_assignments=[],
+                            remaining_processing_ticks=0, supersedes_update_id=x_prior)
+        m_prior = _accept(workspace, "M", "COMPLETED", actual_start=0, actual_finish=0,
+                          actual_periods=[], mode_id="ZERO", named_assignments=[],
+                          remaining_processing_ticks=0)
+        m_current = _accept(workspace, "M", "COMPLETED", actual_start=0, actual_finish=0,
+                            actual_periods=[], mode_id="ZERO", named_assignments=[],
+                            remaining_processing_ticks=0, supersedes_update_id=m_prior)
+        _accept(workspace, "H", "NOT_STARTED")
+        for record_id in (x_prior, x_current):
+            record = next(update for update in workspace["execution"]["updates"] if update["id"] == record_id)
+            self.assertEqual(record["execution_context"]["mode"]["requirements"], "")
+        for record_id in (m_prior, m_current):
+            record = next(update for update in workspace["execution"]["updates"] if update["id"] == record_id)
+            self.assertEqual(record["execution_context"]["calendars"][0]["daily_windows"], "")
+
+        plan = propose(workspace); validate_plan(workspace, plan); approve(workspace, "test-only")
+        self.assertEqual(workspace["plan_history"][0]["plan_hash"], baseline_hash)
+        trusted_hash = state_hash(workspace)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "empty-string-iterables.json"
+            save(workspace, path); original_bytes = path.read_bytes()
+            reopened = load(path); validate_stored_plans(reopened)
+            self.assertEqual(reopened, workspace)
+            self.assertEqual(state_hash(reopened), trusted_hash)
+            save(reopened, path)
+            self.assertEqual(path.read_bytes(), original_bytes)
+
+        invalid_requirements = deepcopy(workspace)
+        next(u for u in invalid_requirements["execution"]["updates"] if u["id"] == x_prior)[
+            "execution_context"]["mode"]["requirements"] = "R"
+        with self.assertRaises(ValueError):
+            validate(invalid_requirements)
+        invalid_windows = deepcopy(workspace)
+        next(u for u in invalid_windows["execution"]["updates"] if u["id"] == m_prior)[
+            "execution_context"]["calendars"][0]["daily_windows"] = "x"
+        with self.assertRaises(ValueError):
+            validate(invalid_windows)
+        invalid_project_requirements = deepcopy(workspace)
+        invalid_project_requirements["project"]["activities"][0]["modes"][0]["requirements"] = "R"
+        with self.assertRaises((KeyError, TypeError, ValueError)):
+            validate(invalid_project_requirements)
+        invalid_project_windows = deepcopy(workspace)
+        next(c for c in invalid_project_windows["project"]["calendars"] if c["id"] == "EMPTY")[
+            "daily_windows"] = "x"
+        with self.assertRaises((TypeError, ValueError)):
+            validate(invalid_project_windows)
+
     def test_accepted_project_metadata_and_duplicate_qualifications_allow_progress(self):
         for kind in ("calendar", "capabilities", "qualifications"):
             with self.subTest(kind=kind):

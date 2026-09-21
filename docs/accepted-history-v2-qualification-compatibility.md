@@ -12,15 +12,15 @@ in these two fields:
 
 | Captured field | Compatible empty forms | Meaning |
 | --- | --- | --- |
-| Mode `requirements` | `[]`, `{}` | No named-resource requirements |
-| Calendar `daily_windows` | `[]`, `{}` | No executable calendar windows |
+| Mode `requirements` | `[]`, `{}`, `""` | No named-resource requirements |
+| Calendar `daily_windows` | `[]`, `{}`, `""` | No executable calendar windows |
 
-The object form remains an object when captured, saved and reopened. A nonempty
-object is rejected at the project boundary and by historical validation. Valid
-nonempty requirement arrays and calendar-window arrays continue through their
-normal structural checks. In particular, empty calendar windows have defined
-semantics for a zero-duration milestone; the validator does not add artificial
-windows.
+Object and string forms retain their exact type when captured, saved and
+reopened. Nonempty objects and strings are rejected at the project boundary and
+by historical validation. Valid nonempty requirement arrays and calendar-window
+arrays continue through their normal structural checks. In particular, empty
+calendar windows have defined semantics for a zero-duration milestone; the
+validator does not add artificial windows.
 
 The existing project validator interprets resource `capabilities` and requirement
 `pool_ids` using Python set semantics. Accepted execution captures those values
