@@ -290,11 +290,11 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
     def test_merged_v2_empty_iterable_fixture_reopens_without_rewriting_history(self):
         fixture = Path(__file__).parent / "fixtures/accepted-history/merged-v2-empty-iterables.json"
         original = fixture.read_bytes()
-        self.assertEqual(sha256(original).hexdigest(), "6f1d2c21aedab1dd48d2513743c442774ef0e19727aa90aa6442ecd9224f5156")
+        self.assertEqual(sha256(original).hexdigest(), "998e3c8e7914202cdecfad163b2d90619191acaea28410b2b0f06783ef633117")
         workspace = load(fixture)
         validate_stored_plans(workspace)
-        self.assertEqual(state_hash(workspace), "8d61edc3e469ee749c33948ca2559123b4267324f6262e0f3dfe7f16b9c5d255")
-        self.assertEqual(workspace["approved_plan"]["plan_hash"], "1afabee1743157aa75008dcd84b7b665438588df847571065800e9eafd153796")
+        self.assertEqual(state_hash(workspace), "68179ebf1b313e05f3ebc0f912356bbd2c2f2d0d90f45a4c716ddea70b3b9586")
+        self.assertEqual(workspace["approved_plan"]["plan_hash"], "159e1818dfb78fa6c3bbe853587685e3ebebf758a41cc0e645174f52519c0d0d")
         self.assertEqual([plan["plan_hash"] for plan in workspace["plan_history"]],
                          ["d7cddfee4571f2657bc1bfe1cdb1e0c739341d792bee0944f3c486c2c18b50d5"])
         records = workspace["execution"]["updates"]
@@ -302,6 +302,10 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
                             for record in records if record["activity_id"] == "X"))
         self.assertTrue(all(record["execution_context"]["calendars"][0]["daily_windows"] == {}
                             for record in records if record["activity_id"] == "M"))
+        approved_project = workspace["approved_plan"]["source_snapshot"]["project"]
+        self.assertEqual(approved_project["activities"][0]["modes"][0]["requirements"], [])
+        self.assertEqual(next(calendar for calendar in approved_project["calendars"]
+                              if calendar["id"] == "EMPTY")["daily_windows"], [])
         session = BrowserSession()
         dispatch_action("/api/open", {"workspace": workspace, "filename": fixture.name}, session)
         self.assertEqual(session.workspace, workspace)

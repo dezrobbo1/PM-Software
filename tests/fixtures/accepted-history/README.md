@@ -37,16 +37,19 @@ it under its existing 8–15 activity trial limit. Five zero-duration filler
 milestones have explicit `NOT_STARTED` statuses and add no compatibility
 semantics. Every retained X execution context keeps `requirements: {}` and
 every retained M execution context keeps `daily_windows: {}`. This explicit
-project edit did not rewrite captured history.
+project edit did not rewrite captured history. The oracle then calculated and
+approved the browser projection, so the currently displayed approved plan also
+uses the equivalent list forms; its retained baseline history still carries its
+own original source snapshot and hash.
 
 Frozen empty-iterable fixture SHA-256:
-`6f1d2c21aedab1dd48d2513743c442774ef0e19727aa90aa6442ecd9224f5156`
+`998e3c8e7914202cdecfad163b2d90619191acaea28410b2b0f06783ef633117`
 
 Trusted-input hash:
-`8d61edc3e469ee749c33948ca2559123b4267324f6262e0f3dfe7f16b9c5d255`
+`68179ebf1b313e05f3ebc0f912356bbd2c2f2d0d90f45a4c716ddea70b3b9586`
 
 Approved recovery hash:
-`1afabee1743157aa75008dcd84b7b665438588df847571065800e9eafd153796`
+`159e1818dfb78fa6c3bbe853587685e3ebebf758a41cc0e645174f52519c0d0d`
 
 Retained baseline history hash:
 `d7cddfee4571f2657bc1bfe1cdb1e0c739341d792bee0944f3c486c2c18b50d5`

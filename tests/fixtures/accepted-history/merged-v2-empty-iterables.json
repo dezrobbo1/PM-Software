@@ -164,7 +164,7 @@
   },
   "reports": [],
   "approved_plan": {
-    "source_state_hash": "5a6152f0269107318cb0959f791688c18c9ba390621794b8716013f0c89a17ba",
+    "source_state_hash": "68179ebf1b313e05f3ebc0f912356bbd2c2f2d0d90f45a4c716ddea70b3b9586",
     "source_snapshot": {
       "project": {
         "id": "merged-v2-empty-iterables",
@@ -184,7 +184,7 @@
           },
           {
             "id": "EMPTY",
-            "daily_windows": {}
+            "daily_windows": []
           }
         ],
         "resources": [],
@@ -201,7 +201,7 @@
                 "processing_ticks": 2,
                 "calendar_id": "ALL",
                 "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
-                "requirements": {},
+                "requirements": [],
                 "group_requirements": []
               }
             ]
@@ -352,9 +352,9 @@
             "remaining_processing_ticks": 0,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:24:59.418339+00:00",
+            "asserted_at": "2026-09-21T22:46:23.291968+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:24:59.421465+00:00",
+            "accepted_at": "2026-09-21T22:46:23.292499+00:00",
             "supersedes_update_id": null,
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": {
@@ -401,9 +401,9 @@
             "remaining_processing_ticks": 0,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:24:59.421633+00:00",
+            "asserted_at": "2026-09-21T22:46:23.292629+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:24:59.422302+00:00",
+            "accepted_at": "2026-09-21T22:46:23.293305+00:00",
             "supersedes_update_id": "U001",
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": {
@@ -445,9 +445,9 @@
             "remaining_processing_ticks": 0,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:24:59.437359+00:00",
+            "asserted_at": "2026-09-21T22:46:23.293429+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:24:59.438103+00:00",
+            "accepted_at": "2026-09-21T22:46:23.294109+00:00",
             "supersedes_update_id": null,
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": {
@@ -484,9 +484,9 @@
             "remaining_processing_ticks": 0,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:24:59.438239+00:00",
+            "asserted_at": "2026-09-21T22:46:23.294227+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:24:59.441017+00:00",
+            "accepted_at": "2026-09-21T22:46:23.294976+00:00",
             "supersedes_update_id": "U003",
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": {
@@ -523,9 +523,9 @@
             "remaining_processing_ticks": null,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:24:59.441201+00:00",
+            "asserted_at": "2026-09-21T22:46:23.295086+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:24:59.442734+00:00",
+            "accepted_at": "2026-09-21T22:46:23.295768+00:00",
             "supersedes_update_id": null,
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": null
@@ -543,9 +543,9 @@
             "remaining_processing_ticks": null,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:24:59.442903+00:00",
+            "asserted_at": "2026-09-21T22:46:23.295900+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:24:59.443585+00:00",
+            "accepted_at": "2026-09-21T22:46:23.296587+00:00",
             "supersedes_update_id": null,
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": null
@@ -563,9 +563,9 @@
             "remaining_processing_ticks": null,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:24:59.443698+00:00",
+            "asserted_at": "2026-09-21T22:46:23.296690+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:24:59.445412+00:00",
+            "accepted_at": "2026-09-21T22:46:23.297487+00:00",
             "supersedes_update_id": null,
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": null
@@ -583,9 +583,9 @@
             "remaining_processing_ticks": null,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:24:59.445544+00:00",
+            "asserted_at": "2026-09-21T22:46:23.297595+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:24:59.447677+00:00",
+            "accepted_at": "2026-09-21T22:46:23.298367+00:00",
             "supersedes_update_id": null,
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": null
@@ -603,9 +603,9 @@
             "remaining_processing_ticks": null,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:24:59.447817+00:00",
+            "asserted_at": "2026-09-21T22:46:23.298471+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:24:59.448582+00:00",
+            "accepted_at": "2026-09-21T22:46:23.299230+00:00",
             "supersedes_update_id": null,
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": null
@@ -623,9 +623,9 @@
             "remaining_processing_ticks": null,
             "occurred_at": 2,
             "asserted_by": "oracle-reproducer",
-            "asserted_at": "2026-09-21T22:24:59.448822+00:00",
+            "asserted_at": "2026-09-21T22:46:23.299342+00:00",
             "accepted_by": "oracle-acceptor",
-            "accepted_at": "2026-09-21T22:24:59.449605+00:00",
+            "accepted_at": "2026-09-21T22:46:23.300106+00:00",
             "supersedes_update_id": null,
             "reason": "merged-v2 compatibility reproduction",
             "execution_context": null
@@ -850,9 +850,9 @@
       "proof": "all feasible permitted future mode combinations and objective stages proven optimal",
       "repeatability": "same-environment observation only; equivalent assignments need not be unique"
     },
-    "plan_hash": "1afabee1743157aa75008dcd84b7b665438588df847571065800e9eafd153796",
-    "approved_by": "oracle-recovery",
-    "approved_at": "2026-09-21T22:24:59.713927+00:00"
+    "plan_hash": "159e1818dfb78fa6c3bbe853587685e3ebebf758a41cc0e645174f52519c0d0d",
+    "approved_by": "oracle-browser-projection",
+    "approved_at": "2026-09-21T22:46:23.419322+00:00"
   },
   "proposal": null,
   "plan_history": [
@@ -1154,7 +1154,7 @@
       "group_proof": "aggregate productive-period capacity plus exact global fixed anonymous allocation; no real-person assignment",
       "plan_hash": "d7cddfee4571f2657bc1bfe1cdb1e0c739341d792bee0944f3c486c2c18b50d5",
       "approved_by": "oracle-baseline",
-      "approved_at": "2026-09-21T22:24:59.415430+00:00"
+      "approved_at": "2026-09-21T22:46:23.291566+00:00"
     }
   ],
   "execution": {
@@ -1178,9 +1178,9 @@
         "remaining_processing_ticks": 0,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:24:59.418339+00:00",
+        "asserted_at": "2026-09-21T22:46:23.291968+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:24:59.421465+00:00",
+        "accepted_at": "2026-09-21T22:46:23.292499+00:00",
         "supersedes_update_id": null,
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": {
@@ -1227,9 +1227,9 @@
         "remaining_processing_ticks": 0,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:24:59.421633+00:00",
+        "asserted_at": "2026-09-21T22:46:23.292629+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:24:59.422302+00:00",
+        "accepted_at": "2026-09-21T22:46:23.293305+00:00",
         "supersedes_update_id": "U001",
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": {
@@ -1271,9 +1271,9 @@
         "remaining_processing_ticks": 0,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:24:59.437359+00:00",
+        "asserted_at": "2026-09-21T22:46:23.293429+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:24:59.438103+00:00",
+        "accepted_at": "2026-09-21T22:46:23.294109+00:00",
         "supersedes_update_id": null,
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": {
@@ -1310,9 +1310,9 @@
         "remaining_processing_ticks": 0,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:24:59.438239+00:00",
+        "asserted_at": "2026-09-21T22:46:23.294227+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:24:59.441017+00:00",
+        "accepted_at": "2026-09-21T22:46:23.294976+00:00",
         "supersedes_update_id": "U003",
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": {
@@ -1349,9 +1349,9 @@
         "remaining_processing_ticks": null,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:24:59.441201+00:00",
+        "asserted_at": "2026-09-21T22:46:23.295086+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:24:59.442734+00:00",
+        "accepted_at": "2026-09-21T22:46:23.295768+00:00",
         "supersedes_update_id": null,
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": null
@@ -1369,9 +1369,9 @@
         "remaining_processing_ticks": null,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:24:59.442903+00:00",
+        "asserted_at": "2026-09-21T22:46:23.295900+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:24:59.443585+00:00",
+        "accepted_at": "2026-09-21T22:46:23.296587+00:00",
         "supersedes_update_id": null,
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": null
@@ -1389,9 +1389,9 @@
         "remaining_processing_ticks": null,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:24:59.443698+00:00",
+        "asserted_at": "2026-09-21T22:46:23.296690+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:24:59.445412+00:00",
+        "accepted_at": "2026-09-21T22:46:23.297487+00:00",
         "supersedes_update_id": null,
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": null
@@ -1409,9 +1409,9 @@
         "remaining_processing_ticks": null,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:24:59.445544+00:00",
+        "asserted_at": "2026-09-21T22:46:23.297595+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:24:59.447677+00:00",
+        "accepted_at": "2026-09-21T22:46:23.298367+00:00",
         "supersedes_update_id": null,
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": null
@@ -1429,9 +1429,9 @@
         "remaining_processing_ticks": null,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:24:59.447817+00:00",
+        "asserted_at": "2026-09-21T22:46:23.298471+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:24:59.448582+00:00",
+        "accepted_at": "2026-09-21T22:46:23.299230+00:00",
         "supersedes_update_id": null,
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": null
@@ -1449,9 +1449,9 @@
         "remaining_processing_ticks": null,
         "occurred_at": 2,
         "asserted_by": "oracle-reproducer",
-        "asserted_at": "2026-09-21T22:24:59.448822+00:00",
+        "asserted_at": "2026-09-21T22:46:23.299342+00:00",
         "accepted_by": "oracle-acceptor",
-        "accepted_at": "2026-09-21T22:24:59.449605+00:00",
+        "accepted_at": "2026-09-21T22:46:23.300106+00:00",
         "supersedes_update_id": null,
         "reason": "merged-v2 compatibility reproduction",
         "execution_context": null
