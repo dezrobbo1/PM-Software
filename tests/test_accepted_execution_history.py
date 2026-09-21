@@ -366,6 +366,42 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
                     save(reopened, path)
                     self.assertEqual(path.read_bytes(), original_bytes)
 
+    def test_v2_scalar_eligibility_preserves_execution_and_provenance(self):
+        for eligible in ("R", "RS", ["R"], ["R", "S"]):
+            with self.subTest(eligible=eligible):
+                workspace = self.named_history_case()
+                project = deepcopy(workspace["project"])
+                for resource, rid in zip(project["resources"], ("R", "S")):
+                    resource["id"] = rid
+                requirements = project["activities"][0]["modes"][0]["requirements"]
+                requirements[0]["eligible_resource_ids"] = eligible
+                requirements[1]["eligible_resource_ids"] = ["S"]
+                replace_project(workspace, project)
+                values = dict(actual_start=20, actual_periods=[[20, 26]], mode_id="USED",
+                    named_assignments=[["ONE", "R"], ["TWO", "S"]], remaining_processing_ticks=2)
+                old_id = _accept(workspace, "X", "IN_PROGRESS", **values)
+                _accept(workspace, "X", "IN_PROGRESS", supersedes_update_id=old_id, **values)
+                for record in workspace["execution"]["updates"]:
+                    if record["activity_id"] == "X":
+                        self.assertEqual(record["execution_context"]["mode"]["requirements"][0]["eligible_resource_ids"], eligible)
+                validate_plan(workspace, propose(workspace))
+                original_hash = state_hash(workspace)
+                with TemporaryDirectory() as directory:
+                    path = Path(directory) / "eligibility.json"
+                    save(workspace, path)
+                    original_bytes = path.read_bytes()
+                    reopened = load(path)
+                    self.assertEqual(reopened, workspace)
+                    self.assertEqual(state_hash(reopened), original_hash)
+                    save(reopened, path)
+                    self.assertEqual(path.read_bytes(), original_bytes)
+                for malformed in ("RR", [], 1, [None]):
+                    invalid = deepcopy(workspace)
+                    prior = next(u for u in invalid["execution"]["updates"] if u["id"] == old_id)
+                    prior["execution_context"]["mode"]["requirements"][0]["eligible_resource_ids"] = malformed
+                    with self.assertRaises(ValueError):
+                        validate(invalid)
+
     def test_superseded_accepted_context_structure_is_validated(self):
         workspace = self.named_history_case()
         values = dict(actual_start=20, actual_finish=26, actual_periods=[[20, 26]], mode_id="USED",
