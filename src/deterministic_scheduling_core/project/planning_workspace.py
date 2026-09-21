@@ -631,8 +631,9 @@ def _validate_historical_execution_context(
             raise ValueError(f"{activity_id}: historical requirement IDs must be nonempty, unique and non-anonymous")
         if not _captured_qualification_set(pools, f"{activity_id}/{requirement_id}: historical qualifications"):
             raise ValueError(f"{activity_id}/{requirement_id}: historical qualifications must be nonempty")
-        # Legacy v2 scalar eligibility iterates individual resource-ID characters.
-        if (not isinstance(eligible, (list, str)) or not eligible
+        # Match v2 iteration: array items, string characters or object keys.
+        # Object values are retained metadata, not resource identities.
+        if (not isinstance(eligible, (list, str, dict)) or not eligible
                 or any(not isinstance(value, str) or not value.strip() for value in eligible)
                 or len(eligible) != len(set(eligible))):
             raise ValueError(f"{activity_id}/{requirement_id}: historical eligibility must be nonempty and unique")

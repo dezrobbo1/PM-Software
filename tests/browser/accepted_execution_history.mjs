@@ -124,6 +124,14 @@ export async function acceptedProgressTrial(browser, url, evidenceDir, assert) {
     await click(provenance, "#calculate");
     assert(JSON.stringify((await state(provenance)).workspace.execution) === JSON.stringify(correctedProvenance.execution), "superseded factual calendar error remains provenance and does not constrain current recovery");
     await shot(provenance, "23-superseded-factual-provenance", "#history");
+    const retainedProvenance = await state(provenance);
+    const retainedFile = await save(provenance, "superseded-factual-error-recovery");
+    const retainedReopen = await fresh();
+    await open(retainedReopen, retainedFile);
+    const reopenedProvenance = await state(retainedReopen);
+    assert(JSON.stringify(reopenedProvenance.workspace) === JSON.stringify(retainedProvenance.workspace), "bounded provenance save/fresh reopen retains superseded factual error, correction, proposal and prior approval exactly");
+    assert(reopenedProvenance.trusted_input_hash === retainedProvenance.trusted_input_hash, "bounded provenance reopen preserves trusted hash without recalculation or record rewriting");
+    await shot(retainedReopen, "23b-superseded-provenance-fresh-reopen", "#history");
     const malformed = structuredClone(correctedProvenance);
     malformed.execution.updates.find((u) => u.id === superseded.id).execution_context.mode.processing_ticks = -1;
     const malformedFile = path.join(dir, "INVALID-superseded-context-EXPECTED-REJECTION.json");

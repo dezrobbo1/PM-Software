@@ -26,6 +26,10 @@ structures are rejected for both current and superseded accepted assertions.
 The project/editor validator is unchanged. Historical execution calendars,
 occupancy, continuity and precedence still apply only to current assertions.
 Eligibility remains a separate nonempty/unique resource-ID constraint.
+Its existing v2 iterable forms are arrays of IDs, strings of single-character
+IDs, and objects whose keys are IDs. Object values are retained verbatim as
+metadata; they do not determine eligibility. Captured validation accepts all
+three forms without converting them. Current assignments must still be eligible.
 
 The regression matrix exercises project replacement, report/accept, supersession,
 independent recovery validation, unchanged captured representations and exact

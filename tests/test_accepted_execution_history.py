@@ -366,8 +366,9 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
                     save(reopened, path)
                     self.assertEqual(path.read_bytes(), original_bytes)
 
-    def test_v2_scalar_eligibility_preserves_execution_and_provenance(self):
-        for eligible in ("R", "RS", ["R"], ["R", "S"]):
+    def test_v2_eligibility_representations_preserve_execution_and_provenance(self):
+        for eligible in ("R", "RS", ["R"], ["R", "S"],
+                         {"R": {"legacy": "metadata"}}, {"R": None, "S": [1, {"note": True}]}):
             with self.subTest(eligible=eligible):
                 workspace = self.named_history_case()
                 project = deepcopy(workspace["project"])
@@ -395,12 +396,17 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
                     self.assertEqual(state_hash(reopened), original_hash)
                     save(reopened, path)
                     self.assertEqual(path.read_bytes(), original_bytes)
-                for malformed in ("RR", [], 1, [None]):
-                    invalid = deepcopy(workspace)
-                    prior = next(u for u in invalid["execution"]["updates"] if u["id"] == old_id)
-                    prior["execution_context"]["mode"]["requirements"][0]["eligible_resource_ids"] = malformed
-                    with self.assertRaises(ValueError):
-                        validate(invalid)
+                for record_id in (old_id, current_status_records(workspace)["X"]["id"]):
+                    for malformed in ("RR", [], {}, {"": None}, {" ": "metadata"}, 1, [None]):
+                        invalid = deepcopy(workspace)
+                        record = next(u for u in invalid["execution"]["updates"] if u["id"] == record_id)
+                        record["execution_context"]["mode"]["requirements"][0]["eligible_resource_ids"] = malformed
+                        with self.assertRaises(ValueError):
+                            validate(invalid)
+                invalid = deepcopy(workspace)
+                current_status_records(invalid)["X"]["execution_context"]["mode"]["requirements"][0]["eligible_resource_ids"] = {"S": {"note": "R is no longer eligible"}}
+                with self.assertRaisesRegex(ValueError, "eligib"):
+                    validate(invalid)
 
     def test_v2_qualification_representation_matrix_preserves_trusted_history(self):
         cases = [
