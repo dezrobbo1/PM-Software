@@ -23,3 +23,31 @@ Retained approval hash:
 Tests require load/save to preserve these values and the serialized bytes. They
 also verify that recovery uses the semantic qualification sets without modifying
 the captured arrays or historical snapshots.
+
+`merged-v2-empty-iterables.json` is a second synthetic fixture produced by the
+same exact merged-v2 commit. The oracle accepted `requirements: {}` as zero
+named requirements and `daily_windows: {}` as zero executable windows. It then
+accepted progress and a superseding correction for resource-free productive
+work and an empty-calendar zero-duration milestone, calculated and independently
+validated a recovery, approved it, and completed an exact-byte save/reopen.
+
+The current project in this fixture uses the semantically equivalent empty-list
+forms so the bounded browser editor can display it. Every retained X execution
+context keeps `requirements: {}` and every retained M execution context keeps
+`daily_windows: {}`. This explicit project edit did not rewrite captured history.
+
+Frozen empty-iterable fixture SHA-256:
+`472333fa38b1286b4d4880812b0ac2ee5630c96d18a26fe0304e98a146c824d8`
+
+Trusted-input hash:
+`d26d6f278b883685359e944684ffbddc07c81d402ebcd446fae345761274458b`
+
+Approved recovery hash:
+`492175fc10616a9b3a464d7be72736e786669a147e1f824cde435c10c92f9cd5`
+
+Retained baseline history hash:
+`e7874c57bc4200b27270ce4cbac1d3ccc152aaf25bc0c192b8aa9a1140282599`
+
+The oracle also rejected non-empty mappings for either field. Tests preserve
+that boundary and apply scheduling-feasibility checks only to current accepted
+assertions; structurally sound corrected factual errors remain provenance.

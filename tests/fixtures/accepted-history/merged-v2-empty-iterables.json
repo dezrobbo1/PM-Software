@@ -1,0 +1,851 @@
+{
+  "schema": "pm-native-planning-workspace/2",
+  "project": {
+    "id": "merged-v2-empty-iterables",
+    "name": "Merged v2 empty-iterable compatibility",
+    "horizon_ticks": 48,
+    "objective_activity_id": "H",
+    "pool_riggers": false,
+    "calendars": [
+      {
+        "id": "ALL",
+        "daily_windows": [
+          [
+            0,
+            48
+          ]
+        ]
+      },
+      {
+        "id": "EMPTY",
+        "daily_windows": []
+      }
+    ],
+    "resources": [],
+    "resource_groups": [],
+    "activities": [
+      {
+        "id": "X",
+        "name": "Resource-free productive work",
+        "predecessors": [],
+        "not_before": 0,
+        "modes": [
+          {
+            "id": "FREE",
+            "processing_ticks": 2,
+            "calendar_id": "ALL",
+            "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+            "requirements": [],
+            "group_requirements": []
+          }
+        ]
+      },
+      {
+        "id": "M",
+        "name": "Empty-calendar milestone",
+        "predecessors": [],
+        "not_before": 0,
+        "modes": [
+          {
+            "id": "ZERO",
+            "processing_ticks": 0,
+            "calendar_id": "EMPTY",
+            "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+            "requirements": [],
+            "group_requirements": []
+          }
+        ]
+      },
+      {
+        "id": "H",
+        "name": "Controlling handoff",
+        "predecessors": [
+          "X",
+          "M"
+        ],
+        "not_before": 0,
+        "modes": [
+          {
+            "id": "HANDOFF",
+            "processing_ticks": 0,
+            "calendar_id": "ALL",
+            "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+            "requirements": [],
+            "group_requirements": []
+          }
+        ]
+      }
+    ]
+  },
+  "reports": [],
+  "approved_plan": {
+    "source_state_hash": "4317e81fc32ea1773c40f5328a332e0294f49cdf4178054eb2f133dae941d7b0",
+    "source_snapshot": {
+      "project": {
+        "id": "merged-v2-empty-iterables",
+        "name": "Merged v2 empty-iterable compatibility",
+        "horizon_ticks": 48,
+        "objective_activity_id": "H",
+        "pool_riggers": false,
+        "calendars": [
+          {
+            "id": "ALL",
+            "daily_windows": [
+              [
+                0,
+                48
+              ]
+            ]
+          },
+          {
+            "id": "EMPTY",
+            "daily_windows": {}
+          }
+        ],
+        "resources": [],
+        "resource_groups": [],
+        "activities": [
+          {
+            "id": "X",
+            "name": "Resource-free productive work",
+            "predecessors": [],
+            "not_before": 0,
+            "modes": [
+              {
+                "id": "FREE",
+                "processing_ticks": 2,
+                "calendar_id": "ALL",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                "requirements": {},
+                "group_requirements": []
+              }
+            ]
+          },
+          {
+            "id": "M",
+            "name": "Empty-calendar milestone",
+            "predecessors": [],
+            "not_before": 0,
+            "modes": [
+              {
+                "id": "ZERO",
+                "processing_ticks": 0,
+                "calendar_id": "EMPTY",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                "requirements": [],
+                "group_requirements": []
+              }
+            ]
+          },
+          {
+            "id": "H",
+            "name": "Controlling handoff",
+            "predecessors": [
+              "X",
+              "M"
+            ],
+            "not_before": 0,
+            "modes": [
+              {
+                "id": "HANDOFF",
+                "processing_ticks": 0,
+                "calendar_id": "ALL",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                "requirements": [],
+                "group_requirements": []
+              }
+            ]
+          }
+        ]
+      },
+      "accepted_reports": [],
+      "policy": "finish-mode-preservation-start-movement-assignment-preservation-timing/0",
+      "workspace_schema": "pm-native-planning-workspace/2",
+      "execution": {
+        "status_point": 2,
+        "accepted_updates": [
+          {
+            "id": "U001",
+            "activity_id": "X",
+            "status": "ACCEPTED",
+            "execution_state": "COMPLETED",
+            "actual_start": 0,
+            "actual_finish": 2,
+            "actual_periods": [
+              [
+                0,
+                2
+              ]
+            ],
+            "mode_id": "FREE",
+            "named_assignments": [],
+            "remaining_processing_ticks": 0,
+            "occurred_at": 2,
+            "asserted_by": "oracle-reproducer",
+            "asserted_at": "2026-09-21T22:03:50.638943+00:00",
+            "accepted_by": "oracle-acceptor",
+            "accepted_at": "2026-09-21T22:03:50.639525+00:00",
+            "supersedes_update_id": null,
+            "reason": "merged-v2 compatibility reproduction",
+            "execution_context": {
+              "activity_id": "X",
+              "mode": {
+                "id": "FREE",
+                "processing_ticks": 2,
+                "calendar_id": "ALL",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                "requirements": {},
+                "group_requirements": []
+              },
+              "calendars": [
+                {
+                  "id": "ALL",
+                  "daily_windows": [
+                    [
+                      0,
+                      48
+                    ]
+                  ]
+                }
+              ],
+              "named_resources": [],
+              "resource_groups": [],
+              "accepted_outages": []
+            }
+          },
+          {
+            "id": "U002",
+            "activity_id": "X",
+            "status": "ACCEPTED",
+            "execution_state": "COMPLETED",
+            "actual_start": 0,
+            "actual_finish": 2,
+            "actual_periods": [
+              [
+                0,
+                2
+              ]
+            ],
+            "mode_id": "FREE",
+            "named_assignments": [],
+            "remaining_processing_ticks": 0,
+            "occurred_at": 2,
+            "asserted_by": "oracle-reproducer",
+            "asserted_at": "2026-09-21T22:03:50.639647+00:00",
+            "accepted_by": "oracle-acceptor",
+            "accepted_at": "2026-09-21T22:03:50.640024+00:00",
+            "supersedes_update_id": "U001",
+            "reason": "merged-v2 compatibility reproduction",
+            "execution_context": {
+              "activity_id": "X",
+              "mode": {
+                "id": "FREE",
+                "processing_ticks": 2,
+                "calendar_id": "ALL",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                "requirements": {},
+                "group_requirements": []
+              },
+              "calendars": [
+                {
+                  "id": "ALL",
+                  "daily_windows": [
+                    [
+                      0,
+                      48
+                    ]
+                  ]
+                }
+              ],
+              "named_resources": [],
+              "resource_groups": [],
+              "accepted_outages": []
+            }
+          },
+          {
+            "id": "U003",
+            "activity_id": "M",
+            "status": "ACCEPTED",
+            "execution_state": "COMPLETED",
+            "actual_start": 0,
+            "actual_finish": 0,
+            "actual_periods": [],
+            "mode_id": "ZERO",
+            "named_assignments": [],
+            "remaining_processing_ticks": 0,
+            "occurred_at": 2,
+            "asserted_by": "oracle-reproducer",
+            "asserted_at": "2026-09-21T22:03:50.640116+00:00",
+            "accepted_by": "oracle-acceptor",
+            "accepted_at": "2026-09-21T22:03:50.640487+00:00",
+            "supersedes_update_id": null,
+            "reason": "merged-v2 compatibility reproduction",
+            "execution_context": {
+              "activity_id": "M",
+              "mode": {
+                "id": "ZERO",
+                "processing_ticks": 0,
+                "calendar_id": "EMPTY",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                "requirements": [],
+                "group_requirements": []
+              },
+              "calendars": [
+                {
+                  "id": "EMPTY",
+                  "daily_windows": {}
+                }
+              ],
+              "named_resources": [],
+              "resource_groups": [],
+              "accepted_outages": []
+            }
+          },
+          {
+            "id": "U004",
+            "activity_id": "M",
+            "status": "ACCEPTED",
+            "execution_state": "COMPLETED",
+            "actual_start": 0,
+            "actual_finish": 0,
+            "actual_periods": [],
+            "mode_id": "ZERO",
+            "named_assignments": [],
+            "remaining_processing_ticks": 0,
+            "occurred_at": 2,
+            "asserted_by": "oracle-reproducer",
+            "asserted_at": "2026-09-21T22:03:50.640579+00:00",
+            "accepted_by": "oracle-acceptor",
+            "accepted_at": "2026-09-21T22:03:50.641068+00:00",
+            "supersedes_update_id": "U003",
+            "reason": "merged-v2 compatibility reproduction",
+            "execution_context": {
+              "activity_id": "M",
+              "mode": {
+                "id": "ZERO",
+                "processing_ticks": 0,
+                "calendar_id": "EMPTY",
+                "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                "requirements": [],
+                "group_requirements": []
+              },
+              "calendars": [
+                {
+                  "id": "EMPTY",
+                  "daily_windows": {}
+                }
+              ],
+              "named_resources": [],
+              "resource_groups": [],
+              "accepted_outages": []
+            }
+          },
+          {
+            "id": "U005",
+            "activity_id": "H",
+            "status": "ACCEPTED",
+            "execution_state": "NOT_STARTED",
+            "actual_start": null,
+            "actual_finish": null,
+            "actual_periods": [],
+            "mode_id": null,
+            "named_assignments": [],
+            "remaining_processing_ticks": null,
+            "occurred_at": 2,
+            "asserted_by": "oracle-reproducer",
+            "asserted_at": "2026-09-21T22:03:50.641148+00:00",
+            "accepted_by": "oracle-acceptor",
+            "accepted_at": "2026-09-21T22:03:50.641588+00:00",
+            "supersedes_update_id": null,
+            "reason": "merged-v2 compatibility reproduction",
+            "execution_context": null
+          }
+        ]
+      }
+    },
+    "reference_plan_hash": "e7874c57bc4200b27270ce4cbac1d3ccc152aaf25bc0c192b8aa9a1140282599",
+    "selected_modes": {
+      "X": "FREE",
+      "M": "ZERO",
+      "H": "HANDOFF"
+    },
+    "entries": [
+      {
+        "activity_id": "X",
+        "execution_state": "COMPLETED",
+        "status_update_id": "U002",
+        "start": 2,
+        "finish": 2,
+        "periods": [],
+        "assignments": [],
+        "group_demands": [],
+        "actual_start": 0,
+        "actual_finish": 2,
+        "actual_periods": [
+          [
+            0,
+            2
+          ]
+        ],
+        "actual_assignments": [],
+        "actual_group_demands": [],
+        "forecast_start": null,
+        "forecast_finish": null,
+        "forecast_periods": [],
+        "remaining_processing_ticks": 0
+      },
+      {
+        "activity_id": "M",
+        "execution_state": "COMPLETED",
+        "status_update_id": "U004",
+        "start": 0,
+        "finish": 0,
+        "periods": [],
+        "assignments": [],
+        "group_demands": [],
+        "actual_start": 0,
+        "actual_finish": 0,
+        "actual_periods": [],
+        "actual_assignments": [],
+        "actual_group_demands": [],
+        "forecast_start": null,
+        "forecast_finish": null,
+        "forecast_periods": [],
+        "remaining_processing_ticks": 0
+      },
+      {
+        "activity_id": "H",
+        "execution_state": "NOT_STARTED",
+        "status_update_id": "U005",
+        "start": 2,
+        "finish": 2,
+        "periods": [],
+        "assignments": [],
+        "group_demands": [],
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "actual_assignments": [],
+        "actual_group_demands": [],
+        "forecast_start": 2,
+        "forecast_finish": 2,
+        "forecast_periods": [],
+        "remaining_processing_ticks": 0
+      }
+    ],
+    "objective": [
+      2,
+      0,
+      0,
+      0,
+      6
+    ],
+    "project_finish": 2,
+    "policy": "finish-mode-preservation-start-movement-assignment-preservation-timing/0",
+    "pooled_riggers": false,
+    "allocation_witness": [],
+    "physical_status": "PROVEN_FEASIBLE",
+    "history_status": "INDEPENDENTLY_VALIDATED",
+    "status_point": 2,
+    "alternatives": [
+      {
+        "modes": {
+          "X": "FREE",
+          "M": "ZERO",
+          "H": "HANDOFF"
+        },
+        "status": "OPTIMAL",
+        "objective": [
+          2,
+          0,
+          0,
+          0,
+          6
+        ]
+      }
+    ],
+    "group_proof": "accepted group history and future quantity are validated without exposing anonymous units; future periods also have an exact global fixed-unit feasibility proof",
+    "solver": {
+      "name": "CP-SAT",
+      "version": "9.15.6755",
+      "workers": 1,
+      "seed": 0,
+      "compiler": "native-workflow/status-2",
+      "feasible_branch_solver_calls": 4,
+      "proof": "all feasible permitted future mode combinations and objective stages proven optimal",
+      "repeatability": "same-environment observation only; equivalent assignments need not be unique"
+    },
+    "plan_hash": "492175fc10616a9b3a464d7be72736e786669a147e1f824cde435c10c92f9cd5",
+    "approved_by": "oracle-recovery",
+    "approved_at": "2026-09-21T22:03:50.649976+00:00"
+  },
+  "proposal": null,
+  "plan_history": [
+    {
+      "source_state_hash": "84e2505b8c3796096715d075c6f34bc95d16743b9948e01d05a494a632938895",
+      "source_snapshot": {
+        "project": {
+          "id": "merged-v2-empty-iterables",
+          "name": "Merged v2 empty-iterable compatibility",
+          "horizon_ticks": 48,
+          "objective_activity_id": "H",
+          "pool_riggers": false,
+          "calendars": [
+            {
+              "id": "ALL",
+              "daily_windows": [
+                [
+                  0,
+                  48
+                ]
+              ]
+            },
+            {
+              "id": "EMPTY",
+              "daily_windows": {}
+            }
+          ],
+          "resources": [],
+          "resource_groups": [],
+          "activities": [
+            {
+              "id": "X",
+              "name": "Resource-free productive work",
+              "predecessors": [],
+              "not_before": 0,
+              "modes": [
+                {
+                  "id": "FREE",
+                  "processing_ticks": 2,
+                  "calendar_id": "ALL",
+                  "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                  "requirements": {},
+                  "group_requirements": []
+                }
+              ]
+            },
+            {
+              "id": "M",
+              "name": "Empty-calendar milestone",
+              "predecessors": [],
+              "not_before": 0,
+              "modes": [
+                {
+                  "id": "ZERO",
+                  "processing_ticks": 0,
+                  "calendar_id": "EMPTY",
+                  "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                  "requirements": [],
+                  "group_requirements": []
+                }
+              ]
+            },
+            {
+              "id": "H",
+              "name": "Controlling handoff",
+              "predecessors": [
+                "X",
+                "M"
+              ],
+              "not_before": 0,
+              "modes": [
+                {
+                  "id": "HANDOFF",
+                  "processing_ticks": 0,
+                  "calendar_id": "ALL",
+                  "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                  "requirements": [],
+                  "group_requirements": []
+                }
+              ]
+            }
+          ]
+        },
+        "accepted_reports": [],
+        "policy": "finish-mode-preservation-start-movement-assignment-preservation-timing/0",
+        "workspace_schema": "pm-native-planning-workspace/1"
+      },
+      "reference_plan_hash": null,
+      "selected_modes": {
+        "X": "FREE",
+        "M": "ZERO",
+        "H": "HANDOFF"
+      },
+      "entries": [
+        {
+          "activity_id": "X",
+          "start": 0,
+          "finish": 2,
+          "periods": [
+            [
+              0,
+              2
+            ]
+          ],
+          "assignments": [],
+          "group_demands": []
+        },
+        {
+          "activity_id": "M",
+          "start": 0,
+          "finish": 0,
+          "periods": [],
+          "assignments": [],
+          "group_demands": []
+        },
+        {
+          "activity_id": "H",
+          "start": 2,
+          "finish": 2,
+          "periods": [],
+          "assignments": [],
+          "group_demands": []
+        }
+      ],
+      "objective": [
+        2,
+        0,
+        0,
+        0,
+        6
+      ],
+      "project_finish": 2,
+      "policy": "finish-mode-preservation-start-movement-assignment-preservation-timing/0",
+      "pooled_riggers": false,
+      "allocation_witness": [],
+      "physical_status": "PROVEN_FEASIBLE",
+      "alternatives": [
+        {
+          "modes": {
+            "X": "FREE",
+            "M": "ZERO",
+            "H": "HANDOFF"
+          },
+          "status": "OPTIMAL",
+          "objective": [
+            2,
+            0,
+            0,
+            0,
+            6
+          ]
+        }
+      ],
+      "solver": {
+        "name": "CP-SAT",
+        "version": "9.15.6755",
+        "workers": 1,
+        "seed": 0,
+        "compiler": "native-workflow/groups-1",
+        "feasible_branch_solver_calls": 2,
+        "proof": "all feasible mode combinations and objective stages proven optimal",
+        "repeatability": "same-environment observation only; equivalent assignments need not be unique"
+      },
+      "group_proof": "aggregate productive-period capacity plus exact global fixed anonymous allocation; no real-person assignment",
+      "plan_hash": "e7874c57bc4200b27270ce4cbac1d3ccc152aaf25bc0c192b8aa9a1140282599",
+      "approved_by": "oracle-baseline",
+      "approved_at": "2026-09-21T22:03:50.638697+00:00"
+    }
+  ],
+  "execution": {
+    "status_point": 2,
+    "updates": [
+      {
+        "id": "U001",
+        "activity_id": "X",
+        "status": "ACCEPTED",
+        "execution_state": "COMPLETED",
+        "actual_start": 0,
+        "actual_finish": 2,
+        "actual_periods": [
+          [
+            0,
+            2
+          ]
+        ],
+        "mode_id": "FREE",
+        "named_assignments": [],
+        "remaining_processing_ticks": 0,
+        "occurred_at": 2,
+        "asserted_by": "oracle-reproducer",
+        "asserted_at": "2026-09-21T22:03:50.638943+00:00",
+        "accepted_by": "oracle-acceptor",
+        "accepted_at": "2026-09-21T22:03:50.639525+00:00",
+        "supersedes_update_id": null,
+        "reason": "merged-v2 compatibility reproduction",
+        "execution_context": {
+          "activity_id": "X",
+          "mode": {
+            "id": "FREE",
+            "processing_ticks": 2,
+            "calendar_id": "ALL",
+            "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+            "requirements": {},
+            "group_requirements": []
+          },
+          "calendars": [
+            {
+              "id": "ALL",
+              "daily_windows": [
+                [
+                  0,
+                  48
+                ]
+              ]
+            }
+          ],
+          "named_resources": [],
+          "resource_groups": [],
+          "accepted_outages": []
+        }
+      },
+      {
+        "id": "U002",
+        "activity_id": "X",
+        "status": "ACCEPTED",
+        "execution_state": "COMPLETED",
+        "actual_start": 0,
+        "actual_finish": 2,
+        "actual_periods": [
+          [
+            0,
+            2
+          ]
+        ],
+        "mode_id": "FREE",
+        "named_assignments": [],
+        "remaining_processing_ticks": 0,
+        "occurred_at": 2,
+        "asserted_by": "oracle-reproducer",
+        "asserted_at": "2026-09-21T22:03:50.639647+00:00",
+        "accepted_by": "oracle-acceptor",
+        "accepted_at": "2026-09-21T22:03:50.640024+00:00",
+        "supersedes_update_id": "U001",
+        "reason": "merged-v2 compatibility reproduction",
+        "execution_context": {
+          "activity_id": "X",
+          "mode": {
+            "id": "FREE",
+            "processing_ticks": 2,
+            "calendar_id": "ALL",
+            "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+            "requirements": {},
+            "group_requirements": []
+          },
+          "calendars": [
+            {
+              "id": "ALL",
+              "daily_windows": [
+                [
+                  0,
+                  48
+                ]
+              ]
+            }
+          ],
+          "named_resources": [],
+          "resource_groups": [],
+          "accepted_outages": []
+        }
+      },
+      {
+        "id": "U003",
+        "activity_id": "M",
+        "status": "ACCEPTED",
+        "execution_state": "COMPLETED",
+        "actual_start": 0,
+        "actual_finish": 0,
+        "actual_periods": [],
+        "mode_id": "ZERO",
+        "named_assignments": [],
+        "remaining_processing_ticks": 0,
+        "occurred_at": 2,
+        "asserted_by": "oracle-reproducer",
+        "asserted_at": "2026-09-21T22:03:50.640116+00:00",
+        "accepted_by": "oracle-acceptor",
+        "accepted_at": "2026-09-21T22:03:50.640487+00:00",
+        "supersedes_update_id": null,
+        "reason": "merged-v2 compatibility reproduction",
+        "execution_context": {
+          "activity_id": "M",
+          "mode": {
+            "id": "ZERO",
+            "processing_ticks": 0,
+            "calendar_id": "EMPTY",
+            "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+            "requirements": [],
+            "group_requirements": []
+          },
+          "calendars": [
+            {
+              "id": "EMPTY",
+              "daily_windows": {}
+            }
+          ],
+          "named_resources": [],
+          "resource_groups": [],
+          "accepted_outages": []
+        }
+      },
+      {
+        "id": "U004",
+        "activity_id": "M",
+        "status": "ACCEPTED",
+        "execution_state": "COMPLETED",
+        "actual_start": 0,
+        "actual_finish": 0,
+        "actual_periods": [],
+        "mode_id": "ZERO",
+        "named_assignments": [],
+        "remaining_processing_ticks": 0,
+        "occurred_at": 2,
+        "asserted_by": "oracle-reproducer",
+        "asserted_at": "2026-09-21T22:03:50.640579+00:00",
+        "accepted_by": "oracle-acceptor",
+        "accepted_at": "2026-09-21T22:03:50.641068+00:00",
+        "supersedes_update_id": "U003",
+        "reason": "merged-v2 compatibility reproduction",
+        "execution_context": {
+          "activity_id": "M",
+          "mode": {
+            "id": "ZERO",
+            "processing_ticks": 0,
+            "calendar_id": "EMPTY",
+            "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+            "requirements": [],
+            "group_requirements": []
+          },
+          "calendars": [
+            {
+              "id": "EMPTY",
+              "daily_windows": {}
+            }
+          ],
+          "named_resources": [],
+          "resource_groups": [],
+          "accepted_outages": []
+        }
+      },
+      {
+        "id": "U005",
+        "activity_id": "H",
+        "status": "ACCEPTED",
+        "execution_state": "NOT_STARTED",
+        "actual_start": null,
+        "actual_finish": null,
+        "actual_periods": [],
+        "mode_id": null,
+        "named_assignments": [],
+        "remaining_processing_ticks": null,
+        "occurred_at": 2,
+        "asserted_by": "oracle-reproducer",
+        "asserted_at": "2026-09-21T22:03:50.641148+00:00",
+        "accepted_by": "oracle-acceptor",
+        "accepted_at": "2026-09-21T22:03:50.641588+00:00",
+        "supersedes_update_id": null,
+        "reason": "merged-v2 compatibility reproduction",
+        "execution_context": null
+      }
+    ]
+  }
+}

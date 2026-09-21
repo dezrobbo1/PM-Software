@@ -133,6 +133,36 @@ def pooled_statused():
 
 
 class AcceptedExecutionHistoryTests(unittest.TestCase):
+    def empty_iterable_history_case(self, *, requirements, daily_windows):
+        """The odd empty forms are compatibility facts from merged v2 62be7e0."""
+        workspace = new_blank_workspace()
+        project = workspace["project"]
+        project.update(horizon_ticks=48, objective_activity_id="H", pool_riggers=False,
+                       resources=[], resource_groups=[])
+        project["calendars"] = [
+            {"id": "ALL", "daily_windows": [[0, 48]]},
+            {"id": "EMPTY", "daily_windows": daily_windows},
+        ]
+        project["activities"] = [
+            {"id": "X", "name": "Resource-free productive work", "predecessors": [], "not_before": 0,
+             "modes": [{"id": "FREE", "processing_ticks": 2, "calendar_id": "ALL",
+                        "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS", "requirements": requirements,
+                        "group_requirements": []}]},
+            {"id": "M", "name": "Empty-calendar milestone", "predecessors": [], "not_before": 0,
+             "modes": [{"id": "ZERO", "processing_ticks": 0, "calendar_id": "EMPTY",
+                        "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS", "requirements": [],
+                        "group_requirements": []}]},
+            {"id": "H", "name": "Controlling handoff", "predecessors": ["X", "M"], "not_before": 0,
+             "modes": [{"id": "HANDOFF", "processing_ticks": 0, "calendar_id": "ALL",
+                        "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS", "requirements": [],
+                        "group_requirements": []}]},
+        ]
+        validate(workspace)
+        propose(workspace); approve(workspace, "merged-v2-baseline")
+        baseline_hash = workspace["approved_plan"]["plan_hash"]
+        enable_status_tracking(workspace, 4)
+        return workspace, baseline_hash
+
     def history_case(self, continuity="SUSPENDABLE_AT_AVAILABILITY_GAPS", grouped=False):
         workspace = new_blank_workspace()
         project = workspace["project"]
@@ -256,6 +286,129 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
         self.assertEqual(workspace, before)
         validate_plan(workspace, propose(workspace))
         self.assertEqual(workspace["execution"], before["execution"])
+
+    def test_merged_v2_empty_iterable_fixture_reopens_without_rewriting_history(self):
+        fixture = Path(__file__).parent / "fixtures/accepted-history/merged-v2-empty-iterables.json"
+        original = fixture.read_bytes()
+        self.assertEqual(sha256(original).hexdigest(), "472333fa38b1286b4d4880812b0ac2ee5630c96d18a26fe0304e98a146c824d8")
+        workspace = load(fixture)
+        validate_stored_plans(workspace)
+        self.assertEqual(state_hash(workspace), "d26d6f278b883685359e944684ffbddc07c81d402ebcd446fae345761274458b")
+        self.assertEqual(workspace["approved_plan"]["plan_hash"], "492175fc10616a9b3a464d7be72736e786669a147e1f824cde435c10c92f9cd5")
+        self.assertEqual([plan["plan_hash"] for plan in workspace["plan_history"]],
+                         ["e7874c57bc4200b27270ce4cbac1d3ccc152aaf25bc0c192b8aa9a1140282599"])
+        records = workspace["execution"]["updates"]
+        self.assertTrue(all(record["execution_context"]["mode"]["requirements"] == {}
+                            for record in records if record["activity_id"] == "X"))
+        self.assertTrue(all(record["execution_context"]["calendars"][0]["daily_windows"] == {}
+                            for record in records if record["activity_id"] == "M"))
+        before = deepcopy(workspace)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "merged-v2-empty-iterables.json"
+            path.write_bytes(original)
+            reopened = load(path)
+            save(reopened, path)
+            self.assertEqual(path.read_bytes(), original)
+        plan = propose(workspace); validate_plan(workspace, plan)
+        self.assertEqual(workspace["execution"], before["execution"])
+        self.assertEqual(workspace["approved_plan"], before["approved_plan"])
+        self.assertEqual(workspace["plan_history"], before["plan_history"])
+
+    def test_v2_empty_requirements_mapping_preserves_progress_and_provenance(self):
+        workspace, baseline_hash = self.empty_iterable_history_case(requirements={}, daily_windows=[])
+        prior_id = _accept(workspace, "X", "COMPLETED", actual_start=0, actual_finish=2,
+                           actual_periods=[[0, 2]], mode_id="FREE", named_assignments=[],
+                           remaining_processing_ticks=0)
+        current_id = _accept(workspace, "X", "COMPLETED", actual_start=0, actual_finish=2,
+                             actual_periods=[[0, 2]], mode_id="FREE", named_assignments=[],
+                             remaining_processing_ticks=0, supersedes_update_id=prior_id)
+        _accept(workspace, "M", "COMPLETED", actual_start=0, actual_finish=0,
+                actual_periods=[], mode_id="ZERO", named_assignments=[], remaining_processing_ticks=0)
+        _accept(workspace, "H", "NOT_STARTED")
+        for record_id in (prior_id, current_id):
+            record = next(update for update in workspace["execution"]["updates"] if update["id"] == record_id)
+            self.assertEqual(record["execution_context"]["mode"]["requirements"], {})
+
+        # A corrected factual execution gap may remain in superseded provenance.
+        prior = next(update for update in workspace["execution"]["updates"] if update["id"] == prior_id)
+        prior.update(actual_finish=3, actual_periods=[[0, 1], [2, 3]])
+        validate(workspace)
+        current_again = deepcopy(workspace)
+        current_again["execution"]["updates"] = [u for u in current_again["execution"]["updates"] if u["id"] != current_id]
+        with self.assertRaisesRegex(ValueError, "suspension gap"):
+            validate(current_again)
+
+        plan = propose(workspace); validate_plan(workspace, plan); approve(workspace, "test-only")
+        self.assertEqual(workspace["plan_history"][0]["plan_hash"], baseline_hash)
+        trusted_hash = state_hash(workspace)
+        plan_hashes = ([plan["plan_hash"] for plan in workspace["plan_history"]]
+                       + [workspace["approved_plan"]["plan_hash"]])
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "empty-requirements.json"
+            save(workspace, path); original_bytes = path.read_bytes()
+            reopened = load(path); validate_stored_plans(reopened)
+            self.assertEqual(reopened, workspace)
+            self.assertEqual(state_hash(reopened), trusted_hash)
+            self.assertEqual([plan["plan_hash"] for plan in reopened["plan_history"]]
+                             + [reopened["approved_plan"]["plan_hash"]], plan_hashes)
+            save(reopened, path)
+            self.assertEqual(path.read_bytes(), original_bytes)
+
+        structurally_bad = deepcopy(workspace)
+        record = next(u for u in structurally_bad["execution"]["updates"] if u["id"] == prior_id)
+        record["execution_context"]["mode"]["requirements"] = {"bad": {}}
+        with self.assertRaises(ValueError):
+            validate(structurally_bad)
+        bad_project = deepcopy(workspace)
+        bad_project["project"]["activities"][0]["modes"][0]["requirements"] = {"bad": {}}
+        with self.assertRaises((KeyError, TypeError, ValueError)):
+            validate(bad_project)
+
+    def test_v2_empty_daily_windows_mapping_preserves_milestone_history(self):
+        workspace, baseline_hash = self.empty_iterable_history_case(requirements=[], daily_windows={})
+        _accept(workspace, "X", "COMPLETED", actual_start=0, actual_finish=2,
+                actual_periods=[[0, 2]], mode_id="FREE", named_assignments=[], remaining_processing_ticks=0)
+        prior_id = _accept(workspace, "M", "COMPLETED", actual_start=0, actual_finish=0,
+                           actual_periods=[], mode_id="ZERO", named_assignments=[], remaining_processing_ticks=0)
+        current_id = _accept(workspace, "M", "COMPLETED", actual_start=0, actual_finish=0,
+                             actual_periods=[], mode_id="ZERO", named_assignments=[], remaining_processing_ticks=0,
+                             supersedes_update_id=prior_id)
+        _accept(workspace, "H", "NOT_STARTED")
+        for record_id in (prior_id, current_id):
+            record = next(update for update in workspace["execution"]["updates"] if update["id"] == record_id)
+            self.assertEqual(record["execution_context"]["calendars"][0]["daily_windows"], {})
+
+        # The same old factual error is provenance when superseded, but infeasible when current.
+        prior = next(update for update in workspace["execution"]["updates"] if update["id"] == prior_id)
+        prior.update(actual_finish=1, actual_periods=[[0, 1]])
+        validate(workspace)
+        current_again = deepcopy(workspace)
+        current_again["execution"]["updates"] = [u for u in current_again["execution"]["updates"] if u["id"] != current_id]
+        with self.assertRaisesRegex(ValueError, "historical activity calendar"):
+            validate(current_again)
+
+        plan = propose(workspace); validate_plan(workspace, plan); approve(workspace, "test-only")
+        self.assertEqual(workspace["plan_history"][0]["plan_hash"], baseline_hash)
+        trusted_hash = state_hash(workspace)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "empty-calendar.json"
+            save(workspace, path); original_bytes = path.read_bytes()
+            reopened = load(path); validate_stored_plans(reopened)
+            self.assertEqual(reopened, workspace)
+            self.assertEqual(state_hash(reopened), trusted_hash)
+            save(reopened, path)
+            self.assertEqual(path.read_bytes(), original_bytes)
+
+        for value in ({"bad": [0, 1]}, [[0, 0]], [[-1, 1]], [[0, 49]]):
+            structurally_bad = deepcopy(workspace)
+            record = next(u for u in structurally_bad["execution"]["updates"] if u["id"] == prior_id)
+            record["execution_context"]["calendars"][0]["daily_windows"] = value
+            with self.assertRaises(ValueError):
+                validate(structurally_bad)
+        bad_project = deepcopy(workspace)
+        next(c for c in bad_project["project"]["calendars"] if c["id"] == "EMPTY")["daily_windows"] = {"bad": [0, 1]}
+        with self.assertRaises((TypeError, ValueError)):
+            validate(bad_project)
 
     def test_accepted_project_metadata_and_duplicate_qualifications_allow_progress(self):
         for kind in ("calendar", "capabilities", "qualifications"):

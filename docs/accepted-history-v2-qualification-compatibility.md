@@ -1,4 +1,26 @@
-# Captured v2 qualification compatibility
+# Captured v2 context compatibility
+
+Merged commit `62be7e0635776c257b1b7a93ed382af04da2a423` is the
+compatibility oracle for persisted v2 workspaces. When that implementation
+accepts a representation with defined scheduling semantics, accepted-history
+validation accepts the same representation without normalizing, migrating or
+rehashing it. Representations rejected by that implementation need not be
+accepted as historical context.
+
+The oracle accepts both an empty array and an empty object as an empty iterable
+in these two fields:
+
+| Captured field | Compatible empty forms | Meaning |
+| --- | --- | --- |
+| Mode `requirements` | `[]`, `{}` | No named-resource requirements |
+| Calendar `daily_windows` | `[]`, `{}` | No executable calendar windows |
+
+The object form remains an object when captured, saved and reopened. A nonempty
+object is rejected at the project boundary and by historical validation. Valid
+nonempty requirement arrays and calendar-window arrays continue through their
+normal structural checks. In particular, empty calendar windows have defined
+semantics for a zero-duration milestone; the validator does not add artificial
+windows.
 
 The existing project validator interprets resource `capabilities` and requirement
 `pool_ids` using Python set semantics. Accepted execution captures those values

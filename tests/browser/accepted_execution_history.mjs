@@ -143,6 +143,34 @@ export async function acceptedProgressTrial(browser, url, evidenceDir, assert) {
     assert(JSON.stringify((await state(rejectTarget)).workspace) === beforeReject, "malformed superseded context is rejected without replacing the active workspace");
     await shot(rejectTarget, "24-malformed-superseded-context-rejected", "#message");
     assert(legacyBytes.equals(fs.readFileSync(legacyFile)), "merged v2 fixture bytes remain unchanged");
+
+    const emptyIterableFile = path.resolve("tests/fixtures/accepted-history/merged-v2-empty-iterables.json");
+    const emptyIterableBytes = fs.readFileSync(emptyIterableFile);
+    const emptyCompatible = await fresh();
+    await open(emptyCompatible, emptyIterableFile);
+    const emptyOriginal = await state(emptyCompatible);
+    assert(emptyOriginal.workspace.execution.updates.filter((u) => u.activity_id === "X").every((u) => JSON.stringify(u.execution_context.mode.requirements) === "{}"), "merged-v2 empty requirements mappings open unnormalized");
+    assert(emptyOriginal.workspace.execution.updates.filter((u) => u.activity_id === "M").every((u) => JSON.stringify(u.execution_context.calendars[0].daily_windows) === "{}"), "merged-v2 empty calendar mappings open unnormalized");
+    const retainedPlanHashes = [
+      ...emptyOriginal.workspace.plan_history.map((plan) => plan.plan_hash),
+      emptyOriginal.workspace.approved_plan.plan_hash,
+    ];
+    await update(emptyCompatible, "X", "COMPLETED", [[0, 2]], 0, "FREE");
+    await update(emptyCompatible, "M", "COMPLETED", [], 0, "ZERO");
+    await click(emptyCompatible, "#calculate");
+    const emptyCalculated = await state(emptyCompatible);
+    assert(emptyCalculated.workspace.execution.updates.filter((u) => u.activity_id === "X").every((u) => JSON.stringify(u.execution_context.mode.requirements) === "{}"), "empty requirements remain unnormalized after correction and recovery");
+    assert(emptyCalculated.workspace.execution.updates.filter((u) => u.activity_id === "M").every((u) => JSON.stringify(u.execution_context.calendars[0].daily_windows) === "{}"), "empty calendar remains unnormalized after correction and recovery");
+    assert(JSON.stringify([...emptyCalculated.workspace.plan_history.map((plan) => plan.plan_hash), emptyCalculated.workspace.approved_plan.plan_hash]) === JSON.stringify(retainedPlanHashes), "correction and recovery retain historical approval hashes");
+    const emptySaved = await save(emptyCompatible, "v2-empty-iterables-corrected-recovery");
+    const emptyReopen = await fresh();
+    await open(emptyReopen, emptySaved);
+    const emptyReopened = await state(emptyReopen);
+    assert(JSON.stringify(emptyReopened.workspace) === JSON.stringify(emptyCalculated.workspace), "fresh browser reopen preserves empty-iterable provenance and recovery exactly");
+    assert(emptyReopened.trusted_input_hash === emptyCalculated.trusted_input_hash, "fresh browser reopen preserves empty-iterable trusted hash");
+    assert(emptyIterableBytes.equals(fs.readFileSync(emptyIterableFile)), "merged-v2 empty-iterable fixture bytes remain unchanged");
+    await shot(emptyReopen, "25-empty-iterables-fresh-reopen", "#history");
+
     await click(named, "#calculate");
     await approve(named);
     const oldApproval = (await state(named)).workspace.approved_plan;

@@ -558,7 +558,14 @@ def _validate_historical_execution_context(
         if not isinstance(calendar_id, str) or not calendar_id.strip() or calendar_id in calendars:
             raise ValueError(f"{activity_id}: historical calendar IDs must be nonempty and unique")
         windows = calendar["daily_windows"]
-        if not isinstance(windows, list):
+        # Merged v2 also accepts an empty mapping here: iteration yields no
+        # executable windows. Retain that representation verbatim, while
+        # rejecting nonempty mappings rather than treating their keys as
+        # window entries.
+        if isinstance(windows, dict):
+            if windows:
+                raise ValueError(f"{activity_id}: historical calendar windows mapping must be empty")
+        elif not isinstance(windows, list):
             raise ValueError(f"{activity_id}: historical calendar windows must be an array")
         for window in windows:
             if not isinstance(window, list) or len(window) != 2:
@@ -617,7 +624,13 @@ def _validate_historical_execution_context(
         raise ValueError(f"{activity_id}: historical group context exceeds the bounded native capacity profile")
 
     requirements = mode.get("requirements", [])
-    if not isinstance(requirements, list):
+    # Merged v2 treats an empty mapping as an empty iterable of requirements.
+    # Preserve the captured shape without accepting nonempty mappings whose
+    # keys would otherwise be mistaken for requirement records.
+    if isinstance(requirements, dict):
+        if requirements:
+            raise ValueError(f"{activity_id}: historical named requirements mapping must be empty")
+    elif not isinstance(requirements, list):
         raise ValueError(f"{activity_id}: historical named requirements must be an array")
     requirement_ids: set[str] = set()
     for requirement in requirements:
