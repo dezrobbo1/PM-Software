@@ -158,6 +158,41 @@ export async function plannerUpdateRecoveryTrial(browser, url, evidenceDir, asse
     assert(await participantA.locator("#download-trial-result").isEnabled(), "trial-result export re-enables after authoritative approval settles");
     const savedA = await save(participantA, "participant-a-approved-recovery.pm-workspace.json");
 
+    const racePage = await fresh();
+    await start(racePage);
+    let releaseCalculation;
+    let calculationIntercepted;
+    let resetRequests = 0;
+    const calculationSeen = new Promise((resolve) => { calculationIntercepted = resolve; });
+    const calculationRelease = new Promise((resolve) => { releaseCalculation = resolve; });
+    const delayCalculation = async (route) => {
+      if (isAction(route.request(), "load-trial")) resetRequests += 1;
+      if (!isAction(route.request(), "calculate")) return route.continue();
+      calculationIntercepted();
+      await calculationRelease;
+      return route.continue();
+    };
+    await racePage.route("**/api/**", delayCalculation);
+    await racePage.locator("#calculate").click();
+    await calculationSeen;
+    assert(await racePage.locator("#start-trial").isDisabled(), "Start trial is disabled while calculation is pending");
+    await racePage.locator("#start-trial").evaluate((button) => button.click());
+    await racePage.locator("#start-trial").evaluate((button) => { button.disabled = false; button.click(); });
+    await racePage.waitForTimeout(100);
+    assert(resetRequests === 0, "disabled and stale programmatic Start trial events issue no reset request");
+    releaseCalculation();
+    await racePage.locator("#proposal-state").filter({hasText: "current"}).waitFor();
+    assert(await racePage.locator("#start-trial").isEnabled(), "Start trial re-enables after calculation settles");
+    await confirmAndStart(racePage);
+    assert(resetRequests === 1, "one deliberate reset request is issued after the prior action settles");
+    const freshRaceState = await state(racePage);
+    assert(freshRaceState.workspace.approved_plan.project_finish === 72 && freshRaceState.workspace.proposal === null, "settled reset loads the pristine approved trial");
+    await racePage.waitForTimeout(300);
+    const stableRaceState = await state(racePage);
+    assert(stableRaceState.workspace.approved_plan.project_finish === 72 && stableRaceState.workspace.proposal === null, "no earlier response overwrites the fresh trial");
+    assert(await racePage.locator("#download-trial-result").isEnabled(), "fresh reset retains active practitioner-trial identity");
+    await racePage.unroute("**/api/**", delayCalculation);
+
     await click(participantB, "#calculate");
     const stateB = await state(participantB);
     assert(stateB.workspace.proposal.project_finish === 72 && (await state(participantA)).workspace.approved_plan.project_finish === 77, "participant B performs a different calculation without receiving participant A's recovery");

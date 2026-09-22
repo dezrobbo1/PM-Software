@@ -888,6 +888,7 @@ function syncActions() {
   $("#apply-project").disabled = blocked || !draftDirty;
   $("#calculate").disabled = blocked || draftDirty;
   $("#approve").disabled = blocked || draftDirty || current.proposal_status !== "CURRENT" || displayedPlanKind !== "proposal";
+  $("#start-trial").disabled = blocked;
   $("#load-example").disabled = blocked;
   $("#new-project").disabled = blocked;
   $("#save-workspace").disabled = blocked;
@@ -954,6 +955,7 @@ $("#load-example").addEventListener("click", async () => {
 });
 
 $("#start-trial").addEventListener("click", async () => {
+  if (busy || invalidating || draftConflict) return;
   if (!discardNeedsConfirmation()) return;
   try {
     await perform("/api/load-trial", {}, "Pristine approved practitioner trial loaded. Review the plan and field briefing before recording status.", true);

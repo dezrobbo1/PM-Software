@@ -100,6 +100,23 @@ test("trial-result export requires an active settled authoritative trial", () =>
   assert.equal(node("#download-trial-result").disabled, true, "draft conflict blocks result export");
 });
 
+test("Start trial follows blocked workspace state and defensively rejects a stale event", async () => {
+  const {context, node, run} = editor();
+  let requests = 0;
+  context.fetch = async () => { requests += 1; throw new Error("unexpected request"); };
+  run("draftDirty = false; current.dirty = false; busy = true; syncActions()");
+  assert.equal(node("#start-trial").disabled, true, "pending authoritative action disables Start trial");
+  await node("#start-trial").handlers.click();
+  assert.equal(requests, 0, "stale programmatic event cannot start a competing trial reset");
+  assert.equal(run("activeTrial"), false, "blocked event does not change active-trial identity");
+  run("busy = false; invalidating = true; syncActions()");
+  assert.equal(node("#start-trial").disabled, true, "proposal invalidation disables Start trial");
+  run("invalidating = false; draftConflict = true; syncActions()");
+  assert.equal(node("#start-trial").disabled, true, "draft conflict disables Start trial");
+  run("draftConflict = false; syncActions()");
+  assert.equal(node("#start-trial").disabled, false, "Start trial re-enables after blocked state settles");
+});
+
 test("G: invalid visible work edit immediately blocks approval", () => {
   const {context, document, node, run} = editor();
   const work = node("mode-work");
