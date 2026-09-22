@@ -153,15 +153,22 @@ partial outages for an interchangeable group remain unsupported.
 
 ## Boundaries
 
-This first slice establishes one status point per test workspace and permits
-explicit corrections at that point. Advancing to a later status point, carrying
-assertions forward and reviewing new execution is a separate capability. Begun
-work requires a known actual start in this profile. Out-of-sequence predecessor
-history blocks authoritative recovery; interrupted continuous work remains a
-reported assertion and cannot be accepted into this bounded model. The engine
-does not invent a repair. When the controlling
-activity is explicitly completed, calculation reports that no future recovery
-remains instead of manufacturing a new plan.
+The original slice established one status point. The bounded headless rolling
+experiment now adds explicit atomic advancement to a later point while retaining
+the same version-two representation. Every still-open activity must be
+re-attested, completed history carries forward unchanged, begun choices and
+previous productive periods cannot be rewritten, and the prior approval becomes
+stale before a separately calculated/approved recovery. This first rolling
+capability deliberately rejects begun work whose captured historical execution
+context changed across the boundary; see
+[`headless-rolling-status.md`](headless-rolling-status.md).
+
+Begun work requires a known actual start in this profile. Out-of-sequence
+predecessor history blocks authoritative recovery; interrupted continuous work
+remains a reported assertion and cannot be accepted into this bounded model.
+The engine does not invent a repair. When the controlling activity is explicitly
+completed, calculation reports that no future recovery remains instead of
+manufacturing a new plan.
 
 Historical validation uses the captured activity/resource calendar context.
 Exceptional historical overtime outside that context needs an explicit future
