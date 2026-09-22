@@ -11,6 +11,7 @@ let draftConflict = false;
 let busy = false;
 let invalidating = false;
 let pendingInvalidation = Promise.resolve();
+let questionnaireDirty = false;
 const browserLocation = window.location || {protocol: "", search: ""};
 const hostedTransport = browserLocation.protocol === "https:"
   || /(?:^|[?&])transport=stateless(?:&|$)/.test(browserLocation.search);
@@ -309,6 +310,10 @@ function renderStatus() {
   $("#trusted-hash").title = current.trusted_input_hash;
   $("#draft-state").textContent = draftConflict ? "Draft conflict — draft retained; reload current inputs to continue" : draftDirty ? "Unapplied edits — calculation and approval paused" : "Inputs applied";
   $("#reload-inputs").hidden = !draftConflict;
+  if (current.trial) {
+    $("#trial-identity").textContent = `${current.trial.name} · ${current.trial.id}`;
+    $("#build-identity").textContent = `Source/build ${current.trial.build_sha}`;
+  }
 }
 
 function renderProjectSettings() {
@@ -935,6 +940,15 @@ $("#load-example").addEventListener("click", async () => {
   catch (_error) { /* visible message is sufficient */ }
 });
 
+$("#start-trial").addEventListener("click", async () => {
+  if (!discardNeedsConfirmation()) return;
+  try {
+    await perform("/api/load-trial", {}, "Pristine approved practitioner trial loaded. Review the plan and field briefing before recording status.", true);
+    document.body.classList.add("trial-started");
+    $("#trial-brief").scrollIntoView({behavior: "smooth", block: "start"});
+  } catch (_error) { /* visible message is sufficient */ }
+});
+
 $("#new-project").addEventListener("click", async () => {
   if (!discardNeedsConfirmation()) return;
   try { await perform("/api/new", {}, "New eight-activity starter created. Edit its native inputs through the controls.", true); }
@@ -958,6 +972,35 @@ $("#save-workspace").addEventListener("click", async () => {
     link.remove();
     URL.revokeObjectURL(link.href);
   } catch (_error) { /* visible message is sufficient */ }
+});
+
+$("#download-trial-result").addEventListener("click", () => {
+  try {
+    if (!current) throw new Error("The trial workspace is not ready.");
+    const responses = Object.fromEntries($$("[data-question]").map((field) => [field.dataset.question, field.value]));
+    const result = {
+      trial: current.trial,
+      completed_at: new Date().toISOString(),
+      responses,
+      workspace: current.workspace,
+    };
+    const blob = new Blob([`${JSON.stringify(result, null, 2)}\n`], {type: "application/json"});
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `${current.trial?.id || "planner-trial"}-result.json`;
+    document.body.appendChild(link);
+    link.click(); link.remove(); URL.revokeObjectURL(link.href);
+    questionnaireDirty = false;
+    showMessage("Trial result and questionnaire responses downloaded. Save Workspace separately for a reopenable native workspace.");
+  } catch (error) { showMessage(error.message, "error"); }
+});
+
+$$("[data-question]").forEach((field) => field.addEventListener("input", () => { questionnaireDirty = true; }));
+
+window.addEventListener?.("beforeunload", (event) => {
+  if (!current || (!current.dirty && !draftDirty && !questionnaireDirty)) return;
+  event.preventDefault();
+  event.returnValue = "";
 });
 
 $("#open-file").addEventListener("change", async (event) => {

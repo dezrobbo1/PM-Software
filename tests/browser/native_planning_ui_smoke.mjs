@@ -5,6 +5,7 @@ import process from "node:process";
 import {correctionRegressions} from "./native_planning_ui_corrections.mjs";
 import {capacityTrial} from "./planner_resource_capacity.mjs";
 import {acceptedProgressTrial} from "./accepted_execution_history.mjs";
+import {plannerUpdateRecoveryTrial} from "./planner_update_recovery_trial.mjs";
 
 const playwrightImport = process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES
   ? path.join(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES, "playwright", "index.mjs")
@@ -83,7 +84,7 @@ async function exampleLifecycle(browser, url) {
   page.on("pageerror", (error) => consoleErrors.push(`example pageerror: ${error.message}`));
   await page.goto(url, {waitUntil: "networkidle"});
   await waitReady(page);
-  assert(await page.getByRole("heading", {name: "Native planning trial"}).isVisible(), "application loads with meaningful planning content");
+  assert(await page.getByRole("heading", {name: "Planner Update & Recovery Trial v1"}).isVisible(), "application loads with the practitioner trial identity");
   assert(await page.locator("#activity-list .activity-row").count() === 8, "built-in example exposes eight activities");
   assert(await page.locator("body").getAttribute("aria-busy") === "false", "no loading overlay blocks the initial workspace");
   assert(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth), "1366px layout has no page-level horizontal overflow");
@@ -344,6 +345,7 @@ try {
   await capacityTrial(browser, server.url, evidenceDir, assert, consoleErrors);
   await correctionRegressions(browser, server.url, evidenceDir, assert, observations);
   await acceptedProgressTrial(browser, server.url, evidenceDir, assert);
+  await plannerUpdateRecoveryTrial(browser, server.url, evidenceDir, assert);
   const unexpectedConsoleErrors = consoleErrors.filter((message) => !/failure: Failed to load resource: the server responded with a status of (400|422)/.test(message));
   observations.push(`OBSERVED: ${consoleErrors.length - unexpectedConsoleErrors.length} expected console network diagnostics from the deliberately exercised HTTP 400/422 responses`);
   assert(unexpectedConsoleErrors.length === 0, `browser console has no unexpected errors (${unexpectedConsoleErrors.length})`);

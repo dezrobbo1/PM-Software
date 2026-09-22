@@ -21,6 +21,7 @@ from deterministic_scheduling_core.scheduling.planning_workspace import (
 from .server import BrowserSession, _validate_trial_size, _view, dispatch_action
 
 _ACTIONS = {
+    "load-trial",
     "load-example",
     "new",
     "open",
@@ -36,6 +37,7 @@ _ACTIONS = {
     "export",
 }
 _ACTION_FIELDS = {
+    "load-trial": {"action"},
     "load-example": {"action"},
     "new": {"action"},
     "open": {"action", "workspace", "filename"},

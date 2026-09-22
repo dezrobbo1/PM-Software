@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import {plannerUpdateRecoveryTrial} from "./planner_update_recovery_trial.mjs";
 
 const playwrightImport = process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES
   ? path.join(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES, "playwright", "index.mjs")
@@ -77,7 +78,7 @@ try {
   await page.goto(url, {waitUntil: "networkidle"});
   await ready(page);
   assert(page.url().startsWith(expectedOrigin), "the trial loads from the deployed Vercel HTTPS origin");
-  assert(await page.getByRole("heading", {name: "Native planning trial"}).isVisible(), "the existing native planning UI renders from the Preview URL");
+  assert(await page.getByRole("heading", {name: "Planner Update & Recovery Trial v1"}).isVisible(), "the practitioner trial UI renders from the Preview URL");
   assert((await page.locator("footer").innerText()).includes("Hosted bounded trial"), "the UI identifies its stateless hosted boundary");
 
   await page.getByRole("button", {name: "Load example"}).click();
@@ -160,6 +161,8 @@ try {
   assert(await mobilePage.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth), "390px hosted layout avoids page-level horizontal overflow");
   await mobilePage.screenshot({path: path.join(evidenceDir, "04-hosted-mobile-390x844.png"), fullPage: true});
   await mobileContext.close();
+
+  await plannerUpdateRecoveryTrial(browser, url, evidenceDir, assert);
 
   assert(apiRequests.length > 0, "browser observed real deployed API requests");
   assert(apiRequests.every((item) => new URL(item.url).origin === expectedOrigin), "all API requests remain on the deployed origin");

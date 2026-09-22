@@ -44,6 +44,7 @@ jobs:
           tests.test_hosted_native_planning_ui
           tests.test_planner_resource_capacity
           tests.test_accepted_execution_history
+          tests.test_planner_update_recovery_trial
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment
@@ -91,6 +92,13 @@ jobs:
           path: |
             /tmp/pm-native-planning-workspace.json
             /tmp/pm-native-planning-workflow.log
+      - name: Build practitioner trial package
+        run: python tools/build_planner_update_recovery_trial_package.py --output /tmp/planner-update-recovery-trial --source-sha "$GITHUB_SHA"
+      - name: Save practitioner trial package
+        uses: actions/upload-artifact@v4
+        with:
+          name: planner-update-recovery-v1-${{ github.sha }}
+          path: /tmp/planner-update-recovery-trial/*.zip
 
   browser-smoke:
     runs-on: ubuntu-latest

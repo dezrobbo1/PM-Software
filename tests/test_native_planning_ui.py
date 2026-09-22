@@ -66,7 +66,7 @@ class NativePlanningUiTests(unittest.TestCase):
     def test_assets_and_loopback_headers_are_served_without_remote_runtime(self):
         with self.opener.open(self.base + "/", timeout=10) as response:
             html = response.read().decode()
-            self.assertIn("Native planning trial", html)
+            self.assertIn("Planner Update &amp; Recovery Trial v1", html)
             self.assertIn("default-src 'self'", response.headers["Content-Security-Policy"])
             self.assertNotIn("https://", html)
         with self.opener.open(self.base + "/app.js", timeout=10) as response:
