@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from deterministic_scheduling_core.project.planning_workspace import (
+    advance_status_point,
     current_status_records,
     load,
     save,
@@ -14,7 +15,6 @@ from deterministic_scheduling_core.project.planning_workspace import (
 )
 from deterministic_scheduling_core.rolling_status_experiment import (
     _t1_workspace,
-    advance_status_atomically,
     run_experiment,
 )
 from deterministic_scheduling_core.scheduling.planning_workspace import validate_stored_plans
@@ -48,7 +48,7 @@ class RollingStatusExperimentTests(unittest.TestCase):
         before = deepcopy(workspace)
 
         with self.assertRaisesRegex(ValueError, "explicit re-attestation"):
-            advance_status_atomically(
+            advance_status_point(
                 workspace,
                 23,
                 {
@@ -67,7 +67,8 @@ class RollingStatusExperimentTests(unittest.TestCase):
                         "reason": "T2 not started",
                     },
                 },
-                actor="t2-planner",
+                asserted_by="t2-planner",
+                accepted_by="t2-acceptor",
             )
 
         self.assertEqual(workspace, before)
@@ -77,7 +78,7 @@ class RollingStatusExperimentTests(unittest.TestCase):
         before_hash = state_hash(workspace)
 
         with self.assertRaisesRegex(ValueError, "exact prefix"):
-            advance_status_atomically(
+            advance_status_point(
                 workspace,
                 23,
                 {
