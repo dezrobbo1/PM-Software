@@ -30,6 +30,7 @@ from deterministic_scheduling_core.project.planning_workspace import (
     validate,
 )
 from deterministic_scheduling_core.scheduling.planning_workspace import approve, propose, validate_stored_plans
+from .trial import new_trial_workspace, trial_metadata
 
 MAX_WORKSPACE_BYTES = 2 * 1024 * 1024
 MAX_BODY_BYTES = MAX_WORKSPACE_BYTES
@@ -135,6 +136,7 @@ def _view(session: "BrowserSession") -> dict[str, Any]:
         "approved_status": _plan_status(workspace, workspace.get("approved_plan")),
         "proposal_status": _plan_status(workspace, workspace.get("proposal")),
         "comparison": _comparison(workspace),
+        "trial": trial_metadata(),
         "workspace": workspace,
     }
 
@@ -239,6 +241,10 @@ def dispatch_action(path: str, body: dict[str, Any], session: BrowserSession) ->
     if path == "/api/load-example":
         session.workspace = new_demo_workspace()
         session.source = "Built-in example"
+        dirty = False
+    elif path == "/api/load-trial":
+        session.workspace = new_trial_workspace()
+        session.source = "Planner Update & Recovery Trial v1 — pristine approved plan"
         dirty = False
     elif path == "/api/new":
         session.workspace = new_blank_workspace()

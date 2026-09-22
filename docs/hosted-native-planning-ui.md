@@ -1,5 +1,11 @@
 # Hosted native planning UI trial
 
+## Planner Update & Recovery Trial v1
+
+The same stateless boundary hosts `planner-update-recovery-v1`. Selecting **Start trial** replaces only the complete workspace held by that browser with the deterministic pristine approved plan. No participant identity or server-side trial record is introduced. Independent browser contexts therefore begin identically but diverge only through the full workspace each context submits. The trial completion download is client-generated; the native **Save workspace** file remains the authoritative reopen artifact.
+
+The Preview must expose a page-visible source/build SHA matching the exact deployment source. Refresh starts from the initial page rather than recovering unsaved work; the UI warns before leaving with unsaved workspace or questionnaire changes.
+
 Prototype 3 makes the existing bounded native planning trial available through a protected Vercel Preview. A practitioner opens the Preview URL supplied on the Prototype 3 pull request; PM-Software does not need to be installed on that device.
 
 This remains a trial, not a public production service.

@@ -1,5 +1,11 @@
 # Minimal native planning trial UI
 
+## Practitioner update-and-recovery trial
+
+The UI includes the bounded `planner-update-recovery-v1` practitioner trial. **Start trial** loads a pristine ten-activity conveyor-chute workspace with an independently validated approved plan. The page presents a neutral introduction, an outcome-based task, a field/status briefing, optional help, and a non-persistent completion questionnaire. The participant still uses the ordinary accepted-progress, recovery, approval, and portable save/open workflow; the trial adds no solver rule.
+
+The page displays the exact source/build SHA supplied by `PM_BUILD_SHA`, `VERCEL_GIT_COMMIT_SHA`, or `GITHUB_SHA` (with a local Git fallback). Trial materials and the verification oracle are in `docs/trials/planner-update-recovery-v1/`.
+
 This is the local launch guide for the thin browser interface over the native planning workflow. It calls the existing Python project validation, CP-SAT scheduling, exact physical checker, resource-report acceptance, proposal approval and JSON workspace persistence functions. It does not calculate dates or assignments in JavaScript. The stateless Vercel Preview adaptation is documented separately in [`hosted-native-planning-ui.md`](hosted-native-planning-ui.md).
 
 ## Install and launch

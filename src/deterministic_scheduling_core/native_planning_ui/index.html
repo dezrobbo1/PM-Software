@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PM-Software Native Planning Trial</title>
+  <title>Planner Update &amp; Recovery Trial v1</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <header class="app-header">
     <div>
       <p class="eyebrow">PM-Software</p>
-      <h1>Native planning trial</h1>
-      <p class="subtitle">30-minute relative project time · resource-group quantities and schedule-critical named resources</p>
+      <h1>Planner Update &amp; Recovery Trial v1</h1>
+      <p class="subtitle">Experimental professional scheduling research · update, recovery, approval and reopen</p>
     </div>
     <div class="file-actions" aria-label="Workspace file actions">
       <button id="load-example" type="button">Load example</button>
@@ -21,6 +21,20 @@
       <button id="save-workspace" type="button">Save workspace</button>
     </div>
   </header>
+
+  <section class="trial-introduction" aria-labelledby="trial-introduction-heading">
+    <div>
+      <p class="eyebrow">Practitioner trial · about 25 minutes</p>
+      <h2 id="trial-introduction-heading">Investigate a live-work recovery</h2>
+      <p>PM-Software is experimental research into a different approach to professional scheduling, not a finished commercial product. This trial asks whether update and recovery after execution has begun feels natural, understandable and credible.</p>
+      <p>Work as you normally would. We want to learn where the approach is confusing, incomplete or untrustworthy; candid criticism is useful and there is no requirement to agree with the result.</p>
+    </div>
+    <div class="trial-start">
+      <strong id="trial-identity">planner-update-recovery-v1</strong>
+      <span id="build-identity">Build loading…</span>
+      <button id="start-trial" class="primary" type="button">Start trial</button>
+    </div>
+  </section>
 
   <div class="status-strip" aria-label="Workspace status">
     <span id="source-label"></span>
@@ -32,6 +46,27 @@
   <div id="message" class="message" role="status" aria-live="polite"></div>
 
   <main>
+    <section id="trial-brief" class="panel trial-brief" aria-labelledby="trial-task-heading">
+      <div class="section-heading"><div><p class="step">Participant task</p><h2 id="trial-task-heading">Bring the approved plan up to date</h2></div></div>
+      <div class="brief-grid">
+        <div>
+          <h3>Your outcome</h3>
+          <p>Review the approved starting plan and the field update. Establish what is accepted at the status point, calculate a recovery, inspect what changed, and approve it only if you are satisfied. Save the workspace, reopen it, and confirm the trusted result remains.</p>
+          <p><strong>Do not edit the starting network.</strong> This trial is about updating and recovering an approved plan.</p>
+        </div>
+        <div>
+          <h3>At the status update you are told…</h3>
+          <p>It is Day 1 at 12:00. Isolation and access, cover removal, liner-scope inspection, and the feed-skirt repair are complete as planned. The liner crew worked productively from 11:00 to 12:00 and the liner replacement is still in progress.</p>
+          <p>Inspection found more fitting work than expected. From the status point, the mechanical team estimates <strong>seven productive hours remain</strong> on liner replacement. Restart-test preparation has not started and remains planned for Day 2. All later activities have not started.</p>
+        </div>
+      </div>
+      <details>
+        <summary>Need help?</summary>
+        <p>Use relative time <code>1@12:00</code> for the status point. Record and accept one status assertion for every activity. Completed actual periods follow the approved plan; A04 has actual productive work <code>1@11:00-1@12:00</code> and seven hours remaining. Calculate after every assertion is accepted, then compare the retained approval with the proposal.</p>
+      </details>
+      <p class="loss-warning"><strong>Save before refresh or navigation.</strong> The hosted service keeps no participant workspace. Refresh starts again from the initial page; Open workspace restores a downloaded file without recalculating or approving it.</p>
+    </section>
+
     <section class="panel project-panel" aria-labelledby="project-heading">
       <div class="section-heading">
         <div>
@@ -178,10 +213,25 @@
       <div class="section-heading"><div><p class="step">5 · Retain provenance</p><h2 id="history-heading">Approval and correction history</h2></div></div>
       <div id="history"></div>
     </section>
+
+    <section class="panel questionnaire-panel" aria-labelledby="questionnaire-heading">
+      <div class="section-heading"><div><p class="step">Trial completion</p><h2 id="questionnaire-heading">Your assessment</h2></div></div>
+      <p>Answer candidly. Responses remain in this browser until you download them; this milestone has no feedback service.</p>
+      <div class="questionnaire-grid">
+        <label>1. What did you think the system was asking you to do?<textarea data-question="understanding"></textarea></label>
+        <label>2. Was actual history, remaining work and the future recovered plan clear?<textarea data-question="layers"></textarea></label>
+        <label>3. Could you understand the important reasons work moved?<textarea data-question="movement"></textarea></label>
+        <label>4. Did it ask for information you would not normally know or maintain?<textarea data-question="information"></textarea></label>
+        <label>5. Would you trust the recovery enough to investigate or use? Why?<textarea data-question="trust"></textarea></label>
+        <label>6. What was most confusing or unnatural?<textarea data-question="confusion"></textarea></label>
+        <label>7. What, if anything, was better than your normal update process?<textarea data-question="better"></textarea></label>
+      </div>
+      <button id="download-trial-result" class="primary" type="button">Download trial result and responses</button>
+    </section>
   </main>
 
   <footer>
-    Local trial only. Relative days are not calendar dates or time zones. No drag-to-edit actual history, external-file import, collaboration or enterprise permissions.
+    Trial v1. Relative days are not calendar dates or time zones. No participant identity, server persistence, collaboration or feedback submission.
   </footer>
   <script src="/app.js" defer></script>
 </body>

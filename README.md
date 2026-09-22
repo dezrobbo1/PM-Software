@@ -70,6 +70,12 @@ internal allocation witnesses never become fictitious workers. Version 0 and 1
 workspaces still open without inferred progress. See the
 [accepted-progress semantic contract](docs/accepted-progress-executable-remainder.md).
 
+`planner-update-recovery-v1` packages that existing workflow as a controlled
+practitioner trial: a ten-activity synthetic industrial plan, approved starting
+schedule, field briefing, outcome-based task, questionnaire, observation sheet,
+and an explicitly unpassed exit gate. It adds no scheduling rule and no server
+workspace store. See the [trial core](docs/trials/planner-update-recovery-v1/README.md).
+
 A thin browser application now exposes the bounded native planning loop without requiring Python or JSON editing. It uses the existing Python validator, scheduler, exact physical checker, report acceptance, approval and workspace persistence functions.
 
 ```bash
