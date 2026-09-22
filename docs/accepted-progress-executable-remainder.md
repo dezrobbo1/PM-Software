@@ -47,6 +47,15 @@ approval. Acceptance records the accepting actor and time, invalidates a pending
 proposal, and makes any prior approval stale. It never calculates or approves a
 recovery.
 
+The rolling-status transaction is deliberately different from the one-at-a-time
+report path. It receives a complete batch that has already been reviewed by its
+caller, records separate asserting and accepting actors, and commits every
+replacement assertion together with the later status point in one atomic trusted
+state transition. This avoids an authoritative intermediate state in which the
+status point has moved but the prior open assertions are temporarily interpreted
+against that later point. Drafting/review of that batch remains outside the
+authoritative transaction; calculation and plan approval still remain separate.
+
 A correction names the current accepted update it supersedes. The old assertion
 remains in the ledger. Current state is resolved through the supersession link,
 not by sorting occurrence times, so a correction that refers to an earlier field
