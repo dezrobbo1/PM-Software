@@ -12,6 +12,7 @@ let busy = false;
 let invalidating = false;
 let pendingInvalidation = Promise.resolve();
 let questionnaireDirty = false;
+let activeTrial = false;
 const browserLocation = window.location || {protocol: "", search: ""};
 const hostedTransport = browserLocation.protocol === "https:"
   || /(?:^|[?&])transport=stateless(?:&|$)/.test(browserLocation.search);
@@ -239,8 +240,16 @@ async function perform(path, payload, message, replaceDraft = false) {
 }
 
 function discardNeedsConfirmation() {
-  if (!draftDirty && !current?.dirty) return true;
-  return window.confirm("This workspace has unsaved or unapplied changes. Discard them and continue?");
+  if (!draftDirty && !current?.dirty && !questionnaireDirty) return true;
+  return window.confirm("This workspace or questionnaire has unsaved or unapplied changes. Discard them and continue?");
+}
+
+function finishWorkspaceReplacement(trialIsActive) {
+  $$('[data-question]').forEach((field) => { field.value = ""; });
+  questionnaireDirty = false;
+  activeTrial = trialIsActive;
+  document.body.classList.toggle("trial-started", trialIsActive);
+  syncActions();
 }
 
 function markDraftDirty() {
@@ -883,6 +892,7 @@ function syncActions() {
   $("#new-project").disabled = blocked;
   $("#save-workspace").disabled = blocked;
   $("#open-file").disabled = blocked;
+  $("#download-trial-result").disabled = blocked || draftDirty || !activeTrial;
   $("#reload-inputs").disabled = busy || invalidating;
   $$('.workflow-panel button').forEach((button) => { if (button.id !== "calculate" && button.id !== "approve") button.disabled = blocked; });
   $("#add-group").disabled = busy || !draft?.resource_groups;
@@ -936,7 +946,10 @@ $("#report-form").addEventListener("submit", async (event) => {
 
 $("#load-example").addEventListener("click", async () => {
   if (!discardNeedsConfirmation()) return;
-  try { await perform("/api/load-example", {}, "Built-in eight-activity example loaded without calculating it.", true); }
+  try {
+    await perform("/api/load-example", {}, "Built-in eight-activity example loaded without calculating it.", true);
+    finishWorkspaceReplacement(false);
+  }
   catch (_error) { /* visible message is sufficient */ }
 });
 
@@ -944,14 +957,17 @@ $("#start-trial").addEventListener("click", async () => {
   if (!discardNeedsConfirmation()) return;
   try {
     await perform("/api/load-trial", {}, "Pristine approved practitioner trial loaded. Review the plan and field briefing before recording status.", true);
-    document.body.classList.add("trial-started");
+    finishWorkspaceReplacement(true);
     $("#trial-brief").scrollIntoView({behavior: "smooth", block: "start"});
   } catch (_error) { /* visible message is sufficient */ }
 });
 
 $("#new-project").addEventListener("click", async () => {
   if (!discardNeedsConfirmation()) return;
-  try { await perform("/api/new", {}, "New eight-activity starter created. Edit its native inputs through the controls.", true); }
+  try {
+    await perform("/api/new", {}, "New eight-activity starter created. Edit its native inputs through the controls.", true);
+    finishWorkspaceReplacement(false);
+  }
   catch (_error) { /* visible message is sufficient */ }
 });
 
@@ -974,9 +990,17 @@ $("#save-workspace").addEventListener("click", async () => {
   } catch (_error) { /* visible message is sufficient */ }
 });
 
-$("#download-trial-result").addEventListener("click", () => {
+$("#download-trial-result").addEventListener("click", async () => {
+  let exporting = false;
   try {
-    if (!current) throw new Error("The trial workspace is not ready.");
+    if (busy) throw new Error("Wait for the current workspace action to finish before downloading the trial result.");
+    await pendingInvalidation;
+    if (!activeTrial) throw new Error("Start the practitioner trial before downloading a trial result.");
+    if (!current || invalidating || draftConflict || draftDirty) {
+      throw new Error("Apply or resolve all pending workspace changes before downloading the trial result.");
+    }
+    exporting = true;
+    setBusy(true);
     const responses = Object.fromEntries($$("[data-question]").map((field) => [field.dataset.question, field.value]));
     const result = {
       trial: current.trial,
@@ -993,6 +1017,7 @@ $("#download-trial-result").addEventListener("click", () => {
     questionnaireDirty = false;
     showMessage("Trial result and questionnaire responses downloaded. Save Workspace separately for a reopenable native workspace.");
   } catch (error) { showMessage(error.message, "error"); }
+  finally { if (exporting) setBusy(false); }
 });
 
 $$("[data-question]").forEach((field) => field.addEventListener("input", () => { questionnaireDirty = true; }));
@@ -1010,6 +1035,7 @@ $("#open-file").addEventListener("change", async (event) => {
   try {
     const workspace = JSON.parse(await file.text());
     await perform("/api/open", {workspace, filename: file.name}, `Opened ${file.name} without recalculating or approving it.`, true);
+    finishWorkspaceReplacement(false);
   } catch (error) {
     showMessage(error.message, "error");
   } finally {

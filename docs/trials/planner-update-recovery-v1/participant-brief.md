@@ -24,7 +24,7 @@ At Day 1 12:00 you are told:
 - Inspection found more fitting work than expected. The mechanical team now estimates seven productive hours remain on liner replacement from the status point.
 - Restart-test preparation and every later activity have not started. Restart-test preparation remains planned for Day 2.
 
-Save before refresh or navigation. The hosted service stores no participant workspace. Use **Save workspace**, then **Open workspace** to restore the native file without recalculation or approval.
+Save before refresh or navigation. The hosted service stores no participant workspace. Use **Save workspace**, then **Open workspace** in a fresh browser context to verify the native file without recalculation or approval. Keep the original trial tab open: reopening a native workspace proves persistence but does not classify an arbitrary file as active trial evidence. Return to the original tab to download the questionnaire/result package.
 
 ## Need help?
 

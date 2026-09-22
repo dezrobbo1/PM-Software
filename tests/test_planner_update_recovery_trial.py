@@ -15,6 +15,7 @@ from deterministic_scheduling_core.native_planning_ui.trial import (
     STATUS_POINT,
     TRIAL_ID,
     new_trial_workspace,
+    trial_metadata,
 )
 from deterministic_scheduling_core.project.planning_workspace import (
     accept_status_update,
@@ -74,6 +75,15 @@ def accept_briefing(workspace: dict) -> None:
 
 
 class PlannerUpdateRecoveryTrialTests(unittest.TestCase):
+    def test_participant_metadata_excludes_maintainer_recovery_oracle(self):
+        metadata = trial_metadata()
+        self.assertEqual(
+            set(metadata),
+            {"id", "name", "version", "build_sha", "status_point", "starting_finish"},
+        )
+        self.assertNotIn("recovered_finish", metadata)
+        self.assertEqual(RECOVERED_FINISH, 77)
+
     def test_owner_package_contains_source_bound_pristine_workspace(self):
         from tools.build_planner_update_recovery_trial_package import build
 

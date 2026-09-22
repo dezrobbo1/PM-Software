@@ -86,6 +86,20 @@ test("hosted Save formats the authoritative single-copy response", () => {
   assert.ok(downloaded.endsWith("\n"));
 });
 
+test("trial-result export requires an active settled authoritative trial", () => {
+  const {node, run} = editor();
+  run("draftDirty = false; current.dirty = false; syncActions()");
+  assert.equal(node("#download-trial-result").disabled, true, "initial workspace is not trial evidence");
+  run("activeTrial = true; syncActions()");
+  assert.equal(node("#download-trial-result").disabled, false, "successful trial activation enables settled export");
+  run("busy = true; syncActions()");
+  assert.equal(node("#download-trial-result").disabled, true, "pending mutation blocks result export");
+  run("busy = false; draftDirty = true; syncActions()");
+  assert.equal(node("#download-trial-result").disabled, true, "unapplied edits block result export");
+  run("draftDirty = false; draftConflict = true; syncActions()");
+  assert.equal(node("#download-trial-result").disabled, true, "draft conflict blocks result export");
+});
+
 test("G: invalid visible work edit immediately blocks approval", () => {
   const {context, document, node, run} = editor();
   const work = node("mode-work");

@@ -118,6 +118,7 @@ def build_sha() -> str:
 
 
 def trial_metadata() -> dict:
+    """Return participant-safe trial identity, not the verification oracle."""
     return {
         "id": TRIAL_ID,
         "name": TRIAL_NAME,
@@ -125,5 +126,4 @@ def trial_metadata() -> dict:
         "build_sha": build_sha(),
         "status_point": STATUS_POINT,
         "starting_finish": STARTING_FINISH,
-        "recovered_finish": RECOVERED_FINISH,
     }
