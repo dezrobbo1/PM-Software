@@ -7,9 +7,11 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from deterministic_scheduling_core.project.planning_workspace import (
+    accept_report,
     advance_status_point,
     current_status_records,
     load,
+    report_unavailable,
     save,
     state_hash,
 )
@@ -107,6 +109,49 @@ class RollingStatusExperimentTests(unittest.TestCase):
 
         self.assertEqual(state_hash(workspace), before_hash)
         self.assertEqual(workspace["execution"]["status_point"], 22)
+
+    def test_advance_rejects_changed_historical_context_without_reinterpreting_history(self):
+        workspace, _, _ = _t1_workspace()
+        outage = report_unavailable(
+            workspace,
+            "M2",
+            22,
+            23,
+            "operations",
+            "newly accepted outage across the next status interval",
+        )
+        accept_report(workspace, outage, "planner")
+        before = deepcopy(workspace)
+
+        with self.assertRaisesRegex(ValueError, "changed historical execution context"):
+            advance_status_point(
+                workspace,
+                23,
+                {
+                    "A03": {
+                        "execution_state": "IN_PROGRESS",
+                        "reason": "T2 preserves the pre-outage actual history",
+                        "actual_start": 20,
+                        "actual_finish": None,
+                        "actual_periods": [[20, 22]],
+                        "mode_id": "SPECIALIST",
+                        "named_assignments": [["MECH", "M1"], ["SPECIALIST", "M2"]],
+                        "remaining_processing_ticks": 4,
+                    },
+                    "A04": {
+                        "execution_state": "NOT_STARTED",
+                        "reason": "T2 not started",
+                    },
+                    "A08": {
+                        "execution_state": "NOT_STARTED",
+                        "reason": "T2 not started",
+                    },
+                },
+                asserted_by="t2-planner",
+                accepted_by="t2-acceptor",
+            )
+
+        self.assertEqual(workspace, before)
 
     def test_final_rolling_state_round_trips_without_recalculation(self):
         result = run_experiment()
