@@ -70,6 +70,17 @@ internal allocation witnesses never become fictitious workers. Version 0 and 1
 workspaces still open without inferred progress. See the
 [accepted-progress semantic contract](docs/accepted-progress-executable-remainder.md).
 
+The headless rolling-status experiment extends that accepted-progress state from
+T1 → T2 → T3 without adding UI semantics. A new atomic status-advancement
+transaction requires explicit re-attestation of every still-open activity,
+preserves completed history and begun choices, keeps remaining productive work
+as an independently reviewed forecast, stales the prior approval, and then
+calculates a separately approvable future remainder. In the bounded control,
+execution exactly as approved retained finish tick 30 at T2; at T3 an accepted
+extra remaining tick moved the controlling finish to tick 31 while prior actual
+periods remained unchanged. See
+[headless rolling status](docs/headless-rolling-status.md).
+
 `planner-update-recovery-v1` packages that existing workflow as a controlled
 practitioner trial: a ten-activity synthetic industrial plan, approved starting
 schedule, field briefing, outcome-based task, questionnaire, observation sheet,
