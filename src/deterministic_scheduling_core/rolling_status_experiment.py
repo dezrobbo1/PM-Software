@@ -16,14 +16,13 @@ from copy import deepcopy
 from typing import Any
 
 from deterministic_scheduling_core.project.planning_workspace import (
-    STATUS_SCHEMA,
     accept_status_update,
+    advance_status_point,
     current_status_records,
     enable_status_tracking,
     new_demo_workspace,
     report_status_update,
     state_hash,
-    validate_accepted_history,
 )
 from deterministic_scheduling_core.scheduling.planning_workspace import approve, propose
 
@@ -126,97 +125,6 @@ def _t1_workspace() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     return workspace, baseline, t1_plan
 
 
-def _assert_in_progress_history_extension(prior: dict[str, Any], next_values: dict[str, Any]) -> None:
-    """Require rolling status to append history rather than rewrite it."""
-    next_state = next_values["execution_state"]
-    if next_state not in {"IN_PROGRESS", "COMPLETED"}:
-        raise ValueError("begun work cannot return to NOT_STARTED during status advancement")
-    if next_values.get("actual_start") != prior["actual_start"]:
-        raise ValueError("status advancement cannot rewrite an accepted actual start")
-    if next_values.get("mode_id") != prior["mode_id"]:
-        raise ValueError("status advancement cannot rewrite an accepted begun mode")
-    if sorted(next_values.get("named_assignments", [])) != sorted(prior["named_assignments"]):
-        raise ValueError("status advancement cannot rewrite accepted begun assignments")
-    prior_periods = prior["actual_periods"]
-    next_periods = next_values.get("actual_periods", [])
-    if next_periods[: len(prior_periods)] != prior_periods:
-        raise ValueError("status advancement must preserve accepted productive periods as an exact prefix")
-
-
-def advance_status_atomically(
-    workspace: dict[str, Any],
-    new_status_point: int,
-    assertions: dict[str, dict[str, Any]],
-    *,
-    actor: str,
-) -> dict[str, str]:
-    """Advance one bounded status cycle without exposing an invalid intermediate state.
-
-    Every activity that was not already completed must be explicitly re-attested.
-    Previously completed activities are immutable history and carry forward without
-    another assertion.  New assertions supersede the previous current assertion.
-
-    This helper is deliberately local to the experiment.  Its purpose is to test
-    semantics before deciding whether the owning engine should adopt this API or a
-    richer rolling-status representation.
-    """
-    if workspace.get("schema") != STATUS_SCHEMA:
-        raise ValueError("rolling status requires a version-two accepted-progress workspace")
-    old_status_point = workspace["execution"]["status_point"]
-    if type(new_status_point) is not int or new_status_point <= old_status_point:
-        raise ValueError("new status point must be an integer later than the current status point")
-    if new_status_point > workspace["project"]["horizon_ticks"]:
-        raise ValueError("new status point must lie inside the planning horizon")
-    if not actor.strip():
-        raise ValueError("status advancement needs an actor")
-
-    prior_states = current_status_records(workspace, require_complete=True)
-    required = {
-        activity_id
-        for activity_id, record in prior_states.items()
-        if record["execution_state"] != "COMPLETED"
-    }
-    if set(assertions) != required:
-        missing = sorted(required - set(assertions))
-        extra = sorted(set(assertions) - required)
-        raise ValueError(
-            f"status advancement requires explicit re-attestation of every open activity; "
-            f"missing={missing}, extra={extra}"
-        )
-
-    candidate = deepcopy(workspace)
-    candidate["execution"]["status_point"] = new_status_point
-    candidate["proposal"] = None
-    accepted_ids: dict[str, str] = {}
-
-    for activity_id in sorted(required):
-        prior = prior_states[activity_id]
-        values = deepcopy(assertions[activity_id])
-        next_state = values.pop("execution_state")
-        reason = values.pop("reason")
-        if prior["execution_state"] == "IN_PROGRESS":
-            _assert_in_progress_history_extension(
-                prior,
-                {"execution_state": next_state, **values},
-            )
-        update_id = _accept(
-            candidate,
-            activity_id,
-            next_state,
-            actor=actor,
-            reason=reason,
-            supersedes_update_id=prior["id"],
-            occurred_at=new_status_point,
-            **values,
-        )
-        accepted_ids[activity_id] = update_id
-
-    validate_accepted_history(candidate, require_complete=True)
-    workspace.clear()
-    workspace.update(candidate)
-    return accepted_ids
-
-
 def _entry(plan: dict[str, Any], activity_id: str) -> dict[str, Any]:
     return next(entry for entry in plan["entries"] if entry["activity_id"] == activity_id)
 
@@ -232,7 +140,7 @@ def run_experiment() -> dict[str, Any]:
     t1_a03 = deepcopy(current_status_records(workspace)["A03"])
     t1_approved_hash = workspace["approved_plan"]["plan_hash"]
 
-    advance_status_atomically(
+    advance_status_point(
         workspace,
         23,
         {
@@ -255,7 +163,8 @@ def run_experiment() -> dict[str, Any]:
                 "reason": "T2 explicitly confirms handback has not started",
             },
         },
-        actor="t2-planner",
+        asserted_by="t2-planner",
+        accepted_by="t2-acceptor",
     )
 
     if t1_a03 not in workspace["execution"]["updates"]:
@@ -277,7 +186,7 @@ def run_experiment() -> dict[str, Any]:
     t2_a03 = deepcopy(current_status_records(workspace)["A03"])
     t2_approved_hash = workspace["approved_plan"]["plan_hash"]
 
-    advance_status_atomically(
+    advance_status_point(
         workspace,
         25,
         {
@@ -300,7 +209,8 @@ def run_experiment() -> dict[str, Any]:
                 "reason": "T3 explicitly confirms handback has not started",
             },
         },
-        actor="t3-planner",
+        asserted_by="t3-planner",
+        accepted_by="t3-acceptor",
     )
 
     if t2_a03 not in workspace["execution"]["updates"]:
