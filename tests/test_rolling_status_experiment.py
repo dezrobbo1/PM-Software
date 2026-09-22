@@ -101,7 +101,8 @@ class RollingStatusExperimentTests(unittest.TestCase):
                         "reason": "T2 not started",
                     },
                 },
-                actor="t2-planner",
+                asserted_by="t2-planner",
+                accepted_by="t2-acceptor",
             )
 
         self.assertEqual(state_hash(workspace), before_hash)
