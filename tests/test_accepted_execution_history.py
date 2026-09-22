@@ -1,5 +1,6 @@
 """Accepted history -> executable remainder semantic contract."""
 from copy import deepcopy
+from hashlib import sha256
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -132,6 +133,36 @@ def pooled_statused():
 
 
 class AcceptedExecutionHistoryTests(unittest.TestCase):
+    def empty_iterable_history_case(self, *, requirements, daily_windows):
+        """The odd empty forms are compatibility facts from merged v2 62be7e0."""
+        workspace = new_blank_workspace()
+        project = workspace["project"]
+        project.update(horizon_ticks=48, objective_activity_id="H", pool_riggers=False,
+                       resources=[], resource_groups=[])
+        project["calendars"] = [
+            {"id": "ALL", "daily_windows": [[0, 48]]},
+            {"id": "EMPTY", "daily_windows": daily_windows},
+        ]
+        project["activities"] = [
+            {"id": "X", "name": "Resource-free productive work", "predecessors": [], "not_before": 0,
+             "modes": [{"id": "FREE", "processing_ticks": 2, "calendar_id": "ALL",
+                        "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS", "requirements": requirements,
+                        "group_requirements": []}]},
+            {"id": "M", "name": "Empty-calendar milestone", "predecessors": [], "not_before": 0,
+             "modes": [{"id": "ZERO", "processing_ticks": 0, "calendar_id": "EMPTY",
+                        "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS", "requirements": [],
+                        "group_requirements": []}]},
+            {"id": "H", "name": "Controlling handoff", "predecessors": ["X", "M"], "not_before": 0,
+             "modes": [{"id": "HANDOFF", "processing_ticks": 0, "calendar_id": "ALL",
+                        "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS", "requirements": [],
+                        "group_requirements": []}]},
+        ]
+        validate(workspace)
+        propose(workspace); approve(workspace, "merged-v2-baseline")
+        baseline_hash = workspace["approved_plan"]["plan_hash"]
+        enable_status_tracking(workspace, 4)
+        return workspace, baseline_hash
+
     def history_case(self, continuity="SUSPENDABLE_AT_AVAILABILITY_GAPS", grouped=False):
         workspace = new_blank_workspace()
         project = workspace["project"]
@@ -227,7 +258,7 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
         record["actual_periods"] = [[20, 22], [24, 26]]
         record["execution_context"]["named_resources"].append(deepcopy(workspace["project"]["resources"][1]))
         record["execution_context"]["accepted_outages"] = [deepcopy(next(r for r in workspace["reports"] if r["id"] == outage))]
-        with self.assertRaisesRegex(ValueError, "historical.*(outage|resources)"):
+        with self.assertRaisesRegex(ValueError, "historical.*(outage|resource)"):
             validate(invalid)
         session = BrowserSession(); before = deepcopy(session.workspace)
         with self.assertRaises(ValueError): dispatch_action("/api/open", {"workspace": invalid}, session)
@@ -235,6 +266,504 @@ class AcceptedExecutionHistoryTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "invalid.json"; path.write_text(json.dumps(invalid))
             with self.assertRaises(ValueError): load(path)
+
+    def test_merged_v2_snapshot_reopens_without_normalizing_or_rehashing(self):
+        fixture = Path(__file__).parent / "fixtures/accepted-history/merged-v2-metadata-duplicates.json"
+        original = fixture.read_bytes()
+        self.assertEqual(sha256(original).hexdigest(), "3cd832702e114ad01d5a64ecd793623490d5f0ff8721c3e1b77ff9c37a519d4f")
+        workspace = load(fixture)
+        self.assertEqual(workspace, json.loads(original))
+        self.assertEqual(state_hash(workspace), "96cdd690d9f09e83a909f4c6f9fe2b6196d34970e6b081db147636b923bee8cb")
+        self.assertEqual(workspace["approved_plan"]["plan_hash"], "e41133340a29f8fa3273dded833e53ea904eabf905bc45a218340fd219e1f828")
+        before = deepcopy(workspace)
+        validate_stored_plans(workspace)
+        session = BrowserSession(); dispatch_action("/api/open", {"workspace": workspace}, session)
+        self.assertEqual(session.workspace, before)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "reopened.json"; save(workspace, path)
+            self.assertEqual(path.read_bytes(), original)
+            self.assertEqual(load(path), before)
+        self.assertEqual(workspace, before)
+        validate_plan(workspace, propose(workspace))
+        self.assertEqual(workspace["execution"], before["execution"])
+
+    def test_merged_v2_empty_iterable_fixture_reopens_without_rewriting_history(self):
+        fixture = Path(__file__).parent / "fixtures/accepted-history/merged-v2-empty-iterables.json"
+        original = fixture.read_bytes()
+        self.assertEqual(sha256(original).hexdigest(), "998e3c8e7914202cdecfad163b2d90619191acaea28410b2b0f06783ef633117")
+        workspace = load(fixture)
+        validate_stored_plans(workspace)
+        self.assertEqual(state_hash(workspace), "68179ebf1b313e05f3ebc0f912356bbd2c2f2d0d90f45a4c716ddea70b3b9586")
+        self.assertEqual(workspace["approved_plan"]["plan_hash"], "159e1818dfb78fa6c3bbe853587685e3ebebf758a41cc0e645174f52519c0d0d")
+        self.assertEqual([plan["plan_hash"] for plan in workspace["plan_history"]],
+                         ["d7cddfee4571f2657bc1bfe1cdb1e0c739341d792bee0944f3c486c2c18b50d5"])
+        records = workspace["execution"]["updates"]
+        self.assertTrue(all(record["execution_context"]["mode"]["requirements"] == {}
+                            for record in records if record["activity_id"] == "X"))
+        self.assertTrue(all(record["execution_context"]["calendars"][0]["daily_windows"] == {}
+                            for record in records if record["activity_id"] == "M"))
+        approved_project = workspace["approved_plan"]["source_snapshot"]["project"]
+        self.assertEqual(approved_project["activities"][0]["modes"][0]["requirements"], [])
+        self.assertEqual(next(calendar for calendar in approved_project["calendars"]
+                              if calendar["id"] == "EMPTY")["daily_windows"], [])
+        session = BrowserSession()
+        dispatch_action("/api/open", {"workspace": workspace, "filename": fixture.name}, session)
+        self.assertEqual(session.workspace, workspace)
+        before = deepcopy(workspace)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "merged-v2-empty-iterables.json"
+            path.write_bytes(original)
+            reopened = load(path)
+            save(reopened, path)
+            self.assertEqual(path.read_bytes(), original)
+        plan = propose(workspace); validate_plan(workspace, plan)
+        self.assertEqual(workspace["execution"], before["execution"])
+        self.assertEqual(workspace["approved_plan"], before["approved_plan"])
+        self.assertEqual(workspace["plan_history"], before["plan_history"])
+
+    def test_v2_empty_requirements_mapping_preserves_progress_and_provenance(self):
+        workspace, baseline_hash = self.empty_iterable_history_case(requirements={}, daily_windows=[])
+        prior_id = _accept(workspace, "X", "COMPLETED", actual_start=0, actual_finish=2,
+                           actual_periods=[[0, 2]], mode_id="FREE", named_assignments=[],
+                           remaining_processing_ticks=0)
+        current_id = _accept(workspace, "X", "COMPLETED", actual_start=0, actual_finish=2,
+                             actual_periods=[[0, 2]], mode_id="FREE", named_assignments=[],
+                             remaining_processing_ticks=0, supersedes_update_id=prior_id)
+        _accept(workspace, "M", "COMPLETED", actual_start=0, actual_finish=0,
+                actual_periods=[], mode_id="ZERO", named_assignments=[], remaining_processing_ticks=0)
+        _accept(workspace, "H", "NOT_STARTED")
+        for record_id in (prior_id, current_id):
+            record = next(update for update in workspace["execution"]["updates"] if update["id"] == record_id)
+            self.assertEqual(record["execution_context"]["mode"]["requirements"], {})
+
+        # A corrected factual execution gap may remain in superseded provenance.
+        prior = next(update for update in workspace["execution"]["updates"] if update["id"] == prior_id)
+        prior.update(actual_finish=3, actual_periods=[[0, 1], [2, 3]])
+        validate(workspace)
+        current_again = deepcopy(workspace)
+        current_again["execution"]["updates"] = [u for u in current_again["execution"]["updates"] if u["id"] != current_id]
+        with self.assertRaisesRegex(ValueError, "suspension gap"):
+            validate(current_again)
+
+        plan = propose(workspace); validate_plan(workspace, plan); approve(workspace, "test-only")
+        self.assertEqual(workspace["plan_history"][0]["plan_hash"], baseline_hash)
+        trusted_hash = state_hash(workspace)
+        plan_hashes = ([plan["plan_hash"] for plan in workspace["plan_history"]]
+                       + [workspace["approved_plan"]["plan_hash"]])
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "empty-requirements.json"
+            save(workspace, path); original_bytes = path.read_bytes()
+            reopened = load(path); validate_stored_plans(reopened)
+            self.assertEqual(reopened, workspace)
+            self.assertEqual(state_hash(reopened), trusted_hash)
+            self.assertEqual([plan["plan_hash"] for plan in reopened["plan_history"]]
+                             + [reopened["approved_plan"]["plan_hash"]], plan_hashes)
+            save(reopened, path)
+            self.assertEqual(path.read_bytes(), original_bytes)
+
+        structurally_bad = deepcopy(workspace)
+        record = next(u for u in structurally_bad["execution"]["updates"] if u["id"] == prior_id)
+        record["execution_context"]["mode"]["requirements"] = {"bad": {}}
+        with self.assertRaises(ValueError):
+            validate(structurally_bad)
+        bad_project = deepcopy(workspace)
+        bad_project["project"]["activities"][0]["modes"][0]["requirements"] = {"bad": {}}
+        with self.assertRaises((KeyError, TypeError, ValueError)):
+            validate(bad_project)
+
+    def test_v2_empty_daily_windows_mapping_preserves_milestone_history(self):
+        workspace, baseline_hash = self.empty_iterable_history_case(requirements=[], daily_windows={})
+        _accept(workspace, "X", "COMPLETED", actual_start=0, actual_finish=2,
+                actual_periods=[[0, 2]], mode_id="FREE", named_assignments=[], remaining_processing_ticks=0)
+        prior_id = _accept(workspace, "M", "COMPLETED", actual_start=0, actual_finish=0,
+                           actual_periods=[], mode_id="ZERO", named_assignments=[], remaining_processing_ticks=0)
+        current_id = _accept(workspace, "M", "COMPLETED", actual_start=0, actual_finish=0,
+                             actual_periods=[], mode_id="ZERO", named_assignments=[], remaining_processing_ticks=0,
+                             supersedes_update_id=prior_id)
+        _accept(workspace, "H", "NOT_STARTED")
+        for record_id in (prior_id, current_id):
+            record = next(update for update in workspace["execution"]["updates"] if update["id"] == record_id)
+            self.assertEqual(record["execution_context"]["calendars"][0]["daily_windows"], {})
+
+        # The same old factual error is provenance when superseded, but infeasible when current.
+        prior = next(update for update in workspace["execution"]["updates"] if update["id"] == prior_id)
+        prior.update(actual_finish=1, actual_periods=[[0, 1]])
+        validate(workspace)
+        current_again = deepcopy(workspace)
+        current_again["execution"]["updates"] = [u for u in current_again["execution"]["updates"] if u["id"] != current_id]
+        with self.assertRaisesRegex(ValueError, "historical activity calendar"):
+            validate(current_again)
+
+        plan = propose(workspace); validate_plan(workspace, plan); approve(workspace, "test-only")
+        self.assertEqual(workspace["plan_history"][0]["plan_hash"], baseline_hash)
+        trusted_hash = state_hash(workspace)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "empty-calendar.json"
+            save(workspace, path); original_bytes = path.read_bytes()
+            reopened = load(path); validate_stored_plans(reopened)
+            self.assertEqual(reopened, workspace)
+            self.assertEqual(state_hash(reopened), trusted_hash)
+            save(reopened, path)
+            self.assertEqual(path.read_bytes(), original_bytes)
+
+        for value in ({"bad": [0, 1]}, [[0, 0]], [[-1, 1]], [[0, 49]]):
+            structurally_bad = deepcopy(workspace)
+            record = next(u for u in structurally_bad["execution"]["updates"] if u["id"] == prior_id)
+            record["execution_context"]["calendars"][0]["daily_windows"] = value
+            with self.assertRaises(ValueError):
+                validate(structurally_bad)
+        bad_project = deepcopy(workspace)
+        next(c for c in bad_project["project"]["calendars"] if c["id"] == "EMPTY")["daily_windows"] = {"bad": [0, 1]}
+        with self.assertRaises((TypeError, ValueError)):
+            validate(bad_project)
+
+    def test_v2_empty_string_iterables_preserve_progress_and_provenance(self):
+        workspace, baseline_hash = self.empty_iterable_history_case(requirements="", daily_windows="")
+        x_prior = _accept(workspace, "X", "COMPLETED", actual_start=0, actual_finish=2,
+                          actual_periods=[[0, 2]], mode_id="FREE", named_assignments=[],
+                          remaining_processing_ticks=0)
+        x_current = _accept(workspace, "X", "COMPLETED", actual_start=0, actual_finish=2,
+                            actual_periods=[[0, 2]], mode_id="FREE", named_assignments=[],
+                            remaining_processing_ticks=0, supersedes_update_id=x_prior)
+        m_prior = _accept(workspace, "M", "COMPLETED", actual_start=0, actual_finish=0,
+                          actual_periods=[], mode_id="ZERO", named_assignments=[],
+                          remaining_processing_ticks=0)
+        m_current = _accept(workspace, "M", "COMPLETED", actual_start=0, actual_finish=0,
+                            actual_periods=[], mode_id="ZERO", named_assignments=[],
+                            remaining_processing_ticks=0, supersedes_update_id=m_prior)
+        _accept(workspace, "H", "NOT_STARTED")
+        for record_id in (x_prior, x_current):
+            record = next(update for update in workspace["execution"]["updates"] if update["id"] == record_id)
+            self.assertEqual(record["execution_context"]["mode"]["requirements"], "")
+        for record_id in (m_prior, m_current):
+            record = next(update for update in workspace["execution"]["updates"] if update["id"] == record_id)
+            self.assertEqual(record["execution_context"]["calendars"][0]["daily_windows"], "")
+
+        plan = propose(workspace); validate_plan(workspace, plan); approve(workspace, "test-only")
+        self.assertEqual(workspace["plan_history"][0]["plan_hash"], baseline_hash)
+        trusted_hash = state_hash(workspace)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "empty-string-iterables.json"
+            save(workspace, path); original_bytes = path.read_bytes()
+            reopened = load(path); validate_stored_plans(reopened)
+            self.assertEqual(reopened, workspace)
+            self.assertEqual(state_hash(reopened), trusted_hash)
+            save(reopened, path)
+            self.assertEqual(path.read_bytes(), original_bytes)
+
+        invalid_requirements = deepcopy(workspace)
+        next(u for u in invalid_requirements["execution"]["updates"] if u["id"] == x_prior)[
+            "execution_context"]["mode"]["requirements"] = "R"
+        with self.assertRaises(ValueError):
+            validate(invalid_requirements)
+        invalid_windows = deepcopy(workspace)
+        next(u for u in invalid_windows["execution"]["updates"] if u["id"] == m_prior)[
+            "execution_context"]["calendars"][0]["daily_windows"] = "x"
+        with self.assertRaises(ValueError):
+            validate(invalid_windows)
+        invalid_project_requirements = deepcopy(workspace)
+        invalid_project_requirements["project"]["activities"][0]["modes"][0]["requirements"] = "R"
+        with self.assertRaises((KeyError, TypeError, ValueError)):
+            validate(invalid_project_requirements)
+        invalid_project_windows = deepcopy(workspace)
+        next(c for c in invalid_project_windows["project"]["calendars"] if c["id"] == "EMPTY")[
+            "daily_windows"] = "x"
+        with self.assertRaises((TypeError, ValueError)):
+            validate(invalid_project_windows)
+
+    def test_accepted_project_metadata_and_duplicate_qualifications_allow_progress(self):
+        for kind in ("calendar", "capabilities", "qualifications"):
+            with self.subTest(kind=kind):
+                workspace = self.named_history_case()
+                project = deepcopy(workspace["project"])
+                if kind == "calendar": project["calendars"][0]["name"] = "Legacy display metadata"
+                if kind == "capabilities": project["resources"][0]["capabilities"] = ["Q", "Q"]
+                if kind == "qualifications": project["activities"][0]["modes"][0]["requirements"][0]["pool_ids"] = ["Q", "Q"]
+                replace_project(workspace, project)
+                _accept(workspace, "X", "COMPLETED", actual_start=20, actual_finish=26, actual_periods=[[20, 26]],
+                    mode_id="USED", named_assignments=[["ONE", "R1"], ["TWO", "R2"]], remaining_processing_ticks=0)
+                self.assertEqual(workspace["project"], project)
+                context = current_status_records(workspace)["X"]["execution_context"]
+                self.assertEqual(context["calendars"], project["calendars"])
+                self.assertEqual(context["named_resources"], project["resources"])
+                self.assertEqual(context["mode"], project["activities"][0]["modes"][0])
+                validate_plan(workspace, propose(workspace))
+
+    def test_v2_named_capacity_one_preserves_representation_through_progress(self):
+        for capacity in (True, 1.0, 1, "omitted"):
+            with self.subTest(capacity=capacity):
+                workspace = self.named_history_case()
+                project = deepcopy(workspace["project"])
+                if capacity == "omitted":
+                    project["resources"][0].pop("capacity")
+                else:
+                    project["resources"][0]["capacity"] = capacity
+                replace_project(workspace, project)
+                values = dict(actual_start=20, actual_periods=[[20, 26]], mode_id="USED",
+                    named_assignments=[["ONE", "R1"], ["TWO", "R2"]], remaining_processing_ticks=2)
+                old_id = _accept(workspace, "X", "IN_PROGRESS", **values)
+                _accept(workspace, "X", "IN_PROGRESS", supersedes_update_id=old_id, **values)
+                for record in workspace["execution"]["updates"]:
+                    if record["activity_id"] == "X":
+                        self.assertEqual(json.dumps(record["execution_context"]["named_resources"]),
+                                         json.dumps(project["resources"]))
+                validate_plan(workspace, propose(workspace))
+                before = json.dumps(workspace, sort_keys=True)
+                original_hash = state_hash(workspace)
+                with TemporaryDirectory() as directory:
+                    path = Path(directory) / "capacity.json"
+                    save(workspace, path)
+                    original_bytes = path.read_bytes()
+                    reopened = load(path)
+                    self.assertEqual(json.dumps(reopened, sort_keys=True), before)
+                    self.assertEqual(state_hash(reopened), original_hash)
+                    save(reopened, path)
+                    self.assertEqual(path.read_bytes(), original_bytes)
+
+    def test_v2_string_capabilities_preserve_history_and_set_semantics(self):
+        for capabilities in ("Q", "QQ", "QR", ["Q"], ["Q", "Q"]):
+            with self.subTest(capabilities=capabilities):
+                workspace = self.named_history_case()
+                project = deepcopy(workspace["project"])
+                project["resources"][0]["capabilities"] = capabilities
+                replace_project(workspace, project)
+                values = dict(actual_start=20, actual_periods=[[20, 26]], mode_id="USED",
+                    named_assignments=[["ONE", "R1"], ["TWO", "R2"]], remaining_processing_ticks=2)
+                old_id = _accept(workspace, "X", "IN_PROGRESS", **values)
+                _accept(workspace, "X", "IN_PROGRESS", supersedes_update_id=old_id, **values)
+                for record in workspace["execution"]["updates"]:
+                    if record["activity_id"] == "X":
+                        self.assertEqual(record["execution_context"]["named_resources"][0]["capabilities"], capabilities)
+                validate_plan(workspace, propose(workspace))
+                before = deepcopy(workspace)
+                original_hash = state_hash(workspace)
+                with TemporaryDirectory() as directory:
+                    path = Path(directory) / "capabilities.json"
+                    save(workspace, path)
+                    original_bytes = path.read_bytes()
+                    reopened = load(path)
+                    self.assertEqual(reopened, before)
+                    self.assertEqual(state_hash(reopened), original_hash)
+                    save(reopened, path)
+                    self.assertEqual(path.read_bytes(), original_bytes)
+                # A scalar string retains legacy character-set semantics; it
+                # must not become one new multi-character qualification.
+                invalid = deepcopy(workspace)
+                current_status_records(invalid)["X"]["execution_context"]["mode"]["requirements"][0]["pool_ids"] = ["QR"]
+                with self.assertRaises(ValueError):
+                    validate(invalid)
+
+    def test_v2_string_qualifications_preserve_captured_modes(self):
+        for pools in ("Q", "QQ", "QR"):
+            with self.subTest(pools=pools):
+                workspace = self.named_history_case()
+                project = deepcopy(workspace["project"])
+                project["resources"][0]["capabilities"] = ["Q", "R"]
+                project["activities"][0]["modes"][0]["requirements"][0]["pool_ids"] = pools
+                replace_project(workspace, project)
+                values = dict(actual_start=20, actual_periods=[[20, 26]], mode_id="USED",
+                    named_assignments=[["ONE", "R1"], ["TWO", "R2"]], remaining_processing_ticks=2)
+                old_id = _accept(workspace, "X", "IN_PROGRESS", **values)
+                _accept(workspace, "X", "IN_PROGRESS", supersedes_update_id=old_id, **values)
+                for record in workspace["execution"]["updates"]:
+                    if record["activity_id"] == "X":
+                        self.assertEqual(record["execution_context"]["mode"]["requirements"][0]["pool_ids"], pools)
+                validate_plan(workspace, propose(workspace))
+                original_hash = state_hash(workspace)
+                with TemporaryDirectory() as directory:
+                    path = Path(directory) / "qualifications.json"
+                    save(workspace, path)
+                    original_bytes = path.read_bytes()
+                    reopened = load(path)
+                    self.assertEqual(reopened, workspace)
+                    self.assertEqual(state_hash(reopened), original_hash)
+                    save(reopened, path)
+                    self.assertEqual(path.read_bytes(), original_bytes)
+
+    def test_v2_eligibility_representations_preserve_execution_and_provenance(self):
+        for eligible in ("R", "RS", ["R"], ["R", "S"],
+                         {"R": {"legacy": "metadata"}}, {"R": None, "S": [1, {"note": True}]}):
+            with self.subTest(eligible=eligible):
+                workspace = self.named_history_case()
+                project = deepcopy(workspace["project"])
+                for resource, rid in zip(project["resources"], ("R", "S")):
+                    resource["id"] = rid
+                requirements = project["activities"][0]["modes"][0]["requirements"]
+                requirements[0]["eligible_resource_ids"] = eligible
+                requirements[1]["eligible_resource_ids"] = ["S"]
+                replace_project(workspace, project)
+                values = dict(actual_start=20, actual_periods=[[20, 26]], mode_id="USED",
+                    named_assignments=[["ONE", "R"], ["TWO", "S"]], remaining_processing_ticks=2)
+                old_id = _accept(workspace, "X", "IN_PROGRESS", **values)
+                _accept(workspace, "X", "IN_PROGRESS", supersedes_update_id=old_id, **values)
+                for record in workspace["execution"]["updates"]:
+                    if record["activity_id"] == "X":
+                        self.assertEqual(record["execution_context"]["mode"]["requirements"][0]["eligible_resource_ids"], eligible)
+                validate_plan(workspace, propose(workspace))
+                original_hash = state_hash(workspace)
+                with TemporaryDirectory() as directory:
+                    path = Path(directory) / "eligibility.json"
+                    save(workspace, path)
+                    original_bytes = path.read_bytes()
+                    reopened = load(path)
+                    self.assertEqual(reopened, workspace)
+                    self.assertEqual(state_hash(reopened), original_hash)
+                    save(reopened, path)
+                    self.assertEqual(path.read_bytes(), original_bytes)
+                for record_id in (old_id, current_status_records(workspace)["X"]["id"]):
+                    for malformed in ("RR", [], {}, {"": None}, {" ": "metadata"}, 1, [None]):
+                        invalid = deepcopy(workspace)
+                        record = next(u for u in invalid["execution"]["updates"] if u["id"] == record_id)
+                        record["execution_context"]["mode"]["requirements"][0]["eligible_resource_ids"] = malformed
+                        with self.assertRaises(ValueError):
+                            validate(invalid)
+                invalid = deepcopy(workspace)
+                current_status_records(invalid)["X"]["execution_context"]["mode"]["requirements"][0]["eligible_resource_ids"] = {"S": {"note": "R is no longer eligible"}}
+                with self.assertRaisesRegex(ValueError, "eligib"):
+                    validate(invalid)
+
+    def test_v2_qualification_representation_matrix_preserves_trusted_history(self):
+        cases = [
+            (["Q", 7], ["Q"]), (["Q", 1.5, True, None, "", " "], ["Q"]),
+            (["Q", 7, 7], ["Q", 7]), (["Q", None], [None]),
+            ([True], [1]), ([1.0], [True]), ([""], [""]), ([" "], [" "]),
+            ("QQ", "Q"), ("QR", ["Q", "R"]),
+            ({"Q": {"legacy": [7]}}, {"Q": None}),
+        ]
+        for capabilities, qualifications in cases:
+            with self.subTest(capabilities=capabilities, qualifications=qualifications):
+                workspace = self.named_history_case()
+                project = deepcopy(workspace["project"])
+                project["resources"][0]["capabilities"] = capabilities
+                project["activities"][0]["modes"][0]["requirements"][0]["pool_ids"] = qualifications
+                replace_project(workspace, project)
+                values = dict(actual_start=20, actual_periods=[[20, 26]], mode_id="USED",
+                    named_assignments=[["ONE", "R1"], ["TWO", "R2"]], remaining_processing_ticks=2)
+                prior_id = _accept(workspace, "X", "IN_PROGRESS", **values)
+                _accept(workspace, "X", "IN_PROGRESS", supersedes_update_id=prior_id, **values)
+                for record in workspace["execution"]["updates"]:
+                    if record["activity_id"] == "X":
+                        context = record["execution_context"]
+                        self.assertEqual(json.dumps(context["named_resources"][0]["capabilities"]), json.dumps(capabilities))
+                        self.assertEqual(json.dumps(context["mode"]["requirements"][0]["pool_ids"]), json.dumps(qualifications))
+                validate_plan(workspace, propose(workspace))
+                original_hash = state_hash(workspace)
+                with TemporaryDirectory() as directory:
+                    path = Path(directory) / "qualification-matrix.json"
+                    save(workspace, path)
+                    original_bytes = path.read_bytes()
+                    reopened = load(path)
+                    self.assertEqual(reopened, workspace)
+                    self.assertEqual(state_hash(reopened), original_hash)
+                    save(reopened, path)
+                    self.assertEqual(path.read_bytes(), original_bytes)
+                invalid = deepcopy(workspace)
+                current_status_records(invalid)["X"]["execution_context"]["mode"]["requirements"][0]["pool_ids"] = ["MISSING"]
+                with self.assertRaisesRegex(ValueError, "historical qualifications"):
+                    validate(invalid)
+
+    def test_malformed_qualification_structure_rejected_in_all_accepted_records(self):
+        workspace = self.named_history_case()
+        values = dict(actual_start=20, actual_periods=[[20, 26]], mode_id="USED",
+            named_assignments=[["ONE", "R1"], ["TWO", "R2"]], remaining_processing_ticks=2)
+        prior_id = _accept(workspace, "X", "IN_PROGRESS", **values)
+        current_id = _accept(workspace, "X", "IN_PROGRESS", supersedes_update_id=prior_id, **values)
+        for record_id in (prior_id, current_id):
+            for field in ("capabilities", "pool_ids"):
+                for value in (None, 7, True, ["Q", []], ["Q", {}]):
+                    with self.subTest(record=record_id, field=field, value=value):
+                        invalid = deepcopy(workspace)
+                        context = next(u for u in invalid["execution"]["updates"] if u["id"] == record_id)["execution_context"]
+                        target = context["named_resources"][0] if field == "capabilities" else context["mode"]["requirements"][0]
+                        target[field] = value
+                        with self.assertRaises(ValueError):
+                            validate(invalid)
+
+    def test_superseded_accepted_context_structure_is_validated(self):
+        workspace = self.named_history_case()
+        values = dict(actual_start=20, actual_finish=26, actual_periods=[[20, 26]], mode_id="USED",
+            named_assignments=[["ONE", "R1"], ["TWO", "R2"]], remaining_processing_ticks=0)
+        old_id = _accept(workspace, "X", "COMPLETED", **values)
+        _accept(workspace, "X", "COMPLETED", supersedes_update_id=old_id, **values)
+        for kind in ("processing", "calendar", "resource", "outage"):
+            with self.subTest(kind=kind):
+                invalid = deepcopy(workspace)
+                context = next(u for u in invalid["execution"]["updates"] if u["id"] == old_id)["execution_context"]
+                if kind == "processing": context["mode"]["processing_ticks"] = -1
+                if kind == "calendar": context["calendars"][0]["daily_windows"] = [[22, 20]]
+                if kind == "resource": context["named_resources"][0]["capacity"] = 2
+                if kind == "outage": context["accepted_outages"] = [{"status": "ACCEPTED", "resource_id": "R1", "accepted_by": "planner", "start": 22, "finish": 20}]
+                with self.assertRaises(ValueError): validate(invalid)
+                with TemporaryDirectory() as directory:
+                    path = Path(directory) / "invalid.json"; path.write_text(json.dumps(invalid))
+                    with self.assertRaises(ValueError): load(path)
+
+    def test_corrected_factual_history_is_retained_but_not_current_feasibility(self):
+        workspace, _ = named_statused()
+        old = deepcopy(current_status_records(workspace)["A01"])
+        _accept(workspace, "A01", "COMPLETED", actual_start=14, actual_finish=16, actual_periods=[[14, 16]],
+            mode_id="FIXED", remaining_processing_ticks=0, supersedes_update_id=old["id"])
+        # Imported correction: the original assertion was factually wrong,
+        # outside its historical calendar, but its captured structure is valid.
+        prior = next(u for u in workspace["execution"]["updates"] if u["id"] == old["id"])
+        prior.update(actual_start=0, actual_finish=2, actual_periods=[[0, 2]])
+        before = deepcopy(workspace["execution"])
+        validate(workspace); validate_plan(workspace, propose(workspace))
+        self.assertEqual(workspace["execution"], before)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "corrected.json"; save(workspace, path)
+            self.assertEqual(load(path), workspace)
+        invalid = deepcopy(workspace)
+        invalid["execution"]["updates"].pop()  # The erroneous assertion is current again.
+        with self.assertRaisesRegex(ValueError, "historical activity calendar"):
+            validate(invalid)
+
+    def test_import_rejects_malformed_captured_native_context(self):
+        named = self.named_history_case()
+        _accept(named, "X", "COMPLETED", actual_start=20, actual_finish=26,
+                actual_periods=[[20, 26]], mode_id="USED",
+                named_assignments=[["ONE", "R1"], ["TWO", "R2"]],
+                remaining_processing_ticks=0)
+        grouped = self.history_case(grouped=True)
+        _accept(grouped, "X", "COMPLETED", actual_start=20, actual_finish=26,
+                actual_periods=[[20, 26]], mode_id="USED",
+                named_assignments=[], remaining_processing_ticks=0)
+
+        def current(workspace):
+            return current_status_records(workspace)["X"]["execution_context"]
+
+        corruptions = [
+            ("negative processing", named, lambda ctx: (
+                ctx["mode"].__setitem__("processing_ticks", -1),
+                current_status_records(invalid)["X"].__setitem__("actual_periods", []),
+            )),
+            ("bad continuity", named, lambda ctx: ctx["mode"].__setitem__("continuity", "ARBITRARY")),
+            ("bad calendar", named, lambda ctx: ctx["calendars"][0].__setitem__("daily_windows", [[20, 20]])),
+            ("bad named capacity", named, lambda ctx: ctx["named_resources"][0].__setitem__("capacity", 2)),
+            ("bad named capacity type", named, lambda ctx: ctx["named_resources"][0].__setitem__("capacity", "1")),
+            ("bad group capacity", grouped, lambda ctx: ctx["resource_groups"][0].__setitem__("capacity", 0)),
+            ("oversized group capacity", grouped, lambda ctx: ctx["resource_groups"][0].__setitem__("capacity", 33)),
+        ]
+        for label, source, corrupt in corruptions:
+            with self.subTest(label=label):
+                invalid = deepcopy(source)
+                corrupt(current(invalid))
+                with self.assertRaises(ValueError):
+                    validate(invalid)
+
+        invalid = deepcopy(named)
+        current(invalid)["mode"]["processing_ticks"] = -1
+        current_status_records(invalid)["X"]["actual_periods"] = []
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "invalid-captured-context.json"
+            path.write_text(json.dumps(invalid))
+            with self.assertRaises(ValueError):
+                load(path)
+        session = BrowserSession()
+        before = deepcopy(session.workspace)
+        with self.assertRaises(ValueError):
+            dispatch_action("/api/open", {"workspace": invalid}, session)
+        self.assertEqual(session.workspace, before)
 
     def test_continuous_in_progress_must_reach_status_boundary(self):
         for periods in ([[20, 22]], []):

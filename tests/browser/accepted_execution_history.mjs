@@ -82,6 +82,95 @@ export async function acceptedProgressTrial(browser, url, evidenceDir, assert) {
   }
   const named = await fresh();
   try {
+    const legacyFile = path.resolve("tests/fixtures/accepted-history/merged-v2-metadata-duplicates.json");
+    const legacyBytes = fs.readFileSync(legacyFile);
+    const legacyWorkspace = JSON.parse(legacyBytes);
+    const compatible = await fresh();
+    await open(compatible, legacyFile);
+    assert(JSON.stringify((await state(compatible)).workspace) === JSON.stringify(legacyWorkspace), "merged v2 metadata, duplicate qualifications and retained approval open unchanged");
+    const compatibleFile = await save(compatible, "v2-compatible-reopened");
+    const compatibleReopen = await fresh();
+    await open(compatibleReopen, compatibleFile);
+    assert(JSON.stringify((await state(compatibleReopen)).workspace) === JSON.stringify(legacyWorkspace), "fresh v2 reopen preserves historical records and hashes without normalization");
+    await click(compatibleReopen, "#calculate");
+    assert(JSON.stringify((await state(compatibleReopen)).workspace.execution) === JSON.stringify(legacyWorkspace.execution), "compatible v2 recovery leaves captured metadata and duplicate values intact");
+    await shot(compatibleReopen, "22-v2-compatible-recovery", ".results-panel");
+
+    const duplicateEditor = await fresh();
+    const editorProject = (await state(duplicateEditor)).workspace.project;
+    const resourceIndex = editorProject.resources.findIndex((r) => r.id === "M1");
+    const capabilities = editorProject.resources[resourceIndex].capabilities;
+    await duplicateEditor.locator("summary").filter({hasText: "Resources and calendars"}).click();
+    await duplicateEditor.locator(`[data-resource-capabilities="${resourceIndex}"]`).fill([...capabilities, capabilities[0]].join(", "));
+    await duplicateEditor.locator('.activity-row[data-activity-id="A03"]').click();
+    const modeIndex = editorProject.activities.find((a) => a.id === "A03").modes.findIndex((m) => m.id === "SPECIALIST");
+    const pools = editorProject.activities.find((a) => a.id === "A03").modes[modeIndex].requirements[0].pool_ids;
+    await duplicateEditor.locator(`[data-requirement-pools="${modeIndex}:0"]`).fill([...pools, pools[0]].join(", "));
+    await click(duplicateEditor, "#apply-project");
+    await enable(duplicateEditor, 22);
+    await update(duplicateEditor, "A03", "IN_PROGRESS", [[20, 22]], 4, "SPECIALIST", [["MECH", "M1"], ["SPECIALIST", "M2"]]);
+    const acceptedDuplicate = (await state(duplicateEditor)).workspace.execution.updates.at(-1);
+    assert(acceptedDuplicate.execution_context.named_resources.find((r) => r.id === "M1").capabilities.length === capabilities.length + 1 && acceptedDuplicate.execution_context.mode.requirements[0].pool_ids.length === pools.length + 1, "editor-accepted duplicate capabilities and qualifications remain unchanged in accepted progress");
+    await save(duplicateEditor, "editor-duplicates-accepted");
+
+    await update(compatible, "A01", "COMPLETED", [[14, 16]], 0);
+    const correctedProvenance = structuredClone((await state(compatible)).workspace);
+    const superseded = correctedProvenance.execution.updates.find((u) => u.activity_id === "A01");
+    Object.assign(superseded, {actual_start: 0, actual_finish: 2, actual_periods: [[0, 2]]});
+    const provenanceFile = path.join(dir, "superseded-factual-error.json");
+    fs.writeFileSync(provenanceFile, JSON.stringify(correctedProvenance, null, 2));
+    const provenance = await fresh();
+    await open(provenance, provenanceFile);
+    await click(provenance, "#calculate");
+    assert(JSON.stringify((await state(provenance)).workspace.execution) === JSON.stringify(correctedProvenance.execution), "superseded factual calendar error remains provenance and does not constrain current recovery");
+    await shot(provenance, "23-superseded-factual-provenance", "#history");
+    const retainedProvenance = await state(provenance);
+    const retainedFile = await save(provenance, "superseded-factual-error-recovery");
+    const retainedReopen = await fresh();
+    await open(retainedReopen, retainedFile);
+    const reopenedProvenance = await state(retainedReopen);
+    assert(JSON.stringify(reopenedProvenance.workspace) === JSON.stringify(retainedProvenance.workspace), "bounded provenance save/fresh reopen retains superseded factual error, correction, proposal and prior approval exactly");
+    assert(reopenedProvenance.trusted_input_hash === retainedProvenance.trusted_input_hash, "bounded provenance reopen preserves trusted hash without recalculation or record rewriting");
+    await shot(retainedReopen, "23b-superseded-provenance-fresh-reopen", "#history");
+    const malformed = structuredClone(correctedProvenance);
+    malformed.execution.updates.find((u) => u.id === superseded.id).execution_context.mode.processing_ticks = -1;
+    const malformedFile = path.join(dir, "INVALID-superseded-context-EXPECTED-REJECTION.json");
+    fs.writeFileSync(malformedFile, JSON.stringify(malformed, null, 2));
+    const rejectTarget = await fresh();
+    const beforeReject = JSON.stringify((await state(rejectTarget)).workspace);
+    await rejectTarget.locator("#open-file").setInputFiles(malformedFile);
+    await rejectTarget.locator("#message.error").filter({hasText: /historical processing_ticks/}).waitFor();
+    assert(JSON.stringify((await state(rejectTarget)).workspace) === beforeReject, "malformed superseded context is rejected without replacing the active workspace");
+    await shot(rejectTarget, "24-malformed-superseded-context-rejected", "#message");
+    assert(legacyBytes.equals(fs.readFileSync(legacyFile)), "merged v2 fixture bytes remain unchanged");
+
+    const emptyIterableFile = path.resolve("tests/fixtures/accepted-history/merged-v2-empty-iterables.json");
+    const emptyIterableBytes = fs.readFileSync(emptyIterableFile);
+    const emptyCompatible = await fresh();
+    await open(emptyCompatible, emptyIterableFile);
+    const emptyOriginal = await state(emptyCompatible);
+    assert(emptyOriginal.workspace.execution.updates.filter((u) => u.activity_id === "X").every((u) => JSON.stringify(u.execution_context.mode.requirements) === "{}"), "merged-v2 empty requirements mappings open unnormalized");
+    assert(emptyOriginal.workspace.execution.updates.filter((u) => u.activity_id === "M").every((u) => JSON.stringify(u.execution_context.calendars[0].daily_windows) === "{}"), "merged-v2 empty calendar mappings open unnormalized");
+    const retainedPlanHashes = [
+      ...emptyOriginal.workspace.plan_history.map((plan) => plan.plan_hash),
+      emptyOriginal.workspace.approved_plan.plan_hash,
+    ];
+    await update(emptyCompatible, "X", "COMPLETED", [[0, 2]], 0, "FREE");
+    await update(emptyCompatible, "M", "COMPLETED", [], 0, "ZERO");
+    await click(emptyCompatible, "#calculate");
+    const emptyCalculated = await state(emptyCompatible);
+    assert(emptyCalculated.workspace.execution.updates.filter((u) => u.activity_id === "X").every((u) => JSON.stringify(u.execution_context.mode.requirements) === "{}"), "empty requirements remain unnormalized after correction and recovery");
+    assert(emptyCalculated.workspace.execution.updates.filter((u) => u.activity_id === "M").every((u) => JSON.stringify(u.execution_context.calendars[0].daily_windows) === "{}"), "empty calendar remains unnormalized after correction and recovery");
+    assert(JSON.stringify([...emptyCalculated.workspace.plan_history.map((plan) => plan.plan_hash), emptyCalculated.workspace.approved_plan.plan_hash]) === JSON.stringify(retainedPlanHashes), "correction and recovery retain historical approval hashes");
+    const emptySaved = await save(emptyCompatible, "v2-empty-iterables-corrected-recovery");
+    const emptyReopen = await fresh();
+    await open(emptyReopen, emptySaved);
+    const emptyReopened = await state(emptyReopen);
+    assert(JSON.stringify(emptyReopened.workspace) === JSON.stringify(emptyCalculated.workspace), "fresh browser reopen preserves empty-iterable provenance and recovery exactly");
+    assert(emptyReopened.trusted_input_hash === emptyCalculated.trusted_input_hash, "fresh browser reopen preserves empty-iterable trusted hash");
+    assert(emptyIterableBytes.equals(fs.readFileSync(emptyIterableFile)), "merged-v2 empty-iterable fixture bytes remain unchanged");
+    await shot(emptyReopen, "25-empty-iterables-fresh-reopen", "#history");
+
     await click(named, "#calculate");
     await approve(named);
     const oldApproval = (await state(named)).workspace.approved_plan;
@@ -203,7 +292,7 @@ export async function acceptedProgressTrial(browser, url, evidenceDir, assert) {
     const unrelatedTarget = await fresh();
     const beforeUnrelated = JSON.stringify((await state(unrelatedTarget)).workspace);
     await unrelatedTarget.locator("#open-file").setInputFiles(unrelatedFile);
-    await unrelatedTarget.locator("#message.error").filter({hasText: /invalid historical accepted outage/}).waitFor();
+    await unrelatedTarget.locator("#message.error").filter({hasText: /historical.*(outage|resource)/}).waitFor();
     assert(JSON.stringify((await state(unrelatedTarget)).workspace) === beforeUnrelated, "unassigned resource outage cannot justify imported history or replace active workspace");
     await shot(unrelatedTarget, "21-unassigned-outage-import-rejected", "#message");
     const historyOnlyCorrection = await fresh();

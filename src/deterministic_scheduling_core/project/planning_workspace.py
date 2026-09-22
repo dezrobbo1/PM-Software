@@ -501,6 +501,210 @@ def report_status_update(
     return update_id
 
 
+
+def _captured_qualification_set(value: Any, label: str) -> set:
+    """Read legacy v2 JSON qualification data without changing its representation.
+
+    The project boundary uses set(value): arrays contribute hashable items,
+    strings contribute characters and objects contribute keys. Item types and
+    spelling are not restricted there. Retained contexts must use the same
+    semantics, while rejecting structures that cannot be interpreted as sets.
+    """
+    if not isinstance(value, (list, str, dict)):
+        raise ValueError(f"{label} must support legacy v2 set semantics")
+    try:
+        return set(value)
+    except TypeError as exc:
+        raise ValueError(f"{label} must contain hashable qualification values") from exc
+
+
+def _validate_historical_execution_context(
+    activity_id: str,
+    update: dict,
+    context: Any,
+    horizon: int,
+) -> tuple[dict, dict[str, dict], dict[str, dict], dict[str, dict]]:
+    """Validate captured history as native domain data before trusting it."""
+    required_context = {"activity_id", "mode", "calendars", "named_resources", "resource_groups"}
+    if (not isinstance(context, dict) or not required_context <= set(context)
+            or set(context) - required_context - {"accepted_outages"} or context["activity_id"] != activity_id):
+        raise ValueError(f"{activity_id}: invalid accepted execution context")
+
+    mode = context["mode"]
+    mode_fields = {"id", "processing_ticks", "calendar_id", "continuity", "requirements", "group_requirements"}
+    if (not isinstance(mode, dict) or not {"id", "processing_ticks", "calendar_id"} <= set(mode)
+            or set(mode) - mode_fields or mode.get("id") != update["mode_id"]):
+        raise ValueError(f"{activity_id}: accepted mode context disagrees")
+    if not isinstance(mode["id"], str) or not mode["id"].strip():
+        raise ValueError(f"{activity_id}: historical mode ID must be nonempty")
+    _integer(mode["processing_ticks"], f"{activity_id} historical processing_ticks")
+    if not isinstance(mode["calendar_id"], str) or not mode["calendar_id"].strip():
+        raise ValueError(f"{activity_id}: historical mode needs a calendar")
+    if mode.get("continuity", "SUSPENDABLE_AT_AVAILABILITY_GAPS") not in {
+        "CONTINUOUS", "SUSPENDABLE_AT_AVAILABILITY_GAPS"
+    }:
+        raise ValueError(f"{activity_id}: unsupported historical continuity rule")
+
+    captured_calendars = context["calendars"]
+    if not isinstance(captured_calendars, list):
+        raise ValueError(f"{activity_id}: historical calendars must be an array")
+    calendars: dict[str, dict] = {}
+    for calendar in captured_calendars:
+        # The merged v2 project contract permits calendar metadata. Preserve it
+        # verbatim; executable eligibility depends only on ID and windows.
+        if not isinstance(calendar, dict) or not {"id", "daily_windows"} <= set(calendar):
+            raise ValueError(f"{activity_id}: invalid historical calendar snapshot")
+        calendar_id = calendar["id"]
+        if not isinstance(calendar_id, str) or not calendar_id.strip() or calendar_id in calendars:
+            raise ValueError(f"{activity_id}: historical calendar IDs must be nonempty and unique")
+        windows = calendar["daily_windows"]
+        # Merged v2 also accepts empty strings and mappings here: iteration
+        # yields no executable windows. Retain those representations verbatim,
+        # while rejecting nonempty values rather than treating their contents
+        # as window entries.
+        if isinstance(windows, str):
+            if windows:
+                raise ValueError(f"{activity_id}: historical calendar windows string must be empty")
+        elif isinstance(windows, dict):
+            if windows:
+                raise ValueError(f"{activity_id}: historical calendar windows mapping must be empty")
+        elif not isinstance(windows, list):
+            raise ValueError(f"{activity_id}: historical calendar windows must be an array")
+        for window in windows:
+            if not isinstance(window, list) or len(window) != 2:
+                raise ValueError(f"{activity_id}: historical calendar window must be a start/finish pair")
+            start, finish = window
+            _integer(start, f"{activity_id} historical calendar start")
+            _integer(finish, f"{activity_id} historical calendar finish", 1)
+            if not start < finish <= 48:
+                raise ValueError(f"{activity_id}: historical calendar windows must lie within a 48-tick day")
+        calendars[calendar_id] = calendar
+
+    captured_resources = context["named_resources"]
+    if not isinstance(captured_resources, list):
+        raise ValueError(f"{activity_id}: historical named resources must be an array")
+    resources: dict[str, dict] = {}
+    for resource in captured_resources:
+        allowed = {"id", "capabilities", "calendar_id", "capacity"}
+        if (not isinstance(resource, dict) or not {"id", "capabilities", "calendar_id"} <= set(resource)
+                or set(resource) - allowed):
+            raise ValueError(f"{activity_id}: invalid historical named-resource snapshot")
+        resource_id = resource["id"]
+        capabilities = resource["capabilities"]
+        if (not isinstance(resource_id, str) or not resource_id.strip() or resource_id.startswith("@group/")
+                or resource_id in resources):
+            raise ValueError(f"{activity_id}: historical named-resource IDs must be nonempty, unique and non-anonymous")
+        _captured_qualification_set(capabilities, f"{activity_id}/{resource_id}: historical capabilities")
+        # Match the existing v2 project boundary without rewriting captured values.
+        if resource.get("capacity", 1) != 1:
+            raise ValueError(f"{activity_id}/{resource_id}: historical named resources have capacity one")
+        if (not isinstance(resource["calendar_id"], str) or not resource["calendar_id"].strip()
+                or resource["calendar_id"] not in calendars):
+            raise ValueError(f"{activity_id}/{resource_id}: historical resource calendar is missing")
+        resources[resource_id] = resource
+
+    captured_groups = context["resource_groups"]
+    if not isinstance(captured_groups, list):
+        raise ValueError(f"{activity_id}: historical resource groups must be an array")
+    groups: dict[str, dict] = {}
+    for group in captured_groups:
+        required = {"id", "name", "capacity", "calendar_id", "disjoint", "interchangeable"}
+        if not isinstance(group, dict) or set(group) != required:
+            raise ValueError(f"{activity_id}: invalid historical resource-group snapshot")
+        group_id = group["id"]
+        if (not isinstance(group_id, str) or not group_id.strip() or group_id in groups
+                or group_id in resources):
+            raise ValueError(f"{activity_id}: historical group IDs must be nonempty, unique and distinct from named resources")
+        _integer(group["capacity"], f"{activity_id}/{group_id} historical group capacity", 1)
+        if (not isinstance(group["name"], str) or not group["name"].strip()
+                or not isinstance(group["calendar_id"], str) or not group["calendar_id"].strip()
+                or group["calendar_id"] not in calendars):
+            raise ValueError(f"{activity_id}/{group_id}: historical group needs a name and known calendar")
+        if group["disjoint"] is not True or group["interchangeable"] is not True:
+            raise ValueError(f"{activity_id}/{group_id}: historical groups must remain disjoint and interchangeable")
+        groups[group_id] = group
+    if len(groups) > 8 or sum(group["capacity"] for group in groups.values()) > 32:
+        raise ValueError(f"{activity_id}: historical group context exceeds the bounded native capacity profile")
+
+    requirements = mode.get("requirements", [])
+    # Merged v2 treats empty strings and mappings as empty iterables of
+    # requirements. Preserve the captured shape without accepting nonempty
+    # values whose contents would otherwise be mistaken for records.
+    if isinstance(requirements, str):
+        if requirements:
+            raise ValueError(f"{activity_id}: historical named requirements string must be empty")
+    elif isinstance(requirements, dict):
+        if requirements:
+            raise ValueError(f"{activity_id}: historical named requirements mapping must be empty")
+    elif not isinstance(requirements, list):
+        raise ValueError(f"{activity_id}: historical named requirements must be an array")
+    requirement_ids: set[str] = set()
+    for requirement in requirements:
+        if not isinstance(requirement, dict) or set(requirement) != {"id", "pool_ids", "eligible_resource_ids"}:
+            raise ValueError(f"{activity_id}: invalid historical named requirement")
+        requirement_id = requirement["id"]
+        pools = requirement["pool_ids"]
+        eligible = requirement["eligible_resource_ids"]
+        if (not isinstance(requirement_id, str) or not requirement_id.strip()
+                or requirement_id.startswith("@group/") or requirement_id in requirement_ids):
+            raise ValueError(f"{activity_id}: historical requirement IDs must be nonempty, unique and non-anonymous")
+        if not _captured_qualification_set(pools, f"{activity_id}/{requirement_id}: historical qualifications"):
+            raise ValueError(f"{activity_id}/{requirement_id}: historical qualifications must be nonempty")
+        # Match v2 iteration: array items, string characters or object keys.
+        # Object values are retained metadata, not resource identities.
+        if (not isinstance(eligible, (list, str, dict)) or not eligible
+                or any(not isinstance(value, str) or not value.strip() for value in eligible)
+                or len(eligible) != len(set(eligible))):
+            raise ValueError(f"{activity_id}/{requirement_id}: historical eligibility must be nonempty and unique")
+        requirement_ids.add(requirement_id)
+
+    demands = mode.get("group_requirements", [])
+    if not isinstance(demands, list):
+        raise ValueError(f"{activity_id}: historical group requirements must be an array")
+    demanded_groups: set[str] = set()
+    for demand in demands:
+        if not isinstance(demand, dict) or set(demand) != {"group_id", "demand"}:
+            raise ValueError(f"{activity_id}: invalid historical group requirement")
+        group_id = demand["group_id"]
+        if not isinstance(group_id, str) or not group_id.strip() or group_id not in groups:
+            raise ValueError(f"{activity_id}: historical group context is missing")
+        _integer(demand["demand"], f"{activity_id}/{group_id} historical group demand", 1)
+        if group_id in demanded_groups or demand["demand"] > groups[group_id]["capacity"]:
+            raise ValueError(f"{activity_id}/{group_id}: historical group demand is invalid")
+        demanded_groups.add(group_id)
+
+    if (requirements or demands) and mode["processing_ticks"] == 0:
+        raise ValueError(f"{activity_id}: zero-work historical modes cannot consume resources")
+    if mode["calendar_id"] not in calendars:
+        raise ValueError(f"{activity_id}: historical activity calendar is missing")
+
+    assignments = dict(_pairs(update["named_assignments"], "named_assignments"))
+    if set(resources) != set(assignments.values()):
+        raise ValueError(f"{activity_id}: historical named-resource context must match accepted assignments exactly")
+    if set(groups) != demanded_groups:
+        raise ValueError(f"{activity_id}: historical group context must match the begun mode exactly")
+    required_calendar_ids = {mode["calendar_id"]}
+    required_calendar_ids.update(resource["calendar_id"] for resource in resources.values())
+    required_calendar_ids.update(group["calendar_id"] for group in groups.values())
+    if set(calendars) != required_calendar_ids:
+        raise ValueError(f"{activity_id}: historical calendar context must match the begun execution choices exactly")
+
+    # Validate captured outage structure for superseded provenance as well.
+    # Applying its availability to actual execution belongs to current history.
+    outages = context.get("accepted_outages", [])
+    if not isinstance(outages, list):
+        raise ValueError(f"{activity_id}: historical accepted outages must be an array")
+    for outage in outages:
+        if (not isinstance(outage, dict) or outage.get("status") != "ACCEPTED"
+                or outage.get("resource_id") not in assignments.values() or not outage.get("accepted_by")):
+            raise ValueError(f"{activity_id}: invalid historical accepted outage")
+        _integer(outage.get("start"), "historical outage start")
+        _integer(outage.get("finish"), "historical outage finish", 1)
+        if outage["start"] >= outage["finish"]:
+            raise ValueError(f"{activity_id}: invalid historical outage interval")
+
+    return mode, calendars, resources, groups
+
 def _daily_slots(calendar: dict, horizon: int) -> set[int]:
     return {
         day * 48 + tick
@@ -515,6 +719,13 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
     """Validate accepted facts against their captured historical context."""
     current = current_status_records(workspace, require_complete=require_complete)
     horizon = workspace["project"]["horizon_ticks"]
+    contexts = {
+        update["id"]: _validate_historical_execution_context(
+            update["activity_id"], update, update["execution_context"], horizon
+        )
+        for update in workspace["execution"]["updates"]
+        if update["status"] == "ACCEPTED" and update["execution_state"] != "NOT_STARTED"
+    }
     named_occupancy: dict[tuple[str, int], str] = {}
     group_occupancy: dict[tuple[str, int], int] = {}
     group_capacity: dict[tuple[str, int], int] = {}
@@ -523,18 +734,7 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
         if update["execution_state"] == "NOT_STARTED":
             continue
         context = update["execution_context"]
-        required_context = {"activity_id", "mode", "calendars", "named_resources", "resource_groups"}
-        if (not isinstance(context, dict) or not required_context <= set(context)
-                or set(context) - required_context - {"accepted_outages"} or context["activity_id"] != activity_id):
-            raise ValueError(f"{activity_id}: invalid accepted execution context")
-        mode = context["mode"]
-        if not isinstance(mode, dict) or mode.get("id") != update["mode_id"]:
-            raise ValueError(f"{activity_id}: accepted mode context disagrees")
-        calendars = {calendar["id"]: calendar for calendar in context["calendars"]}
-        resources = {resource["id"]: resource for resource in context["named_resources"]}
-        groups = {group["id"]: group for group in context["resource_groups"]}
-        if mode.get("calendar_id") not in calendars:
-            raise ValueError(f"{activity_id}: historical activity calendar is missing")
+        mode, calendars, resources, groups = contexts[update["id"]]
         activity_slots = _daily_slots(calendars[mode["calendar_id"]], horizon)
         joint_slots = set(activity_slots)
         occupied = [tick for start, finish in update["actual_periods"] for tick in range(start, finish)]
@@ -588,17 +788,7 @@ def validate_accepted_history(workspace: Workspace, *, require_complete: bool = 
                 group_tasks.setdefault(group_id, []).append((activity_id, quantity, frozenset(occupied), group["capacity"]))
         # Old v2 snapshots have no captured outages; never retrofit today's
         # availability into them or rewrite their hashes.
-        outages = context.get("accepted_outages", [])
-        if not isinstance(outages, list):
-            raise ValueError(f"{activity_id}: historical accepted outages must be an array")
-        for outage in outages:
-            if (not isinstance(outage, dict) or outage.get("status") != "ACCEPTED"
-                    or outage.get("resource_id") not in assignments.values() or not outage.get("accepted_by")):
-                raise ValueError(f"{activity_id}: invalid historical accepted outage")
-            _integer(outage["start"], "historical outage start")
-            _integer(outage["finish"], "historical outage finish", 1)
-            if outage["start"] >= outage["finish"]:
-                raise ValueError(f"{activity_id}: invalid historical outage interval")
+        for outage in context.get("accepted_outages", []):
             joint_slots.difference_update(range(outage["start"], outage["finish"]))
         if any(tick not in joint_slots for tick in occupied):
             raise ValueError(f"{activity_id}: accepted work contradicts captured historical availability")
