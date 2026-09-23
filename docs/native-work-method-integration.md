@@ -41,7 +41,10 @@ For this slice:
 - fixed activities cannot depend directly on optional structural activities;
 - the objective activity may belong to a structural package only when that
   package has one method;
-- a frozen structural activity forces its containing method.
+- a frozen structural activity forces its containing method;
+- planned/reference coordinates on optional structural activities are rejected
+  until the native model has an explicit selected reference method. This avoids
+  inventing structural-stability semantics in this milestone.
 
 These constraints are intentionally narrower than a general planning language.
 
@@ -69,8 +72,8 @@ The existing fixed-network objective ordering remains:
 1. controlling finish;
 2. planned-start movement where such reference coordinates exist;
 3. deterministic timing tie-break;
-4. a final declared-method tie-break only when the higher-order result is
-   otherwise equal.
+4. a final lexicographic declared-method-index tie-break only when the
+   higher-order result is otherwise equal.
 
 This milestone does not adopt the separate aspiration/recovery-policy experiment.
 
