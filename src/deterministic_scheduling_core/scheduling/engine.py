@@ -207,6 +207,13 @@ def validate_project(project: Project) -> None:
             raise SchedulingError(
                 f"{activity.id}: unknown predecessors {sorted(unknown_predecessors)}"
             )
+        if activity.id in structural_ids and (
+            activity.planned_start is not None or activity.planned_mode_id is not None
+        ):
+            raise SchedulingError(
+                f"{activity.id}: planned reference coordinates on structural alternatives "
+                "need an explicit selected reference method; unsupported in this bounded slice"
+            )
         if activity.id in fixed_ids:
             structural_predecessors = set(activity.predecessors) & structural_ids
             if structural_predecessors:
@@ -536,14 +543,18 @@ def schedule_project(project: Project) -> ScheduleResult:
     tertiary = sum(starts.values())
     tertiary_bound = len(project.activities) * horizon
 
+    # Encode the declared method-index vector uniquely so an otherwise exact tie
+    # has one canonical structural result. Earlier packages are more significant.
     method_tie_terms = []
     method_tie_bound = 0
-    for package_index, package in enumerate(project.work_packages):
-        package_weight = 1 + sum(len(item.methods) for item in project.work_packages[:package_index])
+    radix = 1
+    for package in reversed(project.work_packages):
         for method_index, method in enumerate(package.methods):
-            rank = package_weight + method_index
-            method_tie_terms.append(rank * method_presence[(package.id, method.id)])
-            method_tie_bound += rank
+            method_tie_terms.append(
+                method_index * radix * method_presence[(package.id, method.id)]
+            )
+        method_tie_bound += (len(package.methods) - 1) * radix
+        radix *= max(len(package.methods), 1)
     method_tie = sum(method_tie_terms) if method_tie_terms else 0
 
     method_weight = method_tie_bound + 1
