@@ -183,6 +183,48 @@ class NativeWorkMethodIntegrationTests(unittest.TestCase):
         with self.assertRaisesRegex(SchedulingError, "crosses execution-method/package boundaries"):
             schedule_project(project)
 
+    def test_structural_planned_coordinates_require_explicit_reference_method(self):
+        project = Project(
+            id="planned-structural",
+            name="Ambiguous structural reference",
+            activities=(
+                Activity(
+                    "A",
+                    "Alternative A",
+                    (ExecutionMode("FIXED", 1),),
+                    planned_start=0,
+                    planned_mode_id="FIXED",
+                ),
+                Activity("B", "Alternative B", (ExecutionMode("FIXED", 1),)),
+                Activity(
+                    "DONE",
+                    "Done",
+                    (ExecutionMode("MILESTONE", 0),),
+                    kind="milestone",
+                ),
+            ),
+            work_packages=(
+                WorkPackage(
+                    "WP",
+                    "Outcome",
+                    (
+                        ExecutionMethod("A", "A", ("A",), "A"),
+                        ExecutionMethod("B", "B", ("B",), "B"),
+                    ),
+                ),
+                WorkPackage(
+                    "END",
+                    "End",
+                    (ExecutionMethod("END", "End", ("DONE",), "DONE"),),
+                    predecessors=("WP",),
+                ),
+            ),
+            objective_activity_id="DONE",
+        )
+
+        with self.assertRaisesRegex(SchedulingError, "explicit selected reference method"):
+            schedule_project(project)
+
     def test_method_completion_must_cover_all_method_work(self):
         project = Project(
             id="invalid-completion",
