@@ -77,6 +77,20 @@ Executable resource/constraint-feasible scheduling is the current authoritative 
 
 The bounded experiment matched exhaustive enumeration of all 8 authorised fixed networks across three changed-condition scenarios while holding the alternatives once and selecting method + mode + timing jointly.
 
+That result has now survived a first convergence step into the owning
+`project/model.py` + `scheduling/engine.py` path. The native model owns
+solver-independent `WorkPackage` and `ExecutionMethod` concepts, with activities
+remaining the executable primitives. The normal `schedule_project(...)` path
+selects one authorised method per package and matched the existing exhaustive
+oracle exactly in all three retained scenarios:
+
+- A: H37, SCAFFOLD / CRANE / NORMAL;
+- B: H41, SCAFFOLD / SEGMENTED / NORMAL;
+- C: H35, ROPE / CRANE / SPECIALIST.
+
+Native-project JSON v1 persists all authorised structures; legacy v0 reopens as
+the fixed-network special case. See `docs/native-work-method-integration.md`.
+
 Active rules:
 
 - activities remain executable primitives;
@@ -84,8 +98,11 @@ Active rules:
 - the core may select only authorised methods/modes/resources/sequence/timing;
 - it must not invent scope or arbitrary methods;
 - fixed activity networks remain a valid special case;
+- structural activities belong to one declared method in this bounded native profile;
+- package-to-package structure uses work-package predecessors rather than cross-alternative activity links;
 - do not introduce unrestricted HTN/PDDL/state planning;
-- do not promote `work_method_experiment.py` wholesale into the permanent model merely because the bounded case passed.
+- do not copy the experiment's temporary classes into the owning model; the new native concepts are the integration boundary;
+- do not claim Work–Method is yet composed with the richer productive-calendar / accepted-progress planner-workspace path merely because both capabilities separately exist.
 
 ### Trusted live project state
 
@@ -315,7 +332,7 @@ The following bounded hypotheses have now survived their first executable falsif
 - context-sensitive execution modes;
 - operational constraints;
 - stable change propagation;
-- Work–Method–Execution structural choice;
+- Work–Method–Execution structural choice, now also reproduced through the owning native `Project/WorkPackage/ExecutionMethod` scheduler path;
 - trusted live project state;
 - aspiration-bounded objective policy;
 - adaptive semantic repair;

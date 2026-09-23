@@ -38,6 +38,34 @@ class Activity:
 
 
 @dataclass(frozen=True, slots=True)
+class ExecutionMethod:
+    """One finite authorised structural way to execute a work package."""
+
+    id: str
+    name: str
+    activity_ids: tuple[str, ...]
+    completion_activity_id: str
+
+    @property
+    def activity_id_set(self) -> set[str]:
+        return set(self.activity_ids)
+
+
+@dataclass(frozen=True, slots=True)
+class WorkPackage:
+    """Required outcome with one or more finite authorised execution methods."""
+
+    id: str
+    name: str
+    methods: tuple[ExecutionMethod, ...]
+    predecessors: tuple[str, ...] = ()
+
+    @property
+    def method_by_id(self) -> dict[str, ExecutionMethod]:
+        return {method.id: method for method in self.methods}
+
+
+@dataclass(frozen=True, slots=True)
 class Resource:
     id: str
     name: str
@@ -52,6 +80,7 @@ class Project:
     resources: tuple[Resource, ...] = ()
     objective_activity_id: str | None = None
     time_unit: str = "hour"
+    work_packages: tuple[WorkPackage, ...] = ()
 
     @property
     def activity_by_id(self) -> dict[str, Activity]:
@@ -60,6 +89,10 @@ class Project:
     @property
     def resource_by_id(self) -> dict[str, Resource]:
         return {resource.id: resource for resource in self.resources}
+
+    @property
+    def work_package_by_id(self) -> dict[str, WorkPackage]:
+        return {package.id: package for package in self.work_packages}
 
 
 def replace_mode_duration(

@@ -48,7 +48,7 @@ External-system fields stop at adapter boundaries. The native project model and 
 
 Prototype 2 then established that PM-Software can create, persist, reopen, edit and optimise its own native project without Microsoft Project or P6 in the workflow.
 
-The current native model contains projects, activities/milestones, finish-to-start precedence, resources/capacity demand, alternative activity execution modes, not-before/latest-finish boundaries, workface-style exclusion groups, planned/frozen coordinates and a controlling objective activity. The scheduler consumes that native model only.
+The current solver-independent native model contains projects, activities/milestones, finish-to-start precedence, resources/capacity demand, alternative activity execution modes, finite authorised work packages/execution methods, not-before/latest-finish boundaries, workface-style exclusion groups, planned/frozen coordinates and a controlling objective activity. Fixed activity networks remain the empty-work-package special case. The scheduler consumes that native model only.
 
 ### Native planning trial UI
 
@@ -137,6 +137,26 @@ The six-work-package case contains 33 possible activities and 8 authorised fixed
 The bounded representation held 33 activity facts and 33 relationship facts once, compared with 180 activity facts and 176 relationship facts across the eight materialised networks.
 
 **Result: not falsified.** The result supports bounded authorised structural choice; it does not justify unrestricted goal/state planning or make CP-SAT the product architecture.
+
+That structural choice has now also been integrated into the owning native
+`Project` / `WorkPackage` / `ExecutionMethod` model and normal
+`schedule_project(...)` path. The convergence control reuses the exhaustive
+eight-network oracle above; the owning scheduler independently returns the same
+H37 / H41 / H35 finishes and the same structural choices in scenarios A/B/C.
+Inactive method activities are absent from the executable result, and native
+project JSON persists all authorised methods without materialising one network.
+See [native Work–Method integration](docs/native-work-method-integration.md).
+
+Run the owning-model convergence control with:
+
+```bash
+python -m deterministic_scheduling_core.native_work_method_integration
+```
+
+This is deliberately only structural convergence. Productive calendars,
+planner-level resource groups, accepted execution history and rolling status
+remain in the richer planner-workspace path and are not silently claimed as
+composed with structural Work–Method choice yet.
 
 ## Execution-state experiment — Trusted Live Project State
 

@@ -7,13 +7,16 @@ from typing import Any
 from deterministic_scheduling_core.errors import SchedulingError
 from deterministic_scheduling_core.project.model import (
     Activity,
+    ExecutionMethod,
     ExecutionMode,
     Project,
     Resource,
     ResourceRequirement,
+    WorkPackage,
 )
 
-FORMAT = "pm-native-project-v0"
+LEGACY_FORMAT = "pm-native-project-v0"
+FORMAT = "pm-native-project-v1"
 
 
 def project_to_document(project: Project) -> dict[str, Any]:
@@ -58,12 +61,32 @@ def project_to_document(project: Project) -> dict[str, Any]:
             }
             for activity in project.activities
         ],
+        "work_packages": [
+            {
+                "id": package.id,
+                "name": package.name,
+                "predecessors": list(package.predecessors),
+                "methods": [
+                    {
+                        "id": method.id,
+                        "name": method.name,
+                        "activity_ids": list(method.activity_ids),
+                        "completion_activity_id": method.completion_activity_id,
+                    }
+                    for method in package.methods
+                ],
+            }
+            for package in project.work_packages
+        ],
     }
 
 
 def _project_from_document(document: dict[str, Any]) -> Project:
-    if document.get("format") != FORMAT:
-        raise SchedulingError(f"expected native project format {FORMAT!r}")
+    format_id = document.get("format")
+    if format_id not in {LEGACY_FORMAT, FORMAT}:
+        raise SchedulingError(
+            f"expected native project format {LEGACY_FORMAT!r} or {FORMAT!r}"
+        )
     try:
         resources = tuple(
             Resource(
@@ -126,6 +149,27 @@ def _project_from_document(document: dict[str, Any]) -> Project:
             )
             for item in document["activities"]
         )
+        work_packages = tuple(
+            WorkPackage(
+                id=str(package["id"]),
+                name=str(package["name"]),
+                predecessors=tuple(
+                    str(value) for value in package.get("predecessors", [])
+                ),
+                methods=tuple(
+                    ExecutionMethod(
+                        id=str(method["id"]),
+                        name=str(method["name"]),
+                        activity_ids=tuple(
+                            str(value) for value in method["activity_ids"]
+                        ),
+                        completion_activity_id=str(method["completion_activity_id"]),
+                    )
+                    for method in package["methods"]
+                ),
+            )
+            for package in document.get("work_packages", [])
+        )
         return Project(
             id=str(document["id"]),
             name=str(document["name"]),
@@ -137,6 +181,7 @@ def _project_from_document(document: dict[str, Any]) -> Project:
             ),
             resources=resources,
             activities=activities,
+            work_packages=work_packages,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise SchedulingError(f"invalid native project document: {exc}") from exc
