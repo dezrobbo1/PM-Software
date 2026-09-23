@@ -45,6 +45,7 @@ jobs:
           tests.test_planner_resource_capacity
           tests.test_accepted_execution_history
           tests.test_planner_update_recovery_trial
+          tests.test_rolling_status_experiment
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment
@@ -72,6 +73,8 @@ jobs:
         run: python -m deterministic_scheduling_core.working_time_experiment
       - name: Run resource-assignment falsification experiment
         run: python -m deterministic_scheduling_core.resource_assignment_experiment
+      - name: Run headless rolling-status falsification experiment
+        run: python -m deterministic_scheduling_core.rolling_status_experiment
       - name: Run editable native planning workflow
         run: |
           set -euo pipefail

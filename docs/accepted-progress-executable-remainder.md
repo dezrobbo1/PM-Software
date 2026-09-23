@@ -47,6 +47,15 @@ approval. Acceptance records the accepting actor and time, invalidates a pending
 proposal, and makes any prior approval stale. It never calculates or approves a
 recovery.
 
+The rolling-status transaction is deliberately different from the one-at-a-time
+report path. It receives a complete batch that has already been reviewed by its
+caller, records separate asserting and accepting actors, and commits every
+replacement assertion together with the later status point in one atomic trusted
+state transition. This avoids an authoritative intermediate state in which the
+status point has moved but the prior open assertions are temporarily interpreted
+against that later point. Drafting/review of that batch remains outside the
+authoritative transaction; calculation and plan approval still remain separate.
+
 A correction names the current accepted update it supersedes. The old assertion
 remains in the ledger. Current state is resolved through the supersession link,
 not by sorting occurrence times, so a correction that refers to an earlier field
@@ -153,15 +162,22 @@ partial outages for an interchangeable group remain unsupported.
 
 ## Boundaries
 
-This first slice establishes one status point per test workspace and permits
-explicit corrections at that point. Advancing to a later status point, carrying
-assertions forward and reviewing new execution is a separate capability. Begun
-work requires a known actual start in this profile. Out-of-sequence predecessor
-history blocks authoritative recovery; interrupted continuous work remains a
-reported assertion and cannot be accepted into this bounded model. The engine
-does not invent a repair. When the controlling
-activity is explicitly completed, calculation reports that no future recovery
-remains instead of manufacturing a new plan.
+The original slice established one status point. The bounded headless rolling
+experiment now adds explicit atomic advancement to a later point while retaining
+the same version-two representation. Every still-open activity must be
+re-attested, completed history carries forward unchanged, begun choices and
+previous productive periods cannot be rewritten, and the prior approval becomes
+stale before a separately calculated/approved recovery. This first rolling
+capability deliberately rejects begun work whose captured historical execution
+context changed across the boundary; see
+[`headless-rolling-status.md`](headless-rolling-status.md).
+
+Begun work requires a known actual start in this profile. Out-of-sequence
+predecessor history blocks authoritative recovery; interrupted continuous work
+remains a reported assertion and cannot be accepted into this bounded model.
+The engine does not invent a repair. When the controlling activity is explicitly
+completed, calculation reports that no future recovery remains instead of
+manufacturing a new plan.
 
 Historical validation uses the captured activity/resource calendar context.
 Exceptional historical overtime outside that context needs an explicit future

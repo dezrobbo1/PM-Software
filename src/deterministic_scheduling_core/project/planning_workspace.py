@@ -426,7 +426,7 @@ def _context_for_update(workspace: Workspace, activity: dict, mode: dict, named_
     }
 
 
-def report_status_update(
+def _build_status_update_record(
     workspace: Workspace,
     activity_id: str,
     execution_state: str,
@@ -441,8 +441,8 @@ def report_status_update(
     remaining_processing_ticks: int | None = None,
     occurred_at: int | None = None,
     supersedes_update_id: str | None = None,
-) -> str:
-    """Record a reviewable assertion without changing trusted project state."""
+) -> dict:
+    """Build one status assertion without committing it to trusted state."""
     if workspace.get("schema") != STATUS_SCHEMA:
         raise ValueError("enable status tracking before recording execution")
     if execution_state not in EXECUTION_STATES:
@@ -458,10 +458,15 @@ def report_status_update(
     context = None
     if execution_state != "NOT_STARTED":
         prior = next((item for item in workspace["execution"]["updates"] if item["id"] == supersedes_update_id), None)
-        same_choices = (prior and prior["status"] == "ACCEPTED" and prior["activity_id"] == activity_id
-                        and prior["mode_id"] == mode_id
-                        and sorted(_pairs(prior["named_assignments"], "named_assignments")) == sorted(_pairs(assignments, "named_assignments"))
-                        and prior["execution_context"])
+        same_choices = (
+            prior
+            and prior["status"] == "ACCEPTED"
+            and prior["activity_id"] == activity_id
+            and prior["mode_id"] == mode_id
+            and sorted(_pairs(prior["named_assignments"], "named_assignments"))
+            == sorted(_pairs(assignments, "named_assignments"))
+            and prior["execution_context"]
+        )
         mode = next((item for item in activity["modes"] if item["id"] == mode_id), None)
         if mode is None and same_choices and execution_state == "COMPLETED":
             mode = prior["execution_context"]["mode"]
@@ -474,7 +479,7 @@ def report_status_update(
         else:
             context = _context_for_update(workspace, activity, mode, assignments)
     update_id = _next_record_id(workspace["execution"]["updates"], "U")
-    record = {
+    return {
         "id": update_id,
         "activity_id": activity_id,
         "status": "REPORTED",
@@ -494,13 +499,195 @@ def report_status_update(
         "reason": reason,
         "execution_context": context,
     }
+
+
+def report_status_update(
+    workspace: Workspace,
+    activity_id: str,
+    execution_state: str,
+    actor: str,
+    reason: str,
+    *,
+    actual_start: int | None = None,
+    actual_finish: int | None = None,
+    actual_periods: list[list[int]] | None = None,
+    mode_id: str | None = None,
+    named_assignments: list[list[str]] | None = None,
+    remaining_processing_ticks: int | None = None,
+    occurred_at: int | None = None,
+    supersedes_update_id: str | None = None,
+) -> str:
+    """Record a reviewable assertion without changing trusted project state."""
+    record = _build_status_update_record(
+        workspace,
+        activity_id,
+        execution_state,
+        actor,
+        reason,
+        actual_start=actual_start,
+        actual_finish=actual_finish,
+        actual_periods=actual_periods,
+        mode_id=mode_id,
+        named_assignments=named_assignments,
+        remaining_processing_ticks=remaining_processing_ticks,
+        occurred_at=occurred_at,
+        supersedes_update_id=supersedes_update_id,
+    )
     candidate = deepcopy(workspace)
     candidate["execution"]["updates"].append(record)
     validate(candidate)
     workspace["execution"]["updates"] = candidate["execution"]["updates"]
-    return update_id
+    return record["id"]
 
 
+def advance_status_point(
+    workspace: Workspace,
+    new_status_point: int,
+    assertions: dict[str, dict[str, Any]],
+    asserted_by: str,
+    accepted_by: str,
+) -> dict[str, str]:
+    """Atomically advance a reviewed status cycle in the existing v2 profile.
+
+    Every activity that was not already COMPLETED at the prior status point must
+    be explicitly re-attested. Completed history carries forward unchanged.
+    Previously begun mode/assignment choices and accepted productive periods are
+    immutable: the next assertion may only append productive periods and update
+    the independently reviewed remaining-work estimate.
+
+    This first rolling slice deliberately requires the captured execution
+    context of begun work to remain unchanged between status points. A new
+    accepted outage, calendar/resource change or other historical-context change
+    therefore blocks advancement rather than being silently reinterpreted.
+    """
+    if workspace.get("schema") != STATUS_SCHEMA:
+        raise ValueError("rolling status requires a version-two accepted-progress workspace")
+    _integer(new_status_point, "new_status_point")
+    old_status_point = workspace["execution"]["status_point"]
+    if new_status_point <= old_status_point:
+        raise ValueError("new status point must be later than the current status point")
+    if new_status_point > workspace["project"]["horizon_ticks"]:
+        raise ValueError("new status point must lie inside the planning horizon")
+    if not asserted_by.strip() or not accepted_by.strip():
+        raise ValueError("status advancement needs asserting and accepting actors")
+    if not isinstance(assertions, dict):
+        raise ValueError("status advancement assertions must be keyed by activity ID")
+
+    prior_states = current_status_records(workspace, require_complete=True)
+    required = {
+        activity_id
+        for activity_id, record in prior_states.items()
+        if record["execution_state"] != "COMPLETED"
+    }
+    if set(assertions) != required:
+        missing = sorted(required - set(assertions))
+        extra = sorted(set(assertions) - required)
+        raise ValueError(
+            "status advancement requires explicit re-attestation of every open activity; "
+            f"missing={missing}, extra={extra}"
+        )
+
+    candidate = deepcopy(workspace)
+    candidate["execution"]["status_point"] = new_status_point
+    candidate["proposal"] = None
+    accepted_ids: dict[str, str] = {}
+    allowed_fields = {
+        "execution_state",
+        "reason",
+        "actual_start",
+        "actual_finish",
+        "actual_periods",
+        "mode_id",
+        "named_assignments",
+        "remaining_processing_ticks",
+    }
+
+    for activity_id in sorted(required):
+        prior = prior_states[activity_id]
+        values = deepcopy(assertions[activity_id])
+        if not isinstance(values, dict) or set(values) - allowed_fields:
+            raise ValueError(f"{activity_id}: unsupported status-advancement fields")
+        if "execution_state" not in values or "reason" not in values:
+            raise ValueError(f"{activity_id}: advancement needs execution_state and reason")
+        next_state = values.pop("execution_state")
+        reason = values.pop("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(f"{activity_id}: advancement needs a review reason")
+
+        if prior["execution_state"] == "IN_PROGRESS":
+            if next_state not in {"IN_PROGRESS", "COMPLETED"}:
+                raise ValueError(f"{activity_id}: begun work cannot return to NOT_STARTED")
+            if next_state == "COMPLETED":
+                actual_finish = values.get("actual_finish")
+                _integer(actual_finish, "actual_finish")
+                if actual_finish <= old_status_point:
+                    raise ValueError(
+                        f"{activity_id}: completion at or before the prior status point requires an explicit correction"
+                    )
+            if values.get("actual_start") != prior["actual_start"]:
+                raise ValueError(f"{activity_id}: advancement cannot rewrite accepted actual_start")
+            if values.get("mode_id") != prior["mode_id"]:
+                raise ValueError(f"{activity_id}: advancement cannot rewrite accepted begun mode")
+            if sorted(_pairs(values.get("named_assignments", []), "named_assignments")) != sorted(
+                _pairs(prior["named_assignments"], "named_assignments")
+            ):
+                raise ValueError(f"{activity_id}: advancement cannot rewrite accepted begun assignments")
+            prior_periods = prior["actual_periods"]
+            next_periods = values.get("actual_periods", [])
+            if next_periods[: len(prior_periods)] != prior_periods:
+                raise ValueError(
+                    f"{activity_id}: advancement must preserve accepted productive periods as an exact prefix"
+                )
+            if any(period[0] < old_status_point for period in next_periods[len(prior_periods) :]):
+                raise ValueError(f"{activity_id}: new productive history cannot predate the prior status point")
+
+            activity = next(item for item in candidate["project"]["activities"] if item["id"] == activity_id)
+            mode = next((item for item in activity["modes"] if item["id"] == values.get("mode_id")), None)
+            if mode is None and next_state == "COMPLETED":
+                mode = prior["execution_context"]["mode"]
+            if mode is None:
+                raise ValueError(f"{activity_id}: begun mode is no longer authorised")
+            current_context = _context_for_update(
+                candidate,
+                activity,
+                mode,
+                values.get("named_assignments", []),
+            )
+            # Compare legacy omission as empty without mutating retained records.
+            historical_context = {"accepted_outages": [], **prior["execution_context"]}
+            if current_context != historical_context:
+                raise ValueError(
+                    f"{activity_id}: rolling across a changed historical execution context is unsupported"
+                )
+
+        elif prior["execution_state"] == "NOT_STARTED" and next_state != "NOT_STARTED":
+            actual_start = values.get("actual_start")
+            if type(actual_start) is not int or actual_start < old_status_point:
+                raise ValueError(
+                    f"{activity_id}: work previously accepted NOT_STARTED cannot begin before the prior status point"
+                )
+            if any(period[0] < old_status_point for period in values.get("actual_periods", [])):
+                raise ValueError(f"{activity_id}: new productive history cannot predate the prior status point")
+
+        record = _build_status_update_record(
+            candidate,
+            activity_id,
+            next_state,
+            asserted_by,
+            reason,
+            occurred_at=new_status_point,
+            supersedes_update_id=prior["id"],
+            **values,
+        )
+        record.update(status="ACCEPTED", accepted_by=accepted_by, accepted_at=now())
+        candidate["execution"]["updates"].append(record)
+        accepted_ids[activity_id] = record["id"]
+
+    validate(candidate)
+    validate_accepted_history(candidate, require_complete=True)
+    workspace.clear()
+    workspace.update(candidate)
+    return accepted_ids
 
 def _captured_qualification_set(value: Any, label: str) -> set:
     """Read legacy v2 JSON qualification data without changing its representation.

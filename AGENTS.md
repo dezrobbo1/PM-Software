@@ -255,6 +255,43 @@ Active rules for follow-on work:
 
 The experiment is deliberately isolated in `src/deterministic_scheduling_core/resource_assignment_experiment.py`.
 
+### Headless rolling status advancement
+
+The accepted-progress v2 profile now has one bounded atomic status-advancement
+transaction for repeated headless recovery. The T1 → T2 → T3 control preserves
+all previously accepted actual periods, carries already completed activities
+forward without duplicate assertions, requires explicit re-attestation of every
+still-open activity, and keeps the remaining productive-work estimate
+independent from elapsed actual execution.
+
+Observed control:
+
+- T1 status tick 22: A03 actual `[20,22)`, remainder 4, finish 30;
+- T2 status tick 23: appended actual `[22,23)`, remainder 3, finish remains 30;
+- T3 status tick 25: appended actual `[23,24)`, accepted remainder remains 3,
+  and the recovery moves A03/A04/A08 to finish 31.
+
+The transition is atomic: the workspace never exposes an authoritative
+intermediate state where the status point has moved but old open assertions are
+still treated as current. The prior approved recovery remains stored but stale
+until a new recovery is calculated and separately approved.
+
+Active rules:
+
+- status may only move forward;
+- every non-completed activity must be explicitly re-attested;
+- completed history is carried forward unchanged;
+- begun actual start, mode, named assignments and prior productive periods
+  cannot be rewritten by status advancement;
+- new actual periods may only append after the prior status point;
+- remaining work is still an independently reviewed forecast assertion;
+- this first rolling slice rejects begun work when its captured historical
+  execution context changes across the boundary rather than silently
+  reinterpreting history;
+- no browser workflow or new schema is implied by this experiment.
+
+See `docs/headless-rolling-status.md`.
+
 ### Native planning trial interface
 
 The planner-capacity profile extends this productive-calendar workflow with declared
@@ -285,6 +322,7 @@ The following bounded hypotheses have now survived their first executable falsif
 - logic CPM as a selected-structure analytical service rather than authoritative executable criticality.
 - productive duration placed into joint executable availability, with separate continuous and suspendable semantics.
 - selective physical assignment can match full assignment while retaining a genuinely interchangeable pool, but pooled scheduling plus exact assignment checking has not been ruled out.
+- bounded headless status advancement can carry an accepted recovery through repeated T1 → T2 → T3 cycles without rewriting accepted history, while explicit revised remaining work changes only the future recovery.
 
 CP-SAT remains the primary experimental backend for now, but the project/domain model must remain solver-independent. The bounded productive-time experiment did not justify a Classical CP challenger; reopen that comparison only if a focused richer-calendar case makes the CP-SAT compiler materially unwieldy or fragile.
 
