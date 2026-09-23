@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -15,12 +16,15 @@ from deterministic_scheduling_core.project import (
     ExecutionMethod,
     ExecutionMode,
     Project,
+    Resource,
+    ResourceRequirement,
     WorkPackage,
     load_project,
     save_project,
 )
 from deterministic_scheduling_core.project.io import LEGACY_FORMAT
 from deterministic_scheduling_core.scheduling import schedule_project
+from deterministic_scheduling_core.scheduling.engine import validate_project
 from deterministic_scheduling_core.work_method_experiment import build_case
 
 
@@ -285,6 +289,125 @@ class NativeWorkMethodIntegrationTests(unittest.TestCase):
 
         with self.assertRaisesRegex(SchedulingError, "do not feed method completion"):
             schedule_project(project)
+
+
+class NativeWorkMethodWindowTests(unittest.TestCase):
+    def setUp(self):
+        crew = (ResourceRequirement("R"),)
+        self.project = Project(
+            id="method-window",
+            name="Closed method window",
+            activities=(
+                Activity("RELEASE", "Release", (ExecutionMode("FIXED", 1, crew),)),
+                Activity("A1", "Prepare A", (ExecutionMode("FIXED", 1, crew),),
+                         predecessors=("RELEASE",)),
+                Activity("A2", "Complete A", (ExecutionMode("FIXED", 1, crew),),
+                         predecessors=("A1",), latest_finish=4),
+                Activity("B", "Alternative B", (ExecutionMode("FIXED", 3, crew),),
+                         predecessors=("RELEASE",)),
+                Activity("DONE", "Handoff", (ExecutionMode("MILESTONE", 0),),
+                         kind="milestone"),
+            ),
+            resources=(Resource("R", "Crew", 1),),
+            work_packages=(
+                WorkPackage("WP", "Required work", (
+                    ExecutionMethod("A", "A", ("A1", "A2"), "A2"),
+                    ExecutionMethod("B", "B", ("B",), "B"),
+                )),
+                WorkPackage("END", "Handoff", (
+                    ExecutionMethod("END", "End", ("DONE",), "DONE"),
+                ), predecessors=("WP",)),
+            ),
+            objective_activity_id="DONE",
+        )
+        self.closed = self._edit_activity(self.project, "A2", not_before=5)
+
+    @staticmethod
+    def _edit_activity(project, activity_id, **changes):
+        return replace(project, activities=tuple(
+            replace(activity, **changes) if activity.id == activity_id else activity
+            for activity in project.activities
+        ))
+
+    def test_closed_window_reselects_only_the_feasible_method(self):
+        baseline = schedule_project(self.project)
+        self.assertEqual(baseline.methods_by_package["WP"], "A")
+        self.assertEqual(baseline.objective_finish, 3)
+
+        result = schedule_project(self.closed)
+
+        self.assertEqual(result.methods_by_package, {"WP": "B", "END": "END"})
+        self.assertEqual(result.objective_finish, 4)
+        self.assertEqual(result.solver_status, "OPTIMAL")
+        self.assertEqual(
+            {entry.activity_id: (entry.start, entry.finish) for entry in result.entries},
+            {"RELEASE": (0, 1), "B": (1, 4), "DONE": (4, 4)},
+        )
+        # A1 was individually feasible but belongs to the same inactive method.
+        self.assertFalse({"A1", "A2"} & set(result.by_id))
+        self.assertEqual(result.entries, schedule_project(self.closed).entries)
+        self.assertEqual(self.closed.activity_by_id["A2"].not_before, 5)
+        self.assertEqual(self.closed.activity_by_id["A2"].latest_finish, 4)
+        self.assertEqual(len(self.closed.activities), 5)
+
+    def test_closed_alternative_round_trips_without_removing_its_constraints(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "closed-alternative.json"
+            save_project(self.closed, path)
+            saved_bytes = path.read_bytes()
+            reopened = load_project(path)
+            result = schedule_project(reopened)
+            self.assertEqual(path.read_bytes(), saved_bytes)
+
+        self.assertEqual(reopened, self.closed)
+        self.assertEqual(result.methods_by_package["WP"], "B")
+        self.assertEqual(result.objective_finish, 4)
+        self.assertEqual(reopened.activity_by_id["A2"].latest_finish, 4)
+
+    def test_all_closed_methods_are_infeasible_not_dropped(self):
+        both_closed = self._edit_activity(self.closed, "B", not_before=5, latest_finish=4)
+        only_closed = replace(
+            self.closed,
+            activities=tuple(a for a in self.closed.activities if a.id != "B"),
+            work_packages=(
+                replace(self.closed.work_packages[0], methods=self.closed.work_packages[0].methods[:1]),
+                self.closed.work_packages[1],
+            ),
+        )
+        for project in (both_closed, only_closed):
+            with self.subTest(method_count=len(project.work_packages[0].methods)):
+                validate_project(project)
+                with self.assertRaisesRegex(SchedulingError, r"no feasible schedule: INFEASIBLE$"):
+                    schedule_project(project)
+
+    def test_frozen_decision_cannot_escape_a_closed_method(self):
+        for changes in ({"frozen_start": 1}, {"frozen_mode_id": "FIXED"}):
+            with self.subTest(changes=changes):
+                project = self._edit_activity(self.closed, "A1", **changes)
+                validate_project(project)
+                with self.assertRaisesRegex(SchedulingError, r"no feasible schedule: INFEASIBLE$"):
+                    schedule_project(project)
+
+    def test_fixed_activity_window_validation_is_unchanged(self):
+        mixed = self._edit_activity(self.closed, "RELEASE", not_before=5, latest_finish=4)
+        fixed = replace(mixed, activities=(mixed.activity_by_id["RELEASE"],),
+                        work_packages=(), objective_activity_id="RELEASE")
+        for project in (fixed, mixed):
+            with self.subTest(structural=bool(project.work_packages)):
+                with self.assertRaisesRegex(SchedulingError, "RELEASE: latest_finish precedes not_before"):
+                    validate_project(project)
+
+    def test_closed_alternative_still_receives_general_validation(self):
+        cases = (
+            ({"modes": (ExecutionMode("FIXED", -1),)}, "duration must be non-negative"),
+            ({"predecessors": ("A1", "UNKNOWN")}, "unknown predecessors"),
+            ({"predecessors": ("A1", "B")}, "crosses execution-method/package boundaries"),
+        )
+        for changes, message in cases:
+            with self.subTest(message=message):
+                project = self._edit_activity(self.closed, "A2", **changes)
+                with self.assertRaisesRegex(SchedulingError, message):
+                    validate_project(project)
 
 
 if __name__ == "__main__":
