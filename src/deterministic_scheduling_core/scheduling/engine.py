@@ -543,30 +543,18 @@ def schedule_project(project: Project) -> ScheduleResult:
     tertiary = sum(starts.values())
     tertiary_bound = len(project.activities) * horizon
 
-    # Encode the declared method-index vector uniquely so an otherwise exact tie
-    # has one canonical structural result. Earlier packages are more significant.
-    method_tie_terms = []
-    method_tie_bound = 0
-    radix = 1
-    for package in reversed(project.work_packages):
-        for method_index, method in enumerate(package.methods):
-            method_tie_terms.append(
-                method_index * radix * method_presence[(package.id, method.id)]
-            )
-        method_tie_bound += (len(package.methods) - 1) * radix
-        radix *= max(len(package.methods), 1)
-    method_tie = sum(method_tie_terms) if method_tie_terms else 0
-
-    method_weight = method_tie_bound + 1
-    tertiary_weight = method_weight
-    movement_weight = (tertiary_bound + 1) * tertiary_weight
-    finish_weight = (movement_bound + 1) * movement_weight
-    model.minimize(
+    # Preserve the established finish -> movement -> earliest-start ordering with
+    # polynomially bounded weights. Structural canonicalisation is deliberately
+    # separate: mixed-radix method weights grow exponentially with package count
+    # and can exceed CP-SAT's int64 coefficient range on otherwise modest projects.
+    movement_weight = tertiary_bound + 1
+    finish_weight = movement_bound * movement_weight + tertiary_bound + 1
+    primary_objective = (
         objective_finish * finish_weight
         + total_movement * movement_weight
-        + tertiary * tertiary_weight
-        + method_tie
+        + tertiary
     )
+    model.minimize(primary_objective)
 
     solver = cp_model.CpSolver()
     solver.parameters.num_search_workers = 1
@@ -576,6 +564,28 @@ def schedule_project(project: Project) -> ScheduleResult:
         raise SchedulingError(
             f"native project has no feasible schedule: {solver.status_name(status)}"
         )
+
+    # If the primary hierarchy is proven optimal, canonicalise the authorised
+    # structural choice lexicographically in declaration order. Each stage fixes
+    # the preceding optimum before considering the next package, so no giant
+    # mixed-radix coefficient is required and primary schedule quality cannot move.
+    if status == cp_model.OPTIMAL and project.work_packages:
+        primary_value = solver.objective_value
+        model.add(primary_objective == int(primary_value))
+        for package in project.work_packages:
+            method_index = sum(
+                index * method_presence[(package.id, method.id)]
+                for index, method in enumerate(package.methods)
+            )
+            model.minimize(method_index)
+            status = solver.solve(model)
+            if status != cp_model.OPTIMAL:
+                raise SchedulingError(
+                    "canonical structural tie-break could not be proven optimal: "
+                    f"{solver.status_name(status)}"
+                )
+            chosen_index = int(solver.objective_value)
+            model.add(method_index == chosen_index)
 
     selected_methods = tuple(
         (package.id, method.id)
