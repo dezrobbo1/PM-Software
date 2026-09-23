@@ -570,8 +570,8 @@ def schedule_project(project: Project) -> ScheduleResult:
     # the preceding optimum before considering the next package, so no giant
     # mixed-radix coefficient is required and primary schedule quality cannot move.
     if status == cp_model.OPTIMAL and project.work_packages:
-        primary_value = solver.objective_value
-        model.add(primary_objective == int(primary_value))
+        primary_value = solver.value(primary_objective)
+        model.add(primary_objective == primary_value)
         for package in project.work_packages:
             method_index = sum(
                 index * method_presence[(package.id, method.id)]
