@@ -225,6 +225,46 @@ class NativeWorkMethodIntegrationTests(unittest.TestCase):
         with self.assertRaisesRegex(SchedulingError, "explicit selected reference method"):
             schedule_project(project)
 
+    def test_many_binary_packages_do_not_require_exponential_objective_weights(self):
+        activities = []
+        packages = []
+        for index in range(30):
+            left_id = f"P{index:02d}-A"
+            right_id = f"P{index:02d}-B"
+            activities.extend(
+                (
+                    Activity(left_id, left_id, (ExecutionMode("FIXED", 1),)),
+                    Activity(right_id, right_id, (ExecutionMode("FIXED", 1),)),
+                )
+            )
+            packages.append(
+                WorkPackage(
+                    f"WP-{index:02d}",
+                    f"Outcome {index:02d}",
+                    (
+                        ExecutionMethod("A", "A", (left_id,), left_id),
+                        ExecutionMethod("B", "B", (right_id,), right_id),
+                    ),
+                )
+            )
+
+        project = Project(
+            id="many-binary-methods",
+            name="Many binary structural choices",
+            activities=tuple(activities),
+            work_packages=tuple(packages),
+        )
+
+        result = schedule_project(project)
+
+        self.assertEqual(result.objective_finish, 1)
+        self.assertEqual(
+            result.selected_methods,
+            tuple((f"WP-{index:02d}", "A") for index in range(30)),
+        )
+        self.assertEqual(len(result.entries), 30)
+        self.assertTrue(all(entry.activity_id.endswith("-A") for entry in result.entries))
+
     def test_method_completion_must_cover_all_method_work(self):
         project = Project(
             id="invalid-completion",
