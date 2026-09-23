@@ -617,6 +617,13 @@ def advance_status_point(
         if prior["execution_state"] == "IN_PROGRESS":
             if next_state not in {"IN_PROGRESS", "COMPLETED"}:
                 raise ValueError(f"{activity_id}: begun work cannot return to NOT_STARTED")
+            if next_state == "COMPLETED":
+                actual_finish = values.get("actual_finish")
+                _integer(actual_finish, "actual_finish")
+                if actual_finish <= old_status_point:
+                    raise ValueError(
+                        f"{activity_id}: completion at or before the prior status point requires an explicit correction"
+                    )
             if values.get("actual_start") != prior["actual_start"]:
                 raise ValueError(f"{activity_id}: advancement cannot rewrite accepted actual_start")
             if values.get("mode_id") != prior["mode_id"]:
@@ -646,7 +653,9 @@ def advance_status_point(
                 mode,
                 values.get("named_assignments", []),
             )
-            if current_context != prior["execution_context"]:
+            # Compare legacy omission as empty without mutating retained records.
+            historical_context = {"accepted_outages": [], **prior["execution_context"]}
+            if current_context != historical_context:
                 raise ValueError(
                     f"{activity_id}: rolling across a changed historical execution context is unsupported"
                 )
