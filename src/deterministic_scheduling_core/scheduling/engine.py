@@ -198,7 +198,13 @@ def validate_project(project: Project) -> None:
             raise SchedulingError(f"{activity.id}: duplicate execution-mode IDs")
         if activity.not_before < 0:
             raise SchedulingError(f"{activity.id}: not_before must be non-negative")
-        if activity.latest_finish is not None and activity.latest_finish < activity.not_before:
+        # An impossible structural window rules out its method, not the project.
+        # The solver enforces that window only when the method is selected.
+        if (
+            activity.id in fixed_ids
+            and activity.latest_finish is not None
+            and activity.latest_finish < activity.not_before
+        ):
             raise SchedulingError(f"{activity.id}: latest_finish precedes not_before")
         if activity.frozen_start is not None and activity.frozen_start < activity.not_before:
             raise SchedulingError(f"{activity.id}: frozen_start precedes not_before")
