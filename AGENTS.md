@@ -103,8 +103,10 @@ Active rules:
 - do not introduce unrestricted HTN/PDDL/state planning;
 - do not copy the experiment's temporary classes into the owning model; the new native concepts are the integration boundary;
 - Work–Method is composed with productive calendars, activity modes, selective physical assignment and disjoint interchangeable group quantities through the bounded `schedule_work_method_time(...)` path;
-- one bounded status-aware composition now treats accepted completed/in-progress work as hard history: a begun package fixes its method, begun mode/named resources remain fixed, accepted remaining productive work drives the remainder, and untouched packages may still change authorised method;
-- do not claim that this status-aware composition yet includes repeated rolling structural status, approved-plan structural/temporal stability or continuous in-progress structural continuation.
+- accepted completed/in-progress work is hard history: a begun package fixes its method, begun mode/named resources remain fixed, accepted remaining productive work drives the remainder, and untouched packages may still change authorised method;
+- an accepted structural recovery can now be promoted into the next active status structure without re-solving: retained accepted records are copied exactly, unexecuted deselected alternatives are dropped, newly selected activities receive explicit NOT_STARTED status, and the recovered future plan becomes the next structural reference;
+- repeated T1 → T2 → T3 structural status now retains newly begun and then completed recovery methods even when a shorter no-lock counterfactual exists;
+- do not claim that this composition yet includes approved-plan structural/temporal stability, continuous in-progress structural continuation, anonymous-group history/future identity or production-scale evidence.
 
 ### Trusted live project state
 
@@ -357,15 +359,14 @@ The following bounded hypotheses have now survived their first executable falsif
 - productive duration placed into joint executable availability, with separate continuous and suspendable semantics.
 - selective integrated assignment is the current convergence baseline where identity matters; genuinely interchangeable capacity remains pooled, and the bounded pooled-feedback replacement remained inconclusive on the retained 14-activity case.
 - bounded headless status advancement can carry an accepted fixed-network recovery through repeated T1 → T2 → T3 cycles without rewriting accepted history, while explicit revised remaining work changes only the future recovery.
-- accepted history now composes with bounded Work–Method/productive-time recovery at one status point: begun structural methods are hard, untouched packages remain structurally free, and an illegal shorter plan is rejected when it would erase the begun method.
+- accepted history composes with bounded Work–Method/productive-time recovery and structural handover through repeated T1 → T2 → T3 status: the newly selected MANUAL recovery method becomes hard when begun and remains hard when completed, while a shorter illegal CRANE switch is rejected.
 
 CP-SAT remains the primary experimental backend for now, but the project/domain model must remain solver-independent. The bounded productive-time experiment did not justify a Classical CP challenger; reopen that comparison only if a focused richer-calendar case makes the CP-SAT compiler materially unwieldy or fragile.
 
-The next work should continue to attack one unresolved core question at a time. After the one-status-point accepted-history composition, strong candidates are:
+The next work should continue to attack one unresolved core question at a time. After the rolling structural-status convergence slice, strong candidates are:
 
-- **rolling structural status:** carry the same begun-method/history locks through T1 → T2 → T3 without rewriting history or fabricating status for inactive alternatives;
-- **calendar/state semantics:** only for a focused irregular-calendar or state-transition capability not answered by the bounded productive-time experiment;
-- **larger-scale evidence:** only after the converged headless path is coherent; do not launch a generic benchmarking/hardening programme;
+- **larger-scale evidence:** construct one materially larger falsification case for the converged headless path; do not launch a generic benchmarking/hardening programme;
+- **calendar/state semantics:** only for a focused irregular-calendar or state-transition capability not answered by the bounded productive-time experiments;
 - **objective ordering:** gather further evidence before declaring structural-vs-temporal stability universally settled.
 
 Do not reopen pooled-feedback decomposition merely because its bounded comparison was inconclusive; revisit it only if a concrete scaling or model-size failure creates a specific reason.
