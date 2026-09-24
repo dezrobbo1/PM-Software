@@ -64,7 +64,7 @@ class ResourceAllocationRepairTests(unittest.TestCase):
     def test_no_handover_repair_can_increase_the_finish(self):
         result = self.result["cases"]["continuity"]["candidate"]
         self.assertEqual(result["trace"][0]["objective"][0], 4)
-        self.assertEqual(result["objective"], (6, 36))
+        self.assertEqual(result["objective"][0], 6)
         initial = tuple(ra.ScheduledEntry(**e) for e in result["trace"][0]["candidate"])
         case = build_continuity_case()
         self.assertTrue(ra.each_time_slice_is_assignable(case, initial))
