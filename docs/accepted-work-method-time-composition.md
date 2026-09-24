@@ -54,8 +54,10 @@ still chooses the remaining method, mode, physical assignment and timing in one
 future model.
 
 This first slice explicitly rejects positive-remainder continuous in-progress
-work. Its exact continuation semantics are already known in the fixed-network v2
-path but are not composed with structural choice here.
+work and in-progress anonymous resource-group continuation. Their continuation
+semantics are already validated in the fixed-network v2 path, but this structural
+compiler does not yet couple accepted anonymous unit history to future anonymous
+unit allocation. Neither case is silently weakened into a looser constraint.
 
 ## Executable falsification case
 
@@ -150,6 +152,7 @@ It does not yet add:
 - unplanned field execution of an alternative method that was absent from the
   reference selected structure;
 - continuous in-progress structural continuation;
+- in-progress anonymous-group no-handover across the history/future boundary;
 - approved-plan structural/temporal stability objectives;
 - arbitrary preemption;
 - browser workflow;
