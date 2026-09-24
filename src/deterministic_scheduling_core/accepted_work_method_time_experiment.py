@@ -270,11 +270,12 @@ def _control_workspace(
 
 def solve_allowed_controls(
     problem: WorkMethodTimeProject,
+    reference_problem: WorkMethodTimeProject,
     reference_plan: dict,
     status_workspace: dict,
 ) -> dict:
     """Enumerate only structures permitted by accepted history, then use v2 recovery."""
-    _, fixed = validate_input(problem, reference_plan, status_workspace)
+    _, fixed = validate_input(problem, reference_problem, reference_plan, status_workspace)
     branches = []
     for methods in method_selections(problem):
         if any(methods[package_id] != method_id for package_id, method_id in fixed.items()):
@@ -318,16 +319,17 @@ def run_experiment() -> dict:
     status_workspace = build_status_workspace(problem, reference)
     accepted_hash = state_hash(status_workspace)
 
-    candidate = schedule_accepted_work_method_time(problem, reference, status_workspace)
-    repeated = schedule_accepted_work_method_time(problem, reference, status_workspace)
-    validate_plan(problem, reference, status_workspace, candidate.plan)
+    candidate = schedule_accepted_work_method_time(problem, problem, reference, status_workspace)
+    repeated = schedule_accepted_work_method_time(problem, problem, reference, status_workspace)
+    validate_plan(problem, problem, reference, status_workspace, candidate.plan)
 
-    controls = solve_allowed_controls(problem, reference, status_workspace)
+    controls = solve_allowed_controls(problem, problem, reference, status_workspace)
 
     # Deliberately illegal counterfactual: compile the same status information but
     # remove the hard method locks. This is evidence for why accepted history must
     # constrain structural choice; it is never returned as an authoritative plan.
     loose_problem, _, _ = _compile_future_problem(
+        problem,
         problem,
         reference,
         status_workspace,
