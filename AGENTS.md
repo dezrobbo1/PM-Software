@@ -104,7 +104,7 @@ Active rules:
 - do not copy the experiment's temporary classes into the owning model; the new native concepts are the integration boundary;
 - Work–Method is composed with productive calendars, activity modes, selective physical assignment and disjoint interchangeable group quantities through the bounded `schedule_work_method_time(...)` path;
 - accepted completed/in-progress work is hard history: a begun package fixes its method, begun mode/named resources remain fixed, accepted remaining productive work drives the remainder, and untouched packages may still change authorised method;
-- an accepted structural recovery can now be promoted into the next active status structure without re-solving: retained accepted records are copied exactly, unexecuted deselected alternatives are dropped, newly selected activities receive explicit NOT_STARTED status, and the recovered future plan becomes the next structural reference;
+- a validated structural recovery can now be promoted into the next active status structure without re-solving: retained accepted records are copied exactly, unexecuted deselected alternatives are dropped, newly selected activities receive explicit NOT_STARTED status, and the recovered future plan becomes the next structural reference;
 - repeated T1 → T2 → T3 structural status now retains newly begun and then completed recovery methods even when a shorter no-lock counterfactual exists;
 - do not claim that this composition yet includes approved-plan structural/temporal stability, continuous in-progress structural continuation, anonymous-group history/future identity or production-scale evidence.
 
