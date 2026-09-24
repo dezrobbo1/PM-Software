@@ -131,20 +131,57 @@ reduction), local placement enumeration and total candidate elapsed time. The B
 reference's end-to-end time includes its own normal checker. Runtime comparisons
 remain small-case observations, not stable performance benchmarks.
 
-## Exit and next integration decision
+## Observed result and protocol correction
 
-The executable report derives NOT_FALSIFIED_FOR_TESTED_PROFILE only when all
-three comparisons have valid witnesses, matching complete objective vectors,
-repeatable signatures/traces and unchanged inputs. Otherwise it records
-FALSIFIED_OR_INCONCLUSIVE and exits unsuccessfully without changing the fixtures.
+The initial executable run at `d55a982` did NOT support an all-cases success
+claim: the 14-activity overlap case exhausted the original 64-iteration budget.
+The continuity and calendar cases reached allocation-verified optima matching B.
+The limit, source cases, generator, allocation search, cuts and objectives were
+not altered to force a positive result.
 
-Stop after that bounded result and required regressions. Use measured evidence
-to decide whether the next small Work-Method/productive-time convergence slice
-should retain selective integrated assignment or adopt this feedback approach.
-Do not turn a positive result into a universal pooled-resource architecture.
-Neither approach requires planner-facing names for interchangeable capacity.
-No UI, hosting, accepted-history, rolling-status, objective-policy or native
-schema changes belong to this experiment.
+The initial reporting/tests incorrectly treated every unsuccessful hypothesis
+comparison as failed evidence. That is corrected explicitly: CI checks evidence
+integrity and expected bounded behaviour, while the report separately records
+`INCONCLUSIVE_WITHIN_DECLARED_LIMITS`. It does not label this outcome
+NOT_FALSIFIED. Contradictory infeasibility against a verified feasible B,
+unverified successful output, changed source data or non-reproducible results
+still produce EVIDENCE_FAILURE and an unsuccessful command exit.
+
+An initial handwritten continuity timing expectation was also wrong. Independent
+enumeration, not a changed solver or fixture, establishes the complete optimum
+`(6,32)`: X starts at 2 using M1, Y uses M1 over [0,2), Z uses M2 over [2,4), and
+DONE occurs at 6. The enumeration finds 11 feasible start/assignment/milestone
+combinations at horizon 6 and none at horizon 4. Every emitted microcase cut is
+checked against all enumerated feasible schedules. All 64 overlap cuts are also
+rechecked as exact unassignable subsets in the focused tests.
+
+See the exact-head CI JSON/console artifact for measured calls, nodes, timings,
+patterns and cut sequences. A green check means the bounded experiment ran and
+reported its limitations correctly, NOT that the pooled architecture won.
+
+## Next integration decision
+
+**Retain selective integrated assignment as the working baseline for the next
+small Work-Method/productive-time convergence slice.** Keep genuinely
+interchangeable capacity pooled and keep the physical checker independent.
+
+This specific exact-pattern feedback implementation has not justified replacing
+that baseline: it did not find a usable allocation for the existing 14-activity
+case within its declared budget, while the existing B/C approaches did. The two
+successful small cases establish that correct feedback and a later executable
+finish are possible; they do not establish a sufficiently effective general
+repair mechanism. Projection also still incurs local identity enumeration.
+
+Do not increase the budget, add stronger general cuts or start another
+resource-decomposition programme merely to rescue this hypothesis. Retain the
+experiment as a comparison for a future *concrete* scaling need. This is not a
+universal rejection of pooled scheduling with better decomposition.
+
+The next task should compose existing Work-Method structure with productive
+execution periods and the retained resource boundary, still headlessly and in a
+small declared case. Accepted-history/rolling-status composition remains a
+separate subsequent integration decision. No UI, hosting, invitations, public
+model migration or objective-policy redesign is implied by this result.
 
 ## API references checked during implementation
 

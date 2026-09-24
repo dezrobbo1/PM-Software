@@ -411,6 +411,30 @@ def build_calendar_case() -> ra.ExperimentCase:
     return ra.ExperimentCase((calendar,), resources, exceptions, activities, "DONE", 8)
 
 
+def classify_outcomes(results: dict) -> tuple[bool, str]:
+    """A valid inconclusive experiment is not a successful architectural result."""
+    valid = bool(results)
+    for record in results.values():
+        candidate = record["candidate"]
+        valid &= (record["source_unchanged"] and record["repeat_signature_matches"]
+                  and record["repeat_trace_matches"] and record["repeat_objective_matches"]
+                  and record["reference"]["checker"]["status"] == FEASIBLE)
+        if candidate["status"] == OPTIMAL:
+            valid &= record["matches_reference"]
+        elif candidate["status"] == INCONCLUSIVE:
+            valid &= (not candidate["entries"] and not candidate["allocation"]
+                      and candidate["objective"] is None and not record["matches_reference"])
+        else:
+            # These comparison cases all have a separately verified feasible B.
+            # A claimed infeasibility here would be contradictory, not a pass.
+            valid = False
+    if not valid:
+        return False, "EVIDENCE_FAILURE"
+    if all(r["matches_reference"] for r in results.values()):
+        return True, "NOT_FALSIFIED_FOR_TESTED_PROFILE"
+    return True, "INCONCLUSIVE_WITHIN_DECLARED_LIMITS"
+
+
 def run_experiment() -> dict:
     """Measure all approaches; derive conclusions only from returned evidence."""
     results = {}
@@ -449,11 +473,10 @@ def run_experiment() -> dict:
                                            "metrics": asdict(selective.metrics),
                                            "physically_assignable": selective.checker.physically_assignable}
         results[name] = record
-    supported = all(r["matches_reference"] and r["repeat_signature_matches"]
-                    and r["repeat_trace_matches"] and r["source_unchanged"] for r in results.values())
+    evidence_valid, conclusion = classify_outcomes(results)
     return {"experiment": "headless-resource-allocation-repair-v0", "ortools": ortools.__version__,
             "resolution": "existing 30-minute ticks", "cases": results,
-            "conclusion": "NOT_FALSIFIED_FOR_TESTED_PROFILE" if supported else "FALSIFIED_OR_INCONCLUSIVE",
+            "evidence_valid": evidence_valid, "conclusion": conclusion,
             "boundary": "identity-free master still enumerates local identity-dependent placements; no universal architecture or performance superiority claimed"}
 
 
@@ -472,11 +495,16 @@ def main() -> None:
         print(f"{name}: B={record['reference']['objective']}; repair={candidate['objective']}; "
               f"status={candidate['status']}; match={record['matches_reference']}; "
               f"repeat={record['repeat_signature_matches']}")
-        print(json.dumps(candidate["metrics"], sort_keys=True))
-        print(f"initial={candidate['trace'][0]['objective'] if candidate['trace'] else None}; cuts={len(candidate['cuts'])}")
+        print("candidate_costs=" + json.dumps(candidate["metrics"], sort_keys=True))
+        print("reference_costs=" + json.dumps({**record["reference"]["metrics"],
+              "end_to_end_ms": record["reference"]["end_to_end_ms"]}, sort_keys=True))
+        print(f"initial={candidate['trace'][0]['objective'] if candidate['trace'] else None}; "
+              f"last_relaxation={candidate['trace'][-1]['objective'] if candidate['trace'] else None}; "
+              f"cuts={len(candidate['cuts'])}")
     print(result["conclusion"])
     print(result["boundary"])
-    if result["conclusion"] != "NOT_FALSIFIED_FOR_TESTED_PROFILE":
+    # Hypothesis support is separate from evidence integrity/CI success.
+    if not result["evidence_valid"]:
         sys.exit(1)
 
 

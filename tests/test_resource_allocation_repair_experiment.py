@@ -1,4 +1,5 @@
 """Focused falsification tests; small manual enumeration is independent of CP-SAT."""
+from copy import deepcopy
 from dataclasses import asdict, replace
 from itertools import product
 import unittest
@@ -7,7 +8,7 @@ from unittest.mock import patch
 from deterministic_scheduling_core import resource_assignment_experiment as ra
 from deterministic_scheduling_core.resource_allocation_repair_experiment import (
     FEASIBLE, INFEASIBLE, INCONCLUSIVE, OPTIMAL, build_calendar_case,
-    build_continuity_case, check_allocation, pattern, project_placements,
+    build_continuity_case, check_allocation, classify_outcomes, pattern, project_placements,
     run_experiment, solve_repair,
 )
 from deterministic_scheduling_core.working_time_experiment import WorkCalendar
@@ -36,26 +37,33 @@ class ResourceAllocationRepairTests(unittest.TestCase):
     def setUpClass(cls):
         cls.result = run_experiment()
 
-    def test_three_cases_match_complete_reference_objectives(self):
-        self.assertEqual(self.result["conclusion"], "NOT_FALSIFIED_FOR_TESTED_PROFILE")
+    def test_observed_limit_is_retained_not_relabelled_as_hypothesis_success(self):
+        self.assertTrue(self.result["evidence_valid"])
+        self.assertEqual(self.result["conclusion"], "INCONCLUSIVE_WITHIN_DECLARED_LIMITS")
         self.assertEqual(set(self.result["cases"]), {"overlap", "continuity", "calendar"})
-        for name, record in self.result["cases"].items():
-            with self.subTest(case=name):
-                self.assertTrue(record["matches_reference"])
-                self.assertEqual(record["candidate"]["status"], OPTIMAL)
-                self.assertEqual(record["candidate"]["objective"], record["reference"]["objective"])
-                self.assertTrue(record["candidate"]["allocation"])
-                self.assertTrue(record["source_unchanged"])
+        for name in ("continuity", "calendar"):
+            record = self.result["cases"][name]
+            self.assertTrue(record["matches_reference"])
+            self.assertEqual(record["candidate"]["status"], OPTIMAL)
+            self.assertEqual(record["candidate"]["objective"], record["reference"]["objective"])
+            self.assertTrue(record["candidate"]["allocation"])
+            self.assertTrue(record["source_unchanged"])
         overlap = self.result["cases"]["overlap"]
-        self.assertEqual(overlap["candidate"]["objective"], (75, 4349))
+        self.assertEqual(overlap["reference"]["objective"], (75, 4349))
         self.assertEqual(overlap["selective_control"]["objective"], (75, 4349))
         self.assertTrue(overlap["selective_control"]["physically_assignable"])
+        self.assertEqual(overlap["candidate"]["status"], INCONCLUSIVE)
+        self.assertEqual(overlap["candidate"]["metrics"]["iterations"], 64)
+        self.assertFalse(overlap["candidate"]["entries"])
+        self.assertFalse(overlap["matches_reference"])
 
-    def test_feedback_is_automatic_not_the_hard_coded_shared_capacity_diagnostic(self):
+    def test_feedback_is_automatic_and_every_retained_overlap_cut_is_proven(self):
         record = self.result["cases"]["overlap"]["candidate"]
-        self.assertGreater(len(record["cuts"]), 0)
-        self.assertEqual(record["trace"][0]["checker_status"], INFEASIBLE)
-        self.assertEqual(record["trace"][-1]["checker_status"], FEASIBLE)
+        self.assertEqual(len(record["cuts"]), 64)
+        self.assertTrue(all(row["checker_status"] == INFEASIBLE for row in record["trace"]))
+        for cut in record["cuts"]:
+            entries = tuple(ra.ScheduledEntry(**e) for e in cut)
+            self.assertEqual(check_allocation(ra.build_case(), entries, complete=False).status, INFEASIBLE)
         with patch.object(ra, "_add_shared_multiskill_constraint", side_effect=AssertionError("hard-coded repair")):
             result = solve_repair(build_continuity_case())
         self.assertEqual(result.status, OPTIMAL)
@@ -196,6 +204,16 @@ class ResourceAllocationRepairTests(unittest.TestCase):
             self.assertEqual(record["planner_facts"]["physical resources"], len(record["case"]["resources"]))
             for entry in record["candidate"]["entries"]:
                 self.assertTrue(all(rid is None for _, rid in entry["assignments"]))
+
+    def test_classifier_rejects_contradictory_or_corrupted_evidence(self):
+        for changes in ({"status": INFEASIBLE}, {"status": OPTIMAL}, {"objective": (75, 4349)},
+                        {"allocation": (("invented", "slot", "worker"),)}):
+            records = deepcopy(self.result["cases"])
+            records["overlap"]["candidate"].update(changes)
+            self.assertEqual(classify_outcomes(records), (False, "EVIDENCE_FAILURE"))
+        records = deepcopy(self.result["cases"])
+        records["continuity"]["repeat_signature_matches"] = False
+        self.assertEqual(classify_outcomes(records), (False, "EVIDENCE_FAILURE"))
 
     def test_checker_coverage_and_profile_boundary_are_explicit(self):
         case = build_continuity_case()
