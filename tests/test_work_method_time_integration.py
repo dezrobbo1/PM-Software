@@ -52,6 +52,53 @@ def tiny_problem(outage=False):
     return WorkMethodTimeProject(project, packages, reports)
 
 
+def triangle_rigger_problem():
+    """Named-rigger case where per-tick capacity is feasible but no fixed assignment is."""
+
+    def mode(calendar):
+        return {
+            "id": "FIXED",
+            "processing_ticks": 2,
+            "calendar_id": calendar,
+            "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+            "requirements": [{
+                "id": "RIGGER",
+                "pool_ids": ["RIGGER"],
+                "eligible_resource_ids": ["R1", "R2"],
+            }],
+            "group_requirements": [],
+        }
+
+    project = {
+        "id": "triangle-riggers",
+        "name": "Whole-activity no-handover counterexample",
+        "horizon_ticks": 5,
+        "calendars": [
+            {"id": "A_CAL", "daily_windows": [[0, 1], [2, 5]]},
+            {"id": "B_CAL", "daily_windows": [[0, 2], [3, 5]]},
+            {"id": "C_CAL", "daily_windows": [[1, 5]]},
+            {"id": "ALWAYS", "daily_windows": [[0, 48]]},
+        ],
+        "resources": [
+            {"id": "R1", "capabilities": ["RIGGER"], "calendar_id": "ALWAYS"},
+            {"id": "R2", "capabilities": ["RIGGER"], "calendar_id": "ALWAYS"},
+        ],
+        "activities": [
+            {"id": "A", "name": "A", "modes": [mode("A_CAL")]},
+            {"id": "B", "name": "B", "modes": [mode("B_CAL")]},
+            {"id": "C", "name": "C", "not_before": 1, "modes": [mode("C_CAL")]},
+            {"id": "DONE", "name": "Done", "predecessors": ["A", "B", "C"],
+             "modes": [{"id": "FIXED", "processing_ticks": 0, "calendar_id": "ALWAYS",
+                        "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+                        "requirements": [], "group_requirements": []}]},
+        ],
+        "objective_activity_id": "DONE",
+        # This legacy hint must not weaken whole-activity no-handover semantics.
+        "pool_riggers": True,
+    }
+    return WorkMethodTimeProject(project)
+
+
 def exact_tiny_oracle(outage):
     """Enumerate every start/finish and named occupancy directly from tiny facts.
 
@@ -248,22 +295,47 @@ class WorkMethodTimeIntegrationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_plan(problem, plan)
 
-    def test_verified_rigger_pool_falls_back_when_interchangeability_is_lost(self):
+    def test_named_riggers_stay_explicit_even_when_legacy_pooling_is_requested(self):
         problem = tiny_problem(True)
         project = problem.project
         project["pool_riggers"] = True
-        project["resources"].extend({"id": rid, "capabilities": ["RIGGER"], "calendar_id": "DAY"} for rid in ("R1", "R2"))
+        project["resources"].extend(
+            {"id": rid, "capabilities": ["RIGGER"], "calendar_id": "DAY"}
+            for rid in ("R1", "R2")
+        )
         mode = project["activities"][1]["modes"][0]
         mode["group_requirements"] = []
-        mode["requirements"] = [{"id": "RIGGER", "pool_ids": ["RIGGER"], "eligible_resource_ids": ["R1", "R2"]}]
-        pooled = schedule_work_method_time(problem).plan
-        self.assertTrue(pooled["pooled_riggers"])
-        self.assertEqual(next(e for e in pooled["entries"] if e["activity_id"] == "B")["assignments"], [["RIGGER", None]])
-        problem = replace(problem, reports=problem.reports + ({"id": "R_OUT", "resource_id": "R2", "start": 0, "finish": 1,
-            "reason": "Loss of interchangeability", "reported_by": "operations", "status": "ACCEPTED", "accepted_by": "planner"},))
-        explicit = schedule_work_method_time(problem).plan
-        self.assertFalse(explicit["pooled_riggers"])
-        self.assertIsNotNone(next(e for e in explicit["entries"] if e["activity_id"] == "B")["assignments"][0][1])
+        mode["requirements"] = [{
+            "id": "RIGGER",
+            "pool_ids": ["RIGGER"],
+            "eligible_resource_ids": ["R1", "R2"],
+        }]
+        plan = schedule_work_method_time(problem).plan
+        self.assertFalse(plan["pooled_riggers"])
+        self.assertIsNotNone(
+            next(e for e in plan["entries"] if e["activity_id"] == "B")["assignments"][0][1]
+        )
+
+    def test_triangle_rigger_counterexample_finds_later_executable_plan(self):
+        problem = triangle_rigger_problem()
+        result = schedule_work_method_time(problem)
+        plan = result.plan
+        control = solve_fixed_controls(problem)["best"]
+        self.assertFalse(plan["pooled_riggers"])
+        self.assertEqual(plan["objective"], control["objective"])
+        self.assertEqual(plan["objective"][0], 4)
+        by_id = {entry["activity_id"]: entry for entry in plan["entries"]}
+        self.assertEqual(by_id["A"]["periods"], [[2, 4]])
+        self.assertTrue(all(
+            resource_id is not None
+            for aid in ("A", "B", "C")
+            for _, resource_id in by_id[aid]["assignments"]
+        ))
+        self.assertEqual(validate_plan(problem, plan), "PROVEN_FEASIBLE")
+
+    def test_each_solver_stage_has_a_deterministic_budget(self):
+        plan = self.evidence["cases"]["normal"]["candidate"]["plan"]
+        self.assertEqual(plan["solver"]["max_deterministic_time_per_stage"], 60.0)
 
     def test_unknown_and_model_invalid_are_not_reported_as_project_infeasible(self):
         problem = tiny_problem()
