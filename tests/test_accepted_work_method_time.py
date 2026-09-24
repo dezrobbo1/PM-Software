@@ -17,14 +17,17 @@ from deterministic_scheduling_core.accepted_work_method_time_experiment import (
     solve_allowed_controls,
 )
 from deterministic_scheduling_core.project.planning_workspace import (
+    accept_report,
     accept_status_update,
     current_status_records,
     load as load_workspace,
     report_status_update,
+    report_unavailable,
     save as save_workspace,
     state_hash,
 )
 from deterministic_scheduling_core.project.work_method_time import (
+    WorkMethodTimeProject,
     input_hash,
     load as load_problem,
     save as save_problem,
@@ -89,7 +92,7 @@ class AcceptedWorkMethodTimeTests(unittest.TestCase):
         self.assertNotIn("REST_MAN1", states)
         self.assertNotIn("REST_MAN2", states)
 
-        plan = schedule_accepted_work_method_time(problem, reference, status).plan
+        plan = schedule_accepted_work_method_time(problem, problem, reference, status).plan
         selected_ids = {entry["activity_id"] for entry in plan["entries"]}
         self.assertIn("REST_MAN1", selected_ids)
         self.assertIn("REST_MAN2", selected_ids)
@@ -120,7 +123,7 @@ class AcceptedWorkMethodTimeTests(unittest.TestCase):
         )
         accept_status_update(status, update_id, "schedule-acceptor")
 
-        plan = schedule_accepted_work_method_time(problem, reference, status).plan
+        plan = schedule_accepted_work_method_time(problem, problem, reference, status).plan
         self.assertEqual(plan["fixed_methods"]["REMOVE"], "LIFT")
         self.assertEqual(plan["selected_methods"]["REMOVE"], "LIFT")
         lift = next(entry for entry in plan["entries"] if entry["activity_id"] == "LIFT")
@@ -133,8 +136,8 @@ class AcceptedWorkMethodTimeTests(unittest.TestCase):
         problem = build_problem()
         reference = schedule_work_method_time(problem).plan
         status = build_status_workspace(problem, reference)
-        candidate = schedule_accepted_work_method_time(problem, reference, status).plan
-        control = solve_allowed_controls(problem, reference, status)
+        candidate = schedule_accepted_work_method_time(problem, problem, reference, status).plan
+        control = solve_allowed_controls(problem, problem, reference, status)
 
         self.assertEqual(len(control["branches"]), 2)
         self.assertEqual(control["best"]["methods"], candidate["selected_methods"])
@@ -163,8 +166,87 @@ class AcceptedWorkMethodTimeTests(unittest.TestCase):
         reference = schedule_work_method_time(problem).plan
         status = build_status_workspace(problem, reference)
         status["project"]["name"] = "Same valid selected network, altered source identity"
-        with self.assertRaisesRegex(ValueError, "reference plan's selected native structure"):
-            validate_input(problem, reference, status)
+        with self.assertRaisesRegex(ValueError, "current projection of the reference selected structure"):
+            validate_input(problem, problem, reference, status)
+
+    def test_reported_and_accepted_current_outage_do_not_require_rebasing_reference_plan(self):
+        reference_problem = build_problem()
+        reference = schedule_work_method_time(reference_problem).plan
+        status = build_status_workspace(reference_problem, reference)
+        original_state_hash = state_hash(status)
+
+        report_id = report_unavailable(
+            status,
+            "C04",
+            6,
+            8,
+            "operations",
+            "new crane outage reported after the reference plan",
+        )
+        self.assertEqual(state_hash(status), original_state_hash)
+        current_problem = WorkMethodTimeProject(
+            deepcopy(reference_problem.project),
+            reference_problem.work_packages,
+            tuple(deepcopy(status["reports"])),
+        )
+        self.assertNotEqual(input_hash(current_problem), input_hash(reference_problem))
+
+        reported_plan = schedule_accepted_work_method_time(
+            current_problem,
+            reference_problem,
+            reference,
+            status,
+        ).plan
+        self.assertEqual(reported_plan["selected_methods"]["REMOVE"], "LIFT")
+        self.assertEqual(reported_plan["selected_methods"]["RESTORE"], "MANUAL")
+        self.assertEqual(reported_plan["objective"][0], 12)
+
+        accept_report(status, report_id, "planner")
+        current_problem = WorkMethodTimeProject(
+            deepcopy(reference_problem.project),
+            reference_problem.work_packages,
+            tuple(deepcopy(status["reports"])),
+        )
+        accepted_plan = schedule_accepted_work_method_time(
+            current_problem,
+            reference_problem,
+            reference,
+            status,
+        ).plan
+        lift = next(entry for entry in accepted_plan["entries"] if entry["activity_id"] == "LIFT")
+        self.assertEqual(accepted_plan["selected_methods"]["REMOVE"], "LIFT")
+        self.assertEqual(accepted_plan["selected_methods"]["RESTORE"], "MANUAL")
+        self.assertEqual(accepted_plan["objective"][0], 14)
+        self.assertEqual(lift["forecast_periods"], [[4, 6], [8, 14]])
+        self.assertEqual(reference["input_hash"], input_hash(reference_problem))
+
+    def test_v0_reference_projection_survives_status_v2_normalisation(self):
+        problem = build_problem()
+        problem.project.pop("resource_groups")
+        for activity in problem.project["activities"]:
+            for mode in activity["modes"]:
+                mode.pop("group_requirements", None)
+
+        reference = schedule_work_method_time(problem).plan
+        status = build_status_workspace(problem, reference)
+        self.assertEqual(status["project"]["resource_groups"], [])
+        self.assertTrue(
+            all(
+                "group_requirements" in mode
+                for activity in status["project"]["activities"]
+                for mode in activity["modes"]
+            )
+        )
+
+        plan = schedule_accepted_work_method_time(
+            problem,
+            problem,
+            reference,
+            status,
+        ).plan
+        self.assertEqual(plan["selected_methods"]["REMOVE"], "LIFT")
+        self.assertEqual(plan["selected_methods"]["RESTORE"], "MANUAL")
+        self.assertEqual(plan["objective"][0], 12)
 
     def test_continuous_in_progress_is_explicitly_outside_first_slice(self):
         problem = build_problem()
@@ -174,7 +256,7 @@ class AcceptedWorkMethodTimeTests(unittest.TestCase):
         reference = schedule_work_method_time(problem).plan
         status = build_status_workspace(problem, reference)
         with self.assertRaisesRegex(ValueError, "continuous in-progress"):
-            validate_input(problem, reference, status)
+            validate_input(problem, problem, reference, status)
 
     def test_in_progress_anonymous_group_continuation_is_explicitly_outside_first_slice(self):
         problem = build_problem()
@@ -191,13 +273,13 @@ class AcceptedWorkMethodTimeTests(unittest.TestCase):
         reference = schedule_work_method_time(problem).plan
         status = build_status_workspace(problem, reference)
         with self.assertRaisesRegex(ValueError, "anonymous group continuation"):
-            validate_input(problem, reference, status)
+            validate_input(problem, problem, reference, status)
 
     def test_save_reopen_and_plan_validation_do_not_recalculate(self):
         problem = build_problem()
         reference = schedule_work_method_time(problem).plan
         status = build_status_workspace(problem, reference)
-        result = schedule_accepted_work_method_time(problem, reference, status)
+        result = schedule_accepted_work_method_time(problem, problem, reference, status)
         source_hash = input_hash(problem)
         accepted_hash = state_hash(status)
 
@@ -223,6 +305,7 @@ class AcceptedWorkMethodTimeTests(unittest.TestCase):
                 reopened_plan = json.loads(plan_path.read_text(encoding="utf-8"))
                 self.assertEqual(
                     validate_plan(
+                        reopened_problem,
                         reopened_problem,
                         reopened_reference,
                         reopened_status,
