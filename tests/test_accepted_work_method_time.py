@@ -17,8 +17,10 @@ from deterministic_scheduling_core.accepted_work_method_time_experiment import (
     solve_allowed_controls,
 )
 from deterministic_scheduling_core.project.planning_workspace import (
+    accept_status_update,
     current_status_records,
     load as load_workspace,
+    report_status_update,
     save as save_workspace,
     state_hash,
 )
@@ -95,6 +97,37 @@ class AcceptedWorkMethodTimeTests(unittest.TestCase):
         by_id = {entry["activity_id"]: entry for entry in plan["entries"]}
         self.assertIsNone(by_id["REST_MAN1"]["status_update_id"])
         self.assertEqual(by_id["REST_MAN1"]["execution_state"], "NOT_STARTED")
+
+    def test_completed_work_in_an_alternative_package_also_locks_its_method(self):
+        problem = build_problem()
+        reference = schedule_work_method_time(problem).plan
+        status = build_status_workspace(problem, reference)
+        prior = current_status_records(status, require_complete=True)["LIFT"]
+
+        update_id = report_status_update(
+            status,
+            "LIFT",
+            "COMPLETED",
+            "field-planner",
+            "explicit completion of the already begun lift method",
+            actual_start=2,
+            actual_finish=4,
+            actual_periods=[[2, 4]],
+            mode_id="FIXED",
+            named_assignments=[["MECH", "M1"], ["CRANE", "C04"]],
+            remaining_processing_ticks=0,
+            supersedes_update_id=prior["id"],
+        )
+        accept_status_update(status, update_id, "schedule-acceptor")
+
+        plan = schedule_accepted_work_method_time(problem, reference, status).plan
+        self.assertEqual(plan["fixed_methods"]["REMOVE"], "LIFT")
+        self.assertEqual(plan["selected_methods"]["REMOVE"], "LIFT")
+        lift = next(entry for entry in plan["entries"] if entry["activity_id"] == "LIFT")
+        self.assertEqual(lift["execution_state"], "COMPLETED")
+        self.assertEqual(lift["actual_periods"], [[2, 4]])
+        self.assertEqual(lift["forecast_periods"], [])
+        self.assertEqual(lift["remaining_processing_ticks"], 0)
 
     def test_candidate_matches_enumerated_history_permitted_structural_control(self):
         problem = build_problem()
