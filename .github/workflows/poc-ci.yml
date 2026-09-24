@@ -39,6 +39,7 @@ jobs:
           tests.test_criticality_semantics_experiment
           tests.test_working_time_experiment
           tests.test_resource_assignment_experiment
+          tests.test_resource_allocation_repair_experiment
           tests.test_native_planning_workflow
           tests.test_native_planning_ui
           tests.test_native_planning_ui_final_corrections
@@ -76,6 +77,18 @@ jobs:
         run: python -m deterministic_scheduling_core.working_time_experiment
       - name: Run resource-assignment falsification experiment
         run: python -m deterministic_scheduling_core.resource_assignment_experiment
+      - name: Run headless resource-allocation repair experiment
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/resource-allocation-repair
+          git rev-parse HEAD > /tmp/resource-allocation-repair/source-sha.txt
+          python -m deterministic_scheduling_core.resource_allocation_repair_experiment --output /tmp/resource-allocation-repair/results.json | tee /tmp/resource-allocation-repair/console.txt
+      - name: Save resource-allocation repair evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resource-allocation-repair-${{ github.sha }}
+          path: /tmp/resource-allocation-repair/
       - name: Run headless rolling-status falsification experiment
         run: python -m deterministic_scheduling_core.rolling_status_experiment
       - name: Run editable native planning workflow
