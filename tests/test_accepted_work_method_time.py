@@ -143,6 +143,23 @@ class AcceptedWorkMethodTimeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "continuous in-progress"):
             validate_input(problem, reference, status)
 
+    def test_in_progress_anonymous_group_continuation_is_explicitly_outside_first_slice(self):
+        problem = build_problem()
+        problem.project["resource_groups"] = [{
+            "id": "RIG",
+            "name": "Interchangeable rigging",
+            "capacity": 1,
+            "calendar_id": "ALWAYS",
+            "disjoint": True,
+            "interchangeable": True,
+        }]
+        lift = next(a for a in problem.project["activities"] if a["id"] == "LIFT")
+        lift["modes"][0]["group_requirements"] = [{"group_id": "RIG", "demand": 1}]
+        reference = schedule_work_method_time(problem).plan
+        status = build_status_workspace(problem, reference)
+        with self.assertRaisesRegex(ValueError, "anonymous group continuation"):
+            validate_input(problem, reference, status)
+
     def test_save_reopen_and_plan_validation_do_not_recalculate(self):
         problem = build_problem()
         reference = schedule_work_method_time(problem).plan
