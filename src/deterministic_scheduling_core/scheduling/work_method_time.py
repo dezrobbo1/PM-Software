@@ -23,10 +23,11 @@ from deterministic_scheduling_core.project.work_method_time import (
 )
 from deterministic_scheduling_core.resource_allocation_repair_experiment import check_allocation
 from .engine import validate_project
-from .planning_workspace import _can_pool, _case, _group_placements
+from .planning_workspace import _case, _group_placements
 
 PLAN_SCHEMA = "pm-native-work-method-time-plan/0"
 POLICY = "finish-global-start-timing-declared-methods-declared-modes-canonical-placement/0"
+MAX_DETERMINISTIC_TIME_PER_STAGE = 60.0
 
 
 @dataclass(frozen=True)
@@ -76,11 +77,10 @@ def _mode_cases(problem: WorkMethodTimeProject):
         for mode in activity["modes"]:
             selected = {**first, activity["id"]: mode["id"]}
             specs[activity["id"], mode["id"]] = _case(union_workspace, selected).activity_by_id[activity["id"]]
-    # Interchangeability must hold across every possible mode, not only a guessed
-    # selected branch. Group quantities use the existing disjoint group compiler.
-    pool_case = replace(environment, activities=tuple(specs.values()))
-    pooled = _can_pool(pool_case, source.get("pool_riggers", False))
-    return environment, specs, pooled
+    # Named physical requirements remain explicit in this composition path.
+    # Genuine identity-free capacity is represented by resource_groups, whose
+    # anonymous unit choice is held consistently across all productive segments.
+    return environment, specs
 
 
 def policy_key(problem: WorkMethodTimeProject, selected_methods: dict,
@@ -107,9 +107,8 @@ def _validate_physics(problem: WorkMethodTimeProject, plan: dict):
         if mode_id not in {m["id"] for m in active[aid]["modes"]}:
             raise ValueError(f"{aid}: unauthorised activity mode")
     case = _case(workspace, selected_modes)
-    _, _, pooled = _mode_cases(problem)
-    if type(plan["pooled_riggers"]) is not bool or plan["pooled_riggers"] != pooled:
-        raise ValueError("incorrect selective resource boundary")
+    if plan["pooled_riggers"] is not False:
+        raise ValueError("named physical requirements must remain explicit in this composition")
     entries = plan["entries"]
     if not isinstance(entries, list) or len(entries) != len(active) or {
         e["activity_id"] for e in entries
@@ -148,10 +147,9 @@ def _validate_physics(problem: WorkMethodTimeProject, plan: dict):
             raise ValueError("incorrect named requirement coverage")
         for requirement in named:
             rid = assignments[requirement.id]
-            deferred = pooled and requirement.pool_ids == ("RIGGER",)
-            if deferred != (rid is None):
-                raise ValueError("only verified interchangeable riggers may defer identity")
-            if rid is not None and rid != witness[aid, requirement.id]:
+            if rid is None:
+                raise ValueError("named requirements must retain explicit whole-activity assignment")
+            if rid != witness[aid, requirement.id]:
                 raise ValueError("submitted allocation and witness disagree")
         raw.append(ra.ScheduledEntry(aid, entry["start"], entry["finish"],
                                     tuple(tuple(p) for p in entry["periods"]),
@@ -203,7 +201,7 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
     started = perf_counter()
     problem = deepcopy(problem)
     validate_problem(problem)
-    environment, specs, pooled = _mode_cases(problem)
+    environment, specs = _mode_cases(problem)
     model = cp_model.CpModel()
     source = problem.project
     members = membership(problem)
@@ -213,7 +211,6 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
         model.add_exactly_one([methods[package.id, m.id] for m in package.methods])
     starts, ends, presence, mode_vars, choices = {}, {}, {}, {}, {}
     named_intervals = {r.id: [] for r in environment.resources}
-    pooled_intervals = []
     placement_count = 0
     for ai, activity in enumerate(source["activities"]):
         aid = activity["id"]
@@ -227,7 +224,7 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
             mode_var = model.new_bool_var(f"mode_{ai}_{mi}")
             mode_vars[aid, mid] = mode_var
             spec = specs[aid, mid]
-            placements = _group_placements(environment, spec, "C" if pooled else "B")
+            placements = _group_placements(environment, spec, "B")
             placements = tuple(sorted(placements, key=lambda p: (
                 p.start, p.finish, p.periods, tuple("" if r is None else r for r in p.assignments))))
             placement_count += len(placements)
@@ -242,7 +239,9 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
                     for si, (start, finish) in enumerate(placement.periods):
                         interval = model.new_optional_interval_var(start, finish - start, finish, literal,
                                                                    f"use_{ai}_{mi}_{pi}_{ri}_{si}")
-                        (pooled_intervals if rid is None else named_intervals[rid]).append(interval)
+                        if rid is None:
+                            raise SchedulingError("internal error: explicit composition deferred a named assignment")
+                        named_intervals[rid].append(interval)
             # Empty local availability disables only this mode/method.
             model.add(sum(literals) == mode_var)
         model.add(sum(mode_vars[aid, m["id"]] for m in activity["modes"]) == present)
@@ -265,8 +264,6 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
     for intervals in named_intervals.values():
         if intervals:
             model.add_no_overlap(intervals)
-    if pooled_intervals:
-        model.add_cumulative(pooled_intervals, [1] * len(pooled_intervals), 2)
     timing = sum((i + 1) * starts[a["id"]] for i, a in enumerate(source["activities"]))
     stages = [("finish", ends[source["objective_activity_id"]]), ("global_start_timing", timing)]
     stages.extend((f"method:{p.id}", sum(i * methods[p.id, m.id] for i, m in enumerate(p.methods)))
@@ -278,6 +275,7 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
     solver = cp_model.CpSolver()
     solver.parameters.num_search_workers = 1
     solver.parameters.random_seed = 0
+    solver.parameters.max_deterministic_time = MAX_DETERMINISTIC_TIME_PER_STAGE
     built = perf_counter()
     proof = []
     for name, expression in stages:
@@ -317,10 +315,11 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
         raise SchedulingError(f"joint result failed independent allocation: {check.reason}")
     plan = {"schema": PLAN_SCHEMA, "input_hash": input_hash(problem), "policy": POLICY,
             "selected_methods": selected_methods, "selected_modes": selected_modes, "entries": entries,
-            "objective": [proof[0]["value"], proof[1]["value"]], "pooled_riggers": pooled,
+            "objective": [proof[0]["value"], proof[1]["value"]], "pooled_riggers": False,
             "allocation_witness": [list(row) for row in check.witness if not row[1].startswith("@group/")],
             "physical_status": check.status,
             "solver": {"name": "CP-SAT", "version": ortools.__version__, "workers": 1, "seed": 0,
+                       "max_deterministic_time_per_stage": MAX_DETERMINISTIC_TIME_PER_STAGE,
                        "compiler": "native-work-method-time/0", "stages": proof,
                        "repeatability": "canonical stage ordering in the same declared environment; not a cross-version guarantee"}}
     plan["plan_hash"] = _hash_plan(plan)
