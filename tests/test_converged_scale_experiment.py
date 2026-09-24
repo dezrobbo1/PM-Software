@@ -39,7 +39,7 @@ class ConvergedScaleExperimentTests(unittest.TestCase):
         self.assertGreater(baseline["candidate_metrics"]["placement_alternatives"], 0)
         self.assertGreater(baseline["candidate_metrics"]["variables"], 0)
         self.assertGreater(baseline["candidate_metrics"]["constraints"], 0)
-        self.assertGreater(baseline["control_solver_calls"], 0)
+        self.assertGreater(baseline["control_enumerated_branches"], 0)
 
     def test_accepted_history_recovery_matches_control_and_switches_untouched_structure(self):
         t1 = self.result["t1"]
