@@ -49,6 +49,7 @@ jobs:
           tests.test_planner_update_recovery_trial
           tests.test_rolling_status_experiment
           tests.test_accepted_work_method_time
+          tests.test_rolling_structural_status
           -v
       - name: Run Gate 1 scheduling experiment
         run: python -m deterministic_scheduling_core run-gate1-experiment
@@ -94,6 +95,8 @@ jobs:
         run: python -m deterministic_scheduling_core.rolling_status_experiment
       - name: Run accepted-history Work-Method composition experiment
         run: python -m deterministic_scheduling_core.accepted_work_method_time_experiment
+      - name: Run rolling structural-status experiment
+        run: python -m deterministic_scheduling_core.rolling_structural_status_experiment
       - name: Run editable native planning workflow
         run: |
           set -euo pipefail
