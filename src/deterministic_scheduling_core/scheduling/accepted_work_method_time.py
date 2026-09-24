@@ -90,10 +90,16 @@ def validate_input(
     if set(current_packages) != set(reference_packages):
         raise ValueError("current recovery must preserve the reference Work-Method package set")
     for package_id, selected_method in reference_plan["selected_methods"].items():
-        if selected_method not in current_packages[package_id].method_by_id:
+        current_package = current_packages[package_id]
+        reference_package = reference_packages[package_id]
+        if selected_method not in current_package.method_by_id:
             raise ValueError(f"{package_id}: reference-selected method is no longer authorised")
-        if selected_method not in reference_packages[package_id].method_by_id:
+        if selected_method not in reference_package.method_by_id:
             raise ValueError(f"{package_id}: reference plan disagrees with its reference source")
+        if current_package.predecessors != reference_package.predecessors:
+            raise ValueError(f"{package_id}: reference package predecessors changed")
+        if current_package.method_by_id[selected_method] != reference_package.method_by_id[selected_method]:
+            raise ValueError(f"{package_id}: reference-selected method structure changed")
     if status_workspace.get("schema") != STATUS_SCHEMA:
         raise ValueError("accepted-history composition requires a version-two status workspace")
     validate_workspace(status_workspace)
