@@ -129,9 +129,7 @@ class AcceptedWorkMethodTimeTests(unittest.TestCase):
         problem = build_problem()
         reference = schedule_work_method_time(problem).plan
         status = build_status_workspace(problem, reference)
-        status["project"]["activities"].append(
-            deepcopy(next(a for a in problem.project["activities"] if a["id"] == "SEG1"))
-        )
+        status["project"]["name"] = "Same valid selected network, altered source identity"
         with self.assertRaisesRegex(ValueError, "reference plan's selected native structure"):
             validate_input(problem, reference, status)
 
