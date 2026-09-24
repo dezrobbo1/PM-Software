@@ -16,9 +16,7 @@ import json
 from pathlib import Path
 from time import perf_counter
 
-from deterministic_scheduling_core.accepted_work_method_time_experiment import (
-    solve_allowed_controls,
-)
+from itertools import product
 from deterministic_scheduling_core.project.model import ExecutionMethod, WorkPackage
 from deterministic_scheduling_core.project.planning_workspace import (
     accept_status_update,
@@ -32,6 +30,7 @@ from deterministic_scheduling_core.project.work_method_time import (
     WorkMethodTimeProject,
     input_hash,
     materialise,
+    membership,
     to_document,
 )
 from deterministic_scheduling_core.scheduling.accepted_work_method_time import (
@@ -48,7 +47,6 @@ from deterministic_scheduling_core.scheduling.work_method_time import (
     schedule_work_method_time,
     validate_plan,
 )
-from deterministic_scheduling_core.native_work_method_time import solve_fixed_controls
 
 
 DECLARED_ACTIVITIES = 64
@@ -361,6 +359,186 @@ def _active_count(problem: WorkMethodTimeProject, methods: dict[str, str]) -> in
     return len(materialise(problem, methods)["project"]["activities"])
 
 
+def _calendar_slots(problem: WorkMethodTimeProject, calendar_id: str) -> set[int]:
+    calendar = next(item for item in problem.project["calendars"] if item["id"] == calendar_id)
+    horizon = problem.project["horizon_ticks"]
+    slots: set[int] = set()
+    for base in range(0, horizon + 48, 48):
+        for start, finish in calendar["daily_windows"]:
+            slots.update(range(base + start, min(base + finish, horizon)))
+    return {tick for tick in slots if 0 <= tick < horizon}
+
+
+def _eligible_slots(problem: WorkMethodTimeProject, mode: dict) -> set[int]:
+    slots = _calendar_slots(problem, mode["calendar_id"])
+    resources = {resource["id"]: resource for resource in problem.project["resources"]}
+    for requirement in mode.get("requirements", []):
+        eligible = requirement["eligible_resource_ids"]
+        if len(eligible) != 1:
+            raise AssertionError("scale oracle intentionally supports singleton named eligibility")
+        resource = resources[eligible[0]]
+        slots &= _calendar_slots(problem, resource["calendar_id"])
+        for report in problem.reports:
+            if (
+                report["status"] == "ACCEPTED"
+                and report["resource_id"] == resource["id"]
+            ):
+                slots.difference_update(range(report["start"], report["finish"]))
+    groups = {group["id"]: group for group in problem.project.get("resource_groups", [])}
+    for demand in mode.get("group_requirements", []):
+        slots &= _calendar_slots(problem, groups[demand["group_id"]]["calendar_id"])
+    return slots
+
+
+def _periods_from_ticks(ticks: list[int]) -> list[list[int]]:
+    if not ticks:
+        return []
+    periods: list[list[int]] = []
+    start = previous = ticks[0]
+    for tick in ticks[1:]:
+        if tick != previous + 1:
+            periods.append([start, previous + 1])
+            start = tick
+        previous = tick
+    periods.append([start, previous + 1])
+    return periods
+
+
+def _earliest_periods(
+    problem: WorkMethodTimeProject,
+    mode: dict,
+    work: int,
+    earliest: int,
+) -> tuple[int, int, list[list[int]]] | None:
+    if work == 0:
+        return earliest, earliest, []
+    eligible = sorted(tick for tick in _eligible_slots(problem, mode) if tick >= earliest)
+    if len(eligible) < work:
+        return None
+    chosen = eligible[:work]
+    periods = _periods_from_ticks(chosen)
+    return periods[0][0], periods[-1][1], periods
+
+
+def solve_serial_control(
+    problem: WorkMethodTimeProject,
+    *,
+    states: dict[str, dict] | None = None,
+    status_point: int = 0,
+) -> dict:
+    """Independent pure-Python oracle for this deliberately serial scale fixture.
+
+    It enumerates the 16 authorised structures and the single activity-mode
+    branch, then places productive ticks directly from declared calendars and
+    accepted outages. It does not call CP-SAT, the candidate placement compiler,
+    or the accepted-progress proposal solver.
+    """
+    states = {} if states is None else states
+    member_map = membership(problem)
+    fixed_methods: dict[str, str] = {}
+    for activity_id, record in states.items():
+        if record["execution_state"] == "NOT_STARTED" or activity_id not in member_map:
+            continue
+        package_id, method_id = member_map[activity_id]
+        fixed_methods[package_id] = method_id
+
+    weights = {activity["id"]: index + 1 for index, activity in enumerate(problem.project["activities"])}
+    by_id = {activity["id"]: activity for activity in problem.project["activities"]}
+    packages = problem.work_packages
+    branches = []
+    best = None
+    best_key = None
+
+    for chosen_methods in product(*(package.methods for package in packages)):
+        methods = {
+            package.id: method.id
+            for package, method in zip(packages, chosen_methods)
+        }
+        if any(methods[package_id] != method_id for package_id, method_id in fixed_methods.items()):
+            continue
+
+        active_ids = [
+            activity_id
+            for method in chosen_methods
+            for activity_id in method.activity_ids
+        ]
+        mode_options = []
+        for activity_id in active_ids:
+            record = states.get(activity_id)
+            if record and record["execution_state"] in {"IN_PROGRESS", "COMPLETED"}:
+                mode_options.append([record["mode_id"]])
+            else:
+                mode_options.append([mode["id"] for mode in by_id[activity_id]["modes"]])
+
+        for mode_ids in product(*mode_options):
+            modes = dict(zip(active_ids, mode_ids))
+            prior_finish = 0
+            timing = 0
+            entries = []
+            feasible = True
+
+            for activity_id in active_ids:
+                activity = by_id[activity_id]
+                mode_id = modes[activity_id]
+                mode = next(mode for mode in activity["modes"] if mode["id"] == mode_id)
+                record = states.get(activity_id)
+
+                if record and record["execution_state"] == "COMPLETED":
+                    start = finish = record["actual_finish"]
+                    periods = []
+                else:
+                    work = (
+                        record["remaining_processing_ticks"]
+                        if record and record["execution_state"] == "IN_PROGRESS"
+                        else mode["processing_ticks"]
+                    )
+                    earliest = max(
+                        prior_finish,
+                        status_point if states else 0,
+                        activity.get("not_before", 0),
+                    )
+                    placed = _earliest_periods(problem, mode, work, earliest)
+                    if placed is None:
+                        feasible = False
+                        break
+                    start, finish, periods = placed
+
+                prior_finish = max(prior_finish, finish)
+                timing += weights[activity_id] * start
+                entries.append({
+                    "activity_id": activity_id,
+                    "mode_id": mode_id,
+                    "start": start,
+                    "finish": finish,
+                    "periods": periods,
+                })
+
+            if not feasible:
+                branches.append({"methods": methods, "modes": modes, "status": "INFEASIBLE"})
+                continue
+
+            objective = [prior_finish, timing]
+            key = policy_key(problem, methods, modes, objective)
+            branch = {
+                "methods": methods,
+                "modes": modes,
+                "status": "OPTIMAL_BY_SERIAL_ORACLE",
+                "objective": objective,
+                "entries": entries,
+            }
+            branches.append(branch)
+            if best_key is None or key < best_key:
+                best_key = key
+                best = branch
+
+    return {
+        "best": best,
+        "branches": branches,
+        "enumerated_branches": len(branches),
+        "oracle": "pure-python-serial-productive-time/0",
+    }
+
+
 def _rolling_target(cycle, switched_package: str) -> tuple[int, str]:
     package = next(p for p in cycle.current_problem.work_packages if p.id == switched_package)
     selected = cycle.reference_plan["selected_methods"][switched_package]
@@ -466,7 +644,7 @@ def run_experiment() -> dict:
     source_hash = input_hash(reference_problem)
 
     control_started = perf_counter()
-    baseline_control = solve_fixed_controls(reference_problem)
+    baseline_control = solve_serial_control(reference_problem)
     control_ms = (perf_counter() - control_started) * 1000
 
     baseline_result = schedule_work_method_time(reference_problem)
@@ -512,17 +690,17 @@ def run_experiment() -> dict:
     recovery_plan = recovery_result.plan
 
     history_control_started = perf_counter()
-    history_control = solve_allowed_controls(
+    history_control = solve_serial_control(
         current_problem,
-        reference_problem,
-        baseline_plan,
-        status_workspace,
+        states=current_status_records(status_workspace, require_complete=True),
+        status_point=status_workspace["execution"]["status_point"],
     )
     history_control_ms = (perf_counter() - history_control_started) * 1000
     history_best = history_control["best"]
     recovery_matches_control = (
-        history_best["methods"] == recovery_plan["selected_methods"]
-        and history_best["project_finish"] == recovery_plan["objective"][0]
+        history_best is not None
+        and history_best["methods"] == recovery_plan["selected_methods"]
+        and history_best["objective"][0] == recovery_plan["objective"][0]
     )
 
     switched = [
@@ -558,17 +736,17 @@ def run_experiment() -> dict:
     t2_illegal = _illegal_no_method_locks(t2_cycle)
 
     t2_control_started = perf_counter()
-    t2_control = solve_allowed_controls(
+    t2_control = solve_serial_control(
         t2_cycle.current_problem,
-        t2_cycle.reference_problem,
-        t2_cycle.reference_plan,
-        t2_cycle.status_workspace,
+        states=current_status_records(t2_cycle.status_workspace, require_complete=True),
+        status_point=t2_cycle.status_workspace["execution"]["status_point"],
     )
     t2_control_ms = (perf_counter() - t2_control_started) * 1000
     t2_best = t2_control["best"]
     t2_matches_control = (
-        t2_best["methods"] == t2_result.plan["selected_methods"]
-        and t2_best["project_finish"] == t2_result.plan["objective"][0]
+        t2_best is not None
+        and t2_best["methods"] == t2_result.plan["selected_methods"]
+        and t2_best["objective"][0] == t2_result.plan["objective"][0]
     )
 
     t2_states = current_status_records(t2_cycle.status_workspace, require_complete=True)
@@ -592,7 +770,7 @@ def run_experiment() -> dict:
             "selected_methods": deepcopy(baseline_plan["selected_methods"]),
             "objective": deepcopy(baseline_plan["objective"]),
             "candidate_metrics": deepcopy(baseline_result.metrics),
-            "control_solver_calls": baseline_control["solver_calls"],
+            "control_enumerated_branches": baseline_control["enumerated_branches"],
             "control_ms": control_ms,
             "matches_control": baseline_matches_control,
             "repeat": baseline_plan == baseline_repeat.plan,
