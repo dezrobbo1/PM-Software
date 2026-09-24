@@ -363,9 +363,23 @@ The following bounded hypotheses have now survived their first executable falsif
 
 CP-SAT remains the primary experimental backend for now, but the project/domain model must remain solver-independent. The bounded productive-time experiment did not justify a Classical CP challenger; reopen that comparison only if a focused richer-calendar case makes the CP-SAT compiler materially unwieldy or fragile.
 
-The next work should continue to attack one unresolved core question at a time. After the rolling structural-status convergence slice, strong candidates are:
+The converged headless path has now survived one materially larger bounded scale falsification:
 
-- **larger-scale evidence:** construct one materially larger falsification case for the converged headless path; do not launch a generic benchmarking/hardening programme;
+- 64 declared / 48 baseline-active activities;
+- 8 Work Packages;
+- 4 flexible packages / 16 authorised structures;
+- 64 fixed method/mode control branches;
+- named C04 plus interchangeable MECH/RIGGING groups;
+- accepted history, structural recovery and rolling status;
+- baseline candidate matched the fixed controls;
+- baseline model: 5,626 placements, 5,832 variables, 3,998 constraints, 138 sequential lexicographic stages and about 14.15 s end-to-end in CI;
+- 65+ declared activities remain outside the admitted profile.
+
+This is evidence that the former 32-activity limit was an experiment boundary on this case, not production-scale certification.
+
+The next work should continue to attack one unresolved core question at a time. Strong candidates are:
+
+- **professional-shape scale challenge:** adapt the earlier 160-possible / 120-active fixture to the converged native path and classify any failure as admission, placement generation, canonicalisation, CP-SAT proof budget, independent allocation or semantics before changing architecture;
 - **calendar/state semantics:** only for a focused irregular-calendar or state-transition capability not answered by the bounded productive-time experiments;
 - **objective ordering:** gather further evidence before declaring structural-vs-temporal stability universally settled.
 
