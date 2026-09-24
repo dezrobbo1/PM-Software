@@ -2,7 +2,7 @@
 
 ## Question
 
-Can an accepted structural recovery become the active execution structure for the
+Can an validated structural recovery become the active execution structure for the
 next status cycle, while preserving accepted history exactly and preventing a
 newly started recovery method from being optimised away later?
 
@@ -12,8 +12,9 @@ This milestone composes:
 - the existing atomic `advance_status_point(...)` transaction;
 - the same Work-Method/productive-time scheduler and physical validation.
 
-It does not introduce a new enterprise status schema or a generic baseline
-framework.
+It does not introduce a new enterprise status schema, a generic baseline
+framework, or a new recovery-approval state. Promotion consumes a validated
+calculated recovery; separate approval semantics remain outside this slice.
 
 ## Structural handover
 
@@ -25,7 +26,7 @@ have changed.
 `promote_structural_recovery_to_status_cycle(...)` performs one bounded
 same-status handover:
 
-1. validate the accepted structural recovery;
+1. validate the validated structural recovery;
 2. reuse its already-proved nested future plan as the next reference plan;
 3. reuse the exact compiled future problem as that plan's reference source;
 4. materialise the recovery's selected methods as the new active execution
@@ -48,7 +49,7 @@ workspace and promotion lineage. Save/reopen validation does not recalculate.
 
 The next cycle does not manufacture another initial Work-Method solve.
 
-The accepted structural recovery already contains a complete validated
+The validated structural recovery already contains a complete validated
 `future_plan`. The compiler input against which that nested plan was proved is
 reconstructed deterministically without solving and becomes the next
 `reference_problem`.
@@ -84,7 +85,7 @@ Accepted T1 status at tick 4:
 - LIFT accepted remaining estimate = 8;
 - REST_CRANE and DONE not started.
 
-The accepted recovery selects:
+The validated recovery selects:
 
 - `REMOVE=LIFT`;
 - `RESTORE=MANUAL`;
