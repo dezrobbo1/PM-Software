@@ -43,7 +43,6 @@ from deterministic_scheduling_core.scheduling.rolling_structural_status import (
     promote_structural_recovery_to_status_cycle,
 )
 from deterministic_scheduling_core.scheduling.work_method_time import (
-    policy_key,
     schedule_work_method_time,
     validate_plan,
 )
@@ -420,6 +419,25 @@ def _earliest_periods(
     return periods[0][0], periods[-1][1], periods
 
 
+def _oracle_policy_key(
+    problem: WorkMethodTimeProject,
+    methods: dict[str, str],
+    modes: dict[str, str],
+    objective: list[int],
+) -> tuple:
+    """Independent transcription of the declared canonical policy for the oracle."""
+    method_order = tuple(
+        next(index for index, method in enumerate(package.methods) if method.id == methods[package.id])
+        for package in problem.work_packages
+    )
+    mode_order = tuple(
+        next(index + 1 for index, mode in enumerate(activity["modes"]) if mode["id"] == modes[activity["id"]])
+        if activity["id"] in modes else 0
+        for activity in problem.project["activities"]
+    )
+    return tuple(objective), method_order, mode_order
+
+
 def solve_serial_control(
     problem: WorkMethodTimeProject,
     *,
@@ -518,7 +536,7 @@ def solve_serial_control(
                 continue
 
             objective = [prior_finish, timing]
-            key = policy_key(problem, methods, modes, objective)
+            key = _oracle_policy_key(problem, methods, modes, objective)
             branch = {
                 "methods": methods,
                 "modes": modes,
@@ -654,18 +672,9 @@ def run_experiment() -> dict:
     best = baseline_control["best"]
     baseline_matches_control = (
         best is not None
-        and policy_key(
-            reference_problem,
-            baseline_plan["selected_methods"],
-            baseline_plan["selected_modes"],
-            baseline_plan["objective"],
-        )
-        == policy_key(
-            reference_problem,
-            best["methods"],
-            best["modes"],
-            best["objective"],
-        )
+        and baseline_plan["selected_methods"] == best["methods"]
+        and baseline_plan["selected_modes"] == best["modes"]
+        and baseline_plan["objective"] == best["objective"]
     )
 
     current_problem = _with_accepted_outage(reference_problem, baseline_plan)
