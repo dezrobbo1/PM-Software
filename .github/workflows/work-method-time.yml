@@ -1,0 +1,47 @@
+name: Work-method productive-time
+
+on:
+  push:
+    branches: [main, feat/headless-work-method-productive-time]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: work-method-time-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  composition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned native planner
+        run: python -m pip install -e .
+      - name: Record exact source and runtime
+        run: |
+          mkdir -p /tmp/work-method-time
+          git rev-parse HEAD > /tmp/work-method-time/source-sha.txt
+          python -c 'import json,platform,ortools; print(json.dumps({"python":platform.python_version(),"platform":platform.platform(),"ortools":ortools.__version__}))' > /tmp/work-method-time/runtime.json
+      - name: Run focused composition and independent-oracle tests
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_work_method_time_integration -v 2>&1 | tee /tmp/work-method-time/tests.txt
+      - name: Run fixed-method versus joint composition comparison
+        run: |
+          set -euo pipefail
+          python -m deterministic_scheduling_core.native_work_method_time --output /tmp/work-method-time/results.json | tee /tmp/work-method-time/console.txt
+      - name: Compile composition sources
+        run: python -m compileall -q src tests/test_work_method_time_integration.py
+      - name: Save source-bound composition evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-method-time-${{ github.sha }}
+          path: /tmp/work-method-time/
+          if-no-files-found: error
