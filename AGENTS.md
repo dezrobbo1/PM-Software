@@ -360,14 +360,18 @@ The following bounded hypotheses have now survived their first executable falsif
 - selective integrated assignment is the current convergence baseline where identity matters; genuinely interchangeable capacity remains pooled, and the bounded pooled-feedback replacement remained inconclusive on the retained 14-activity case.
 - bounded headless status advancement can carry an accepted fixed-network recovery through repeated T1 → T2 → T3 cycles without rewriting accepted history, while explicit revised remaining work changes only the future recovery.
 - accepted history composes with bounded Work–Method/productive-time recovery and structural handover through repeated T1 → T2 → T3 status: the newly selected MANUAL recovery method becomes hard when begun and remains hard when completed, while a shorter illegal CRANE switch is rejected.
+- the converged headless path has now survived one materially larger 64-declared / 48-active falsification case with 8 Work Packages and 16 authorised structures; baseline, accepted-history recovery and rolling status all matched a fixture-specific independent serial oracle.
+- that scale evidence exposed a material cost signal: the 64/48 baseline used 9,740 placement alternatives, 9,945 variables, 11,590 constraints and 138 sequential lexicographic solver calls, with roughly 52.8 s end-to-end on the retained runner versus about 0.2 s model construction.
 
 CP-SAT remains the primary experimental backend for now, but the project/domain model must remain solver-independent. The bounded productive-time experiment did not justify a Classical CP challenger; reopen that comparison only if a focused richer-calendar case makes the CP-SAT compiler materially unwieldy or fragile.
 
-The next work should continue to attack one unresolved core question at a time. After the rolling structural-status convergence slice, strong candidates are:
+The next work should continue to attack one unresolved core question at a time. After the 64/48 converged-scale slice, strong candidates are:
 
-- **larger-scale evidence:** construct one materially larger falsification case for the converged headless path; do not launch a generic benchmarking/hardening programme;
+- **canonicalisation scaling:** isolate the cost of repeated lexicographic optimality stages and test a bounded alternative that preserves exactly the same selected-plan semantics and independent validation;
 - **calendar/state semantics:** only for a focused irregular-calendar or state-transition capability not answered by the bounded productive-time experiments;
 - **objective ordering:** gather further evidence before declaring structural-vs-temporal stability universally settled.
+
+Do not jump directly to the old 160-possible / 120-active fixture using the same canonicalisation strategy merely because 64/48 remained correct; the observed 138-stage / ~53 s baseline is now a concrete scaling signal that should be isolated first.
 
 Do not reopen pooled-feedback decomposition merely because its bounded comparison was inconclusive; revisit it only if a concrete scaling or model-size failure creates a specific reason.
 
