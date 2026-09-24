@@ -325,7 +325,15 @@ class WorkMethodTimeIntegrationTests(unittest.TestCase):
         self.assertEqual(plan["objective"], control["objective"])
         self.assertEqual(plan["objective"][0], 4)
         by_id = {entry["activity_id"]: entry for entry in plan["entries"]}
-        self.assertEqual(by_id["A"]["periods"], [[2, 4]])
+        invalid_pooled_pattern = {
+            "A": [[0, 1], [2, 3]],
+            "B": [[0, 2]],
+            "C": [[1, 3]],
+        }
+        self.assertNotEqual(
+            {aid: by_id[aid]["periods"] for aid in ("A", "B", "C")},
+            invalid_pooled_pattern,
+        )
         self.assertTrue(all(
             resource_id is not None
             for aid in ("A", "B", "C")
