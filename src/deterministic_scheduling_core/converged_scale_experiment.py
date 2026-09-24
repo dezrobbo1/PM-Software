@@ -22,6 +22,9 @@ from deterministic_scheduling_core.project.planning_workspace import (
     state_hash,
     validate_accepted_history,
 )
+from deterministic_scheduling_core.project.rolling_structural_status import (
+    to_document as cycle_to_document,
+)
 from deterministic_scheduling_core.project.work_method_time import (
     WorkMethodTimeProject,
     input_hash,
@@ -479,6 +482,7 @@ def run_experiment() -> dict:
             "matches_control": baseline_match,
             "repeat_plan_matches": baseline_candidate.plan == baseline_repeat.plan,
             "solver_stages": len(baseline_candidate.plan["solver"]["stages"]),
+            "plan": deepcopy(baseline_candidate.plan),
         },
         "t1_recovery": {
             "selected_methods": deepcopy(recovery.plan["selected_methods"]),
@@ -487,6 +491,7 @@ def run_experiment() -> dict:
             "metrics": deepcopy(recovery.metrics),
             "repeat_plan_matches": recovery.plan == recovery_repeat.plan,
             "status_unchanged": state_hash(t1_status) == t1_status_hash,
+            "plan": deepcopy(recovery.plan),
         },
         "t2": {
             "selected_methods": deepcopy(t2_recovery.plan["selected_methods"]),
@@ -496,6 +501,8 @@ def run_experiment() -> dict:
             "repeat_plan_matches": t2_recovery.plan == t2_repeat.plan,
             "illegal_selected_methods": deepcopy(t2_illegal["selected_methods"]),
             "illegal_objective": deepcopy(t2_illegal["objective"]),
+            "plan": deepcopy(t2_recovery.plan),
+            "cycle_document": cycle_to_document(t2_cycle),
             "wp07_state": {
                 "execution_state": t2_states["P07B01"]["execution_state"],
                 "actual_periods": deepcopy(t2_states["P07B01"]["actual_periods"]),
