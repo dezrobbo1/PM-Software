@@ -17,20 +17,33 @@ workflow or objective-policy framework.
 
 ## Input boundary
 
-The experiment keeps three inputs separate:
+The experiment keeps four inputs separate:
 
-1. a `WorkMethodTimeProject` containing the full union of authorised methods;
-2. a previously calculated Work-Method plan identifying the reference selected
-   structure;
-3. an accepted-progress v2 workspace containing status only for that reference
-   selected execution structure.
+1. the **current** `WorkMethodTimeProject`, containing the current union of
+   authorised methods plus current report/forecast inputs;
+2. the **reference-source** `WorkMethodTimeProject` from which the prior
+   Work-Method plan was actually calculated;
+3. that previously calculated Work-Method plan, identifying the reference
+   selected structure;
+4. an accepted-progress v2 workspace containing status only for the current
+   projection of that reference selected execution structure.
+
+The reference plan is validated only against its original reference source.
+Current reports, accepted outages, calendars and other current planning inputs
+therefore do not require rebasing or falsifying the historical reference plan.
+The current and reference Work-Method definitions must retain the same declared
+work-package/method structure for this bounded slice.
 
 Inactive alternative activities do **not** receive fabricated `NOT_STARTED`
 status records. Status belongs to the selected execution structure, while the
 authorised union remains a planning definition.
 
-The status workspace must still be the exact native projection of the reference
-selected structure and share the same current report state.
+The status workspace must still be the exact native projection of the
+**current** problem under the reference-selected methods and must share the same
+current report state. When that projection originated from schema v0, comparison
+uses the same v0 → v2 normalization as `enable_status_tracking(...)`:
+`resource_groups=[]` and empty per-mode `group_requirements` are added before
+structural equality is checked.
 
 ## History-to-future compilation
 
@@ -121,7 +134,8 @@ implementation.
 
 The composed plan stores:
 
-- original Work-Method input hash;
+- current Work-Method input hash;
+- original reference-source input hash;
 - accepted v2 state hash;
 - reference plan hash;
 - fixed method map;
