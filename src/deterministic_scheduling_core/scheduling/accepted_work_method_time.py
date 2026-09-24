@@ -64,26 +64,41 @@ def _fixed_methods(problem: WorkMethodTimeProject, reference_plan: dict, states:
     return fixed
 
 
+def _status_normalised_project(problem: WorkMethodTimeProject, selected_methods: dict[str, str]) -> dict:
+    """Mirror the existing v0 -> v2 status normalisation for structural comparison."""
+    projected = materialise(problem, selected_methods)["project"]
+    if "resource_groups" not in projected:
+        projected["resource_groups"] = []
+        for activity in projected["activities"]:
+            for mode in activity["modes"]:
+                mode.setdefault("group_requirements", [])
+    return projected
+
+
 def validate_input(
     problem: WorkMethodTimeProject,
+    reference_problem: WorkMethodTimeProject,
     reference_plan: dict,
     status_workspace: dict,
 ) -> tuple[dict, dict[str, str]]:
-    """Validate the bounded seam without scheduling or rewriting either input."""
+    """Validate current recovery inputs separately from the reference-plan source."""
     validate_problem(problem)
-    validate_future_plan(problem, reference_plan)
+    validate_problem(reference_problem)
+    validate_future_plan(reference_problem, reference_plan)
+    if problem.work_packages != reference_problem.work_packages:
+        raise ValueError("current recovery must preserve the reference Work-Method definitions")
     if status_workspace.get("schema") != STATUS_SCHEMA:
         raise ValueError("accepted-history composition requires a version-two status workspace")
     validate_workspace(status_workspace)
 
-    expected = materialise(problem, reference_plan["selected_methods"])
-    if status_workspace["project"] != expected["project"]:
-        raise ValueError("status workspace must be the reference plan's selected native structure")
-    if status_workspace["reports"] != expected["reports"]:
-        raise ValueError("status workspace and Work-Method input must share the same report state")
+    expected_project = _status_normalised_project(problem, reference_plan["selected_methods"])
+    if status_workspace["project"] != expected_project:
+        raise ValueError("status workspace must be the current projection of the reference selected structure")
+    if status_workspace["reports"] != list(problem.reports):
+        raise ValueError("status workspace and current Work-Method input must share the same report state")
 
     states = validate_accepted_history(status_workspace, require_complete=True)
-    active_ids = {activity["id"] for activity in expected["project"]["activities"]}
+    active_ids = {activity["id"] for activity in expected_project["activities"]}
     if set(states) != active_ids:
         raise ValueError("status workspace must cover exactly the reference selected structure")
 
@@ -101,12 +116,13 @@ def validate_input(
         if mode.get("group_requirements"):
             raise ValueError("in-progress anonymous group continuation is not in this bounded slice")
 
-    fixed = _fixed_methods(problem, reference_plan, states)
+    fixed = _fixed_methods(reference_problem, reference_plan, states)
     return states, fixed
 
 
 def _compile_future_problem(
     problem: WorkMethodTimeProject,
+    reference_problem: WorkMethodTimeProject,
     reference_plan: dict,
     status_workspace: dict,
     *,
@@ -119,7 +135,7 @@ def _compile_future_problem(
     but their future processing comes from the independently accepted remaining
     estimate. Untouched packages retain every authorised structural alternative.
     """
-    states, derived_fixed = validate_input(problem, reference_plan, status_workspace)
+    states, derived_fixed = validate_input(problem, reference_problem, reference_plan, status_workspace)
     fixed = derived_fixed if fixed_methods_override is None else dict(fixed_methods_override)
 
     packages: list[WorkPackage] = []
@@ -171,6 +187,16 @@ def _compile_future_problem(
             if len(matches) != 1:
                 raise ValueError(f"{activity_id}: begun mode is no longer uniquely authorised")
             mode = deepcopy(matches[0])
+            accepted_mode = record["execution_context"]["mode"]
+            for field, default in (
+                ("requirements", []),
+                ("group_requirements", []),
+                ("continuity", "SUSPENDABLE_AT_AVAILABILITY_GAPS"),
+            ):
+                if mode.get(field, default) != accepted_mode.get(field, default):
+                    raise ValueError(
+                        f"{activity_id}: begun mode {field} changed; correct accepted history instead of reinterpreting it"
+                    )
             mode["processing_ticks"] = record["remaining_processing_ticks"]
             assignments = dict(record["named_assignments"])
             expected_slots = {requirement["id"] for requirement in mode.get("requirements", [])}
@@ -273,14 +299,15 @@ def _compose_entry(
 
 def validate_plan(
     problem: WorkMethodTimeProject,
+    reference_problem: WorkMethodTimeProject,
     reference_plan: dict,
     status_workspace: dict,
     plan: dict,
 ) -> str:
     """Validate stored history + future output without re-solving."""
-    states, derived_fixed = validate_input(problem, reference_plan, status_workspace)
+    states, derived_fixed = validate_input(problem, reference_problem, reference_plan, status_workspace)
     if not isinstance(plan, dict) or set(plan) != {
-        "schema", "source_input_hash", "status_state_hash", "reference_plan_hash",
+        "schema", "source_input_hash", "reference_input_hash", "status_state_hash", "reference_plan_hash",
         "status_point", "policy", "fixed_methods", "selected_methods",
         "selected_modes", "entries", "objective", "physical_status",
         "history_status", "future_plan", "solver", "plan_hash",
@@ -289,7 +316,9 @@ def validate_plan(
     if plan["plan_hash"] != _plan_hash(plan):
         raise ValueError("accepted Work-Method plan hash mismatch")
     if plan["source_input_hash"] != input_hash(problem):
-        raise ValueError("accepted Work-Method plan belongs to different structural inputs")
+        raise ValueError("accepted Work-Method plan belongs to different current inputs")
+    if plan["reference_input_hash"] != input_hash(reference_problem):
+        raise ValueError("accepted Work-Method plan belongs to different reference inputs")
     if plan["status_state_hash"] != state_hash(status_workspace):
         raise ValueError("accepted Work-Method plan belongs to different accepted history")
     if plan["reference_plan_hash"] != reference_plan["plan_hash"]:
@@ -300,7 +329,7 @@ def validate_plan(
         raise ValueError("accepted history method locks were altered")
 
     compiled, fixed, _ = _compile_future_problem(
-        problem, reference_plan, status_workspace, fixed_methods_override=derived_fixed
+        problem, reference_problem, reference_plan, status_workspace, fixed_methods_override=derived_fixed
     )
     validate_future_plan(compiled, plan["future_plan"])
     future = plan["future_plan"]
@@ -359,18 +388,22 @@ def validate_plan(
 
 def schedule_accepted_work_method_time(
     problem: WorkMethodTimeProject,
+    reference_problem: WorkMethodTimeProject,
     reference_plan: dict,
     status_workspace: dict,
 ) -> AcceptedWorkMethodTimeResult:
     """Calculate a structural recovery without mutating accepted history."""
     source_hash = input_hash(problem)
     accepted_hash = state_hash(status_workspace)
-    compiled, fixed, states = _compile_future_problem(problem, reference_plan, status_workspace)
+    compiled, fixed, states = _compile_future_problem(
+        problem, reference_problem, reference_plan, status_workspace
+    )
     future: WorkMethodTimeResult = schedule_work_method_time(compiled)
 
     plan = {
         "schema": PLAN_SCHEMA,
         "source_input_hash": source_hash,
+        "reference_input_hash": input_hash(reference_problem),
         "status_state_hash": accepted_hash,
         "reference_plan_hash": reference_plan["plan_hash"],
         "status_point": status_workspace["execution"]["status_point"],
@@ -389,7 +422,7 @@ def schedule_accepted_work_method_time(
         "solver": deepcopy(future.plan["solver"]),
     }
     plan["plan_hash"] = _plan_hash(plan)
-    validate_plan(problem, reference_plan, status_workspace, plan)
+    validate_plan(problem, reference_problem, reference_plan, status_workspace, plan)
 
     if input_hash(problem) != source_hash or state_hash(status_workspace) != accepted_hash:
         raise AssertionError("accepted-history composition mutated its inputs")
