@@ -71,7 +71,7 @@ def promote_structural_recovery_to_status_cycle(
     accepted_by: str,
     prior_lineage: tuple[dict, ...] = (),
 ) -> RollingStructuralStatusCycle:
-    """Make an accepted structural recovery the active structure at the same status point.
+    """Make a validated structural recovery the active structure at the same status point.
 
     Executed accepted history is copied byte-for-byte. Retained NOT_STARTED
     assertions are copied when the activity remains selected. Unexecuted
@@ -141,7 +141,7 @@ def promote_structural_recovery_to_status_cycle(
             activity_id,
             "NOT_STARTED",
             asserted_by,
-            f"selected by accepted structural recovery {recovery_plan['plan_hash']}",
+            f"selected by validated structural recovery {recovery_plan['plan_hash']}",
             occurred_at=status_point,
         )
         accept_status_update(next_workspace, update_id, accepted_by)
