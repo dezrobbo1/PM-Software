@@ -172,6 +172,7 @@ It does not yet add:
 - browser workflow;
 - production-scale evidence.
 
-If this experiment survives review, the next focused question is whether the same
-method-lock/history semantics remain correct across repeated rolling status
-advancement.
+That next question is now answered by the bounded
+[rolling structural-status experiment](rolling-structural-status.md), which
+promotes an accepted recovery into the next active structure and carries the
+same method locks through T1 → T2 → T3.

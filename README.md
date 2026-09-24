@@ -180,9 +180,20 @@ removed only the begun-method lock reached tick 11 by switching removal to
 than tradeable. See
 [accepted history + Work-Method composition](docs/accepted-work-method-time-composition.md).
 
-This does **not** yet compose structural choice with repeated rolling status,
-approved-plan structural/temporal stability, or continuous in-progress structural
-continuation.
+That one-status result now has a bounded structural handover and rolling-status
+composition. The accepted T1 recovery is promoted into the next active execution
+structure without another solver run: executed records are retained exactly,
+the unexecuted deselected alternative disappears, and newly selected activities
+receive explicit NOT_STARTED status at the existing boundary. At T2 the newly
+selected MANUAL restore method begins and becomes hard history; at T3 it is
+completed and remains hard. Authoritative T2/T3 recovery stays
+`REMOVE=LIFT, RESTORE=MANUAL` with finish tick 12, while a deliberately illegal
+no-method-lock counterfactual switches back to `RESTORE=CRANE` and finishes at
+tick 10. See [rolling structural status](docs/rolling-structural-status.md).
+
+This still does **not** add approved-plan structural/temporal stability,
+continuous in-progress structural continuation, anonymous-group cross-boundary
+identity or production-scale evidence.
 
 ## Execution-state experiment — Trusted Live Project State
 
@@ -498,7 +509,7 @@ The cumulative architectural hypothesis is now:
 
 Do not promote these hypotheses into large schemas or frameworks merely because bounded experiments worked.
 
-Accepted history is now composed with the Work–Method/productive-time path at one bounded status point. High-value unresolved questions now include carrying the same method-lock/history semantics through repeated rolling status advancement, later genuinely larger-scale evidence after that converged headless path is coherent, further evidence on the exact lower-order objective hierarchy, and richer irregular/calendar-state cases only when a focused capability requires them. The pooled-feedback allocator is not the active next question after its bounded inconclusive comparison.
+Accepted history now composes with Work–Method/productive-time recovery through repeated structural status advancement: a selected recovery can become the next active structure, newly started methods become hard history, and completed methods remain hard on the following cycle. High-value unresolved questions now include a genuinely larger-scale falsification case for the converged headless path, further evidence on the exact lower-order objective hierarchy, and richer irregular/calendar-state cases only when a focused capability requires them. The pooled-feedback allocator is not the active next question after its bounded inconclusive comparison.
 
 Do not substitute broad compatibility work, production hardening, a P6/MSP clone, full event sourcing, a generic objective-policy framework, a generic decomposition framework or a large UI framework for the next focused experiment.
 
