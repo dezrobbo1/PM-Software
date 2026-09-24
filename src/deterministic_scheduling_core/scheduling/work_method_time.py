@@ -47,8 +47,8 @@ def validate_problem(problem: WorkMethodTimeProject) -> None:
         raise ValueError("expected WorkMethodTimeProject, not a statused workspace")
     from_document(to_document(problem))
     source = problem.project
-    if not isinstance(source.get("activities"), list) or not 1 <= len(source["activities"]) <= 32:
-        raise ValueError("bounded composition requires 1..32 declared activities")
+    if not isinstance(source.get("activities"), list) or not 1 <= len(source["activities"]) <= 64:
+        raise ValueError("bounded composition requires 1..64 declared activities")
     if type(source.get("horizon_ticks")) is not int or not 1 <= source["horizon_ticks"] <= 480:
         raise ValueError("bounded composition requires a 1..480 tick horizon")
     if any(not isinstance(p, WorkPackage) for p in problem.work_packages):
