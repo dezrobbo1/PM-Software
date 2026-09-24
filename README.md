@@ -153,10 +153,19 @@ Run the owning-model convergence control with:
 python -m deterministic_scheduling_core.native_work_method_integration
 ```
 
-This is deliberately only structural convergence. Productive calendars,
-planner-level resource groups, accepted execution history and rolling status
-remain in the richer planner-workspace path and are not silently claimed as
-composed with structural Work–Method choice yet.
+That structural convergence now has one bounded future-only composition with
+productive calendars, activity modes, selective named-resource assignment and
+disjoint interchangeable group quantities. The new
+`schedule_work_method_time(...)` path holds authorised structure once and
+matched separately solved fixed-method/fixed-mode controls in normal,
+reported-only-outage and accepted-outage scenarios. The accepted outage changed
+the authorised removal structure from `LIFT` to `SEGMENTED` while preserving
+productive-time and physical-allocation semantics. See
+[Work–Method + productive-time integration](docs/work-method-time-integration.md).
+
+This does **not** yet compose structural choice with accepted execution history,
+approved-plan stability or rolling status. Those remain a separate subsequent
+integration boundary.
 
 ## Execution-state experiment — Trusted Live Project State
 
@@ -421,9 +430,29 @@ B named `R1` and `R2`; C left both rigging slots pooled and reached exactly the 
 
 A small diagnostic added one shared M1/M2 physical head-count constraint to A. It removed the false concurrency and reached the same executable `(75, 4349)` result with 2,414 constraints and no scheduling-time identity decisions. This fixes the fixture's overlapping-pool relaxation; it does not express general eligibility, qualifications or assignment continuity.
 
-**Result: mixed.** C matches B's executable policy result while avoiding unnecessary rigging identities, but the shared-capacity diagnostic shows that selective assignment inside the scheduling master is not yet proven necessary. A pooled master plus exact assignment-feasibility checking remains a credible simpler architecture for a later experiment. All approaches still require the same detailed roster, capability, calendar, exception and eligibility facts because the independent checker cannot validate a schedule without them. Fewer Boolean variables therefore do not establish lower planner workload.
+**Initial result: mixed.** C matched B's executable policy result while avoiding unnecessary rigging identities, so pooled scheduling plus exact assignment feedback remained a live challenger.
 
-This bounded fixture does not establish production scale, a permanent workforce schema, crew handovers, arbitrary preemption, general multi-skill eligibility propagation or a decomposition framework. The code remains isolated in `resource_assignment_experiment.py`.
+The subsequent bounded repair experiment tested that challenger directly. It
+matched explicit assignment on the four-activity no-handover case and the
+heterogeneous-calendar case, but the existing 14-activity overlap case exhausted
+the declared 64-iteration / 128-solver-call budget without producing an
+executable candidate, while explicit/selective assignment did. The result was
+truthfully retained as `INCONCLUSIVE_WITHIN_DECLARED_LIMITS`; the candidate was
+not tuned further merely to obtain a positive result. See
+[resource-allocation repair](docs/resource-allocation-repair.md).
+
+**Working decision:** retain selective integrated assignment where identity
+materially affects executability, keep genuinely interchangeable capacity pooled,
+and retain independent physical validation. The pooled-feedback experiment is
+evidence to revisit only if a concrete scaling problem justifies it; do not start
+a generic cut-strengthening/decomposition programme now. All approaches still
+require the relevant roster, capability, calendar, exception and eligibility
+facts, so fewer solver identity variables do not by themselves establish lower
+planner workload.
+
+These bounded fixtures do not establish production scale, a permanent workforce
+schema, crew handovers, arbitrary preemption or general multi-skill eligibility
+propagation.
 
 ## Current research direction
 
@@ -436,7 +465,7 @@ The cumulative architectural hypothesis is now:
 - suspendable work may cross explicit calendar or trusted-availability gaps without reserving resources through the gap; continuous work must fit one uninterrupted executable window;
 - mandatory-resource calendar eligibility and resource-capacity allocation are separate constraints, and both must hold for productive execution;
 - overlapping capability pools require a physical-coupling or exact assignment-feasibility layer; independent capability counts alone are insufficient;
-- retain identity-free capacity where resources are genuinely interchangeable, but do not yet assume selective assignment must live inside the scheduling master;
+- retain identity-free capacity where resources are genuinely interchangeable; where identity materially affects executability, use selective integrated assignment as the current working baseline and keep an independent physical checker;
 - trusted actual productive work must remain distinct from forecast remaining productive work; availability loss alone does not create work;
 - activities remain the language of execution;
 - bounded work packages and finite authorised execution methods may become the language of planning choice;
@@ -452,7 +481,7 @@ The cumulative architectural hypothesis is now:
 
 Do not promote these hypotheses into large schemas or frameworks merely because bounded experiments worked.
 
-High-value unresolved questions now include whether pooled scheduling plus an exact allocation check can repair or reschedule larger realistic cases as cleanly as selective assignment, later genuinely larger-scale performance/decomposition evidence, further evidence on the exact lower-order objective hierarchy, and richer irregular/calendar-state cases only when a focused capability requires them.
+High-value unresolved questions now include composing accepted history and rolling status with the new Work–Method/productive-time path, later genuinely larger-scale evidence only after that engine path is coherent, further evidence on the exact lower-order objective hierarchy, and richer irregular/calendar-state cases only when a focused capability requires them. The pooled-feedback allocator is not the active next question after its bounded inconclusive comparison.
 
 Do not substitute broad compatibility work, production hardening, a P6/MSP clone, full event sourcing, a generic objective-policy framework, a generic decomposition framework or a large UI framework for the next focused experiment.
 
