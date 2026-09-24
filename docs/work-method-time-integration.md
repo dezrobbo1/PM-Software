@@ -39,7 +39,7 @@ is not a final Engine v1 SDK or a claim that all native capabilities now compose
 
 ## Bounded admission
 
-The slice accepts at most 32 declared activities, 16 authorised structures, a
+The slice accepts at most 64 declared activities, 16 authorised structures, a
 1..480 tick horizon and 20000 placement alternatives. Existing productive group
 bounds and the 64 local assignment/set-combination bound remain in force.
 Time uses the existing 30-minute coordinates and 48-tick daily calendars.
