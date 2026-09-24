@@ -102,7 +102,8 @@ Active rules:
 - package-to-package structure uses work-package predecessors rather than cross-alternative activity links;
 - do not introduce unrestricted HTN/PDDL/state planning;
 - do not copy the experiment's temporary classes into the owning model; the new native concepts are the integration boundary;
-- do not claim Work–Method is yet composed with the richer productive-calendar / accepted-progress planner-workspace path merely because both capabilities separately exist.
+- Work–Method is now composed with productive calendars, activity modes, selective physical assignment and disjoint interchangeable group quantities through the bounded future-only `schedule_work_method_time(...)` path;
+- do not claim that this composition yet includes accepted execution history, approved-plan stability or rolling status; those remain separate.
 
 ### Trusted live project state
 
@@ -257,7 +258,21 @@ Observed comparison:
 
 The scarce-specialist branch was assignable when `M1` took ordinary work and `M2` took specialist work even though a deliberately poor greedy attempt failed. Night work selected `N1`; `M2`'s synthetic Day 2 08:00–10:00 exception split productive execution without consuming capacity in the gap. A separate exact-checker regression proved that per-time-slice feasibility is insufficient when an activity may not hand over its assigned resource.
 
-The result is mixed: independent overlapping capability pools are unsafe, and C avoids unnecessary rigger naming while matching B, but the fixture does not prove that selective assignment must be part of the scheduling master. A pooled master plus exact assignment checking remains a live architectural alternative.
+The initial result was mixed: independent overlapping capability pools are unsafe,
+and C avoids unnecessary rigger naming while matching B. A subsequent bounded
+pooled-master repair experiment then tested exact checker feedback directly. It
+matched the explicit reference on two small cases but exhausted the declared
+64-iteration budget on the existing 14-activity overlap case without an
+executable result, while explicit/selective assignment solved it. That evidence
+is retained as `INCONCLUSIVE_WITHIN_DECLARED_LIMITS`, not relabelled as either
+universal success or universal failure.
+
+Working decision for convergence: use selective integrated assignment where
+identity materially affects executability, keep genuinely interchangeable
+capacity pooled, and keep independent physical validation. Do not launch a
+generic decomposition/cut-strengthening programme to rescue the pooled-feedback
+candidate absent a concrete future scaling need. See
+`docs/resource-allocation-repair.md`.
 
 Active rules for follow-on work:
 
@@ -333,22 +348,25 @@ The following bounded hypotheses have now survived their first executable falsif
 - operational constraints;
 - stable change propagation;
 - Work–Method–Execution structural choice, now also reproduced through the owning native `Project/WorkPackage/ExecutionMethod` scheduler path;
+- a bounded future-only composition now jointly selects Work–Method structure, activity mode, productive-time placement and the retained selective/pool resource boundary;
 - trusted live project state;
 - aspiration-bounded objective policy;
 - adaptive semantic repair;
 - logic CPM as a selected-structure analytical service rather than authoritative executable criticality.
 - productive duration placed into joint executable availability, with separate continuous and suspendable semantics.
-- selective physical assignment can match full assignment while retaining a genuinely interchangeable pool, but pooled scheduling plus exact assignment checking has not been ruled out.
+- selective integrated assignment is the current convergence baseline where identity matters; genuinely interchangeable capacity remains pooled, and the bounded pooled-feedback replacement remained inconclusive on the retained 14-activity case.
 - bounded headless status advancement can carry an accepted recovery through repeated T1 → T2 → T3 cycles without rewriting accepted history, while explicit revised remaining work changes only the future recovery.
 
 CP-SAT remains the primary experimental backend for now, but the project/domain model must remain solver-independent. The bounded productive-time experiment did not justify a Classical CP challenger; reopen that comparison only if a focused richer-calendar case makes the CP-SAT compiler materially unwieldy or fragile.
 
-The next work should continue to attack one unresolved core question at a time. Strong candidates now are:
+The next work should continue to attack one unresolved core question at a time. After the bounded Work–Method/productive-time convergence slice, strong candidates are:
 
+- **accepted-history composition:** define how accepted completed/in-progress work constrains selected structural methods and remaining productive work without rewriting history;
 - **calendar/state semantics:** only for a focused irregular-calendar or state-transition capability not answered by the bounded productive-time experiment;
-- **resource architecture:** whether pooled scheduling plus exact allocation checking remains sufficient when a fixed pooled schedule must be repaired, or selective identity decisions must enter the scheduling master;
-- **larger-scale evidence:** only after a focused question is defined; do not launch a generic benchmarking/hardening programme;
+- **larger-scale evidence:** only after the converged headless path is coherent; do not launch a generic benchmarking/hardening programme;
 - **objective ordering:** gather further evidence before declaring structural-vs-temporal stability universally settled.
+
+Do not reopen pooled-feedback decomposition merely because its bounded comparison was inconclusive; revisit it only if a concrete scaling or model-size failure creates a specific reason.
 
 Do not default to UI, broad compatibility, production hardening, full event sourcing, generic objective frameworks or generic decomposition architecture in place of those focused experiments.
 
