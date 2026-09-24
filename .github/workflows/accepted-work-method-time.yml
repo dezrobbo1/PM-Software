@@ -1,0 +1,47 @@
+name: Accepted history Work-method
+
+on:
+  push:
+    branches: [main, feat/accepted-history-work-method-composition]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: accepted-work-method-time-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  composition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned native planner
+        run: python -m pip install -e .
+      - name: Record exact source and runtime
+        run: |
+          mkdir -p /tmp/accepted-work-method-time
+          git rev-parse HEAD > /tmp/accepted-work-method-time/source-sha.txt
+          python -c 'import json,platform,ortools; print(json.dumps({"python":platform.python_version(),"platform":platform.platform(),"ortools":ortools.__version__}))' > /tmp/accepted-work-method-time/runtime.json
+      - name: Run focused accepted-history composition tests
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_accepted_work_method_time -v 2>&1 | tee /tmp/accepted-work-method-time/tests.txt
+      - name: Run accepted-history structural recovery experiment
+        run: |
+          set -euo pipefail
+          python -m deterministic_scheduling_core.accepted_work_method_time_experiment --output /tmp/accepted-work-method-time/results.json | tee /tmp/accepted-work-method-time/console.txt
+      - name: Compile composition sources
+        run: python -m compileall -q src tests/test_accepted_work_method_time.py
+      - name: Save source-bound accepted-history evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accepted-work-method-time-${{ github.sha }}
+          path: /tmp/accepted-work-method-time/
+          if-no-files-found: error
