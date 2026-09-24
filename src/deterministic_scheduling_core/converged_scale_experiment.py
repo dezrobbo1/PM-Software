@@ -215,10 +215,10 @@ def build_problem(*, accepted_outage: bool = False) -> WorkMethodTimeProject:
         "P04A01": 2,
         "P04B01": 2,
         "P05A01": 3,
-        "P06A01": 5,
-        "P06B01": 5,
-        "P07A01": 4,
-        "P07B01": 4,
+        "P06A01": 6,
+        "P06B01": 6,
+        "P07A01": 6,
+        "P07B01": 6,
     }
     for activity in activities:
         if activity["id"] in roots:
