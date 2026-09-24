@@ -61,10 +61,13 @@ Productive execution uses the existing joint-calendar placement compiler:
 - assignments remain consistent throughout the activity's productive periods;
 - independent disjoint resource groups retain native quantities, not fake workers.
 
-The existing two-rigger deferred pool is used only if its complete interchangeability
-check holds across **all** possible activity modes. Otherwise those real resources
-are assigned explicitly. Group capacity units are anonymous compiler witnesses;
-they never appear in public plan entries or public allocation witnesses.
+Named physical requirements are always assigned explicitly in this composition
+path, including legacy RIGGER slots even when the source requests pooling. A
+per-tick capacity relaxation cannot prove that one physical resource can remain
+assigned across every productive segment of a suspendable activity. Genuine
+identity-free capacity is represented by declared `resource_groups`; the compiler
+chooses a consistent anonymous unit set across all productive segments. Group
+capacity units never appear in public plan entries or public allocation witnesses.
 
 A mode with no placement is disabled; if every method of a required package is
 unavailable the result is infeasible within the declared horizon. Definitions are
@@ -87,10 +90,12 @@ weights; compressing indices after removing an inactive method would change the
 comparison. The first two tiers and both declared choice vectors are compared.
 
 Canonical stage ordering is a same-environment repeatability control, not a
-cross-version/platform guarantee. The result records solver version, workers,
-seed and per-stage statuses. `UNKNOWN`, `FEASIBLE` without an optimum, and
-`MODEL_INVALID` are not reported as project infeasibility or a successful proven
-plan. The bounded entry point returns no authoritative plan for those outcomes.
+cross-version/platform guarantee. Every CP-SAT stage has a deterministic-work
+budget of 60.0 and the result records that budget together with solver version,
+workers, seed and per-stage statuses. `UNKNOWN`, `FEASIBLE` without an optimum,
+and `MODEL_INVALID` are not reported as project infeasibility or a successful
+proven plan. The bounded entry point returns no authoritative plan for those
+outcomes.
 
 The input hash identifies the **complete portable input**, including reported-only
 provenance. It is not the existing workspace trusted-state hash. Consequently a
