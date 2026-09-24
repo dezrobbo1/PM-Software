@@ -166,7 +166,7 @@ def build_problem(*, accepted_outage: bool = False) -> WorkMethodTimeProject:
             alternative, alternative_ids, alternative_end = _chain(
                 package_number,
                 "B",
-                (2, 2, 2, 2),
+                (3, 2, 2, 2),
             )
             activities.extend(standard)
             activities.extend(alternative)
