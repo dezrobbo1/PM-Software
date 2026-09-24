@@ -80,6 +80,13 @@ def promote_structural_recovery_to_status_cycle(
     """
     if not asserted_by.strip() or not accepted_by.strip():
         raise ValueError("structural promotion requires asserting and accepting actors")
+    if prior_lineage:
+        latest = prior_lineage[-1]
+        if (
+            latest.get("promoted_reference_plan_hash") != reference_plan.get("plan_hash")
+            or latest.get("selected_methods") != reference_plan.get("selected_methods")
+        ):
+            raise ValueError("prior structural lineage does not lead to the supplied reference plan")
     validate_accepted_plan(
         problem,
         reference_problem,
