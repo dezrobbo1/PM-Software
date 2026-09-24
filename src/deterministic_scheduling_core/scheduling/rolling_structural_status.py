@@ -87,6 +87,15 @@ def promote_structural_recovery_to_status_cycle(
             or latest.get("selected_methods") != reference_plan.get("selected_methods")
         ):
             raise ValueError("prior structural lineage does not lead to the supplied reference plan")
+    pending_execution = [
+        update
+        for update in status_workspace.get("execution", {}).get("updates", [])
+        if update.get("status") == "REPORTED"
+    ]
+    if pending_execution:
+        raise ValueError(
+            "structural promotion requires pending reported execution assertions to be resolved first"
+        )
     validate_accepted_plan(
         problem,
         reference_problem,
