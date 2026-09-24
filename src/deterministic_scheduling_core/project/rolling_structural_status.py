@@ -58,6 +58,7 @@ def from_document(document: dict) -> RollingStructuralStatusCycle:
             "prior_status_state_hash",
             "recovery_plan_hash",
             "prior_reference_plan_hash",
+            "promoted_reference_plan_hash",
             "promoted_status_state_hash",
             "selected_methods",
         }:
@@ -66,6 +67,7 @@ def from_document(document: dict) -> RollingStructuralStatusCycle:
             "prior_status_state_hash",
             "recovery_plan_hash",
             "prior_reference_plan_hash",
+            "promoted_reference_plan_hash",
             "promoted_status_state_hash",
         )):
             raise ValueError("lineage hashes must be nonempty strings")
