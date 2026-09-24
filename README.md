@@ -509,7 +509,11 @@ The cumulative architectural hypothesis is now:
 
 Do not promote these hypotheses into large schemas or frameworks merely because bounded experiments worked.
 
-Accepted history now composes with Work–Method/productive-time recovery through repeated structural status advancement: a selected recovery can become the next active structure, newly started methods become hard history, and completed methods remain hard on the following cycle. High-value unresolved questions now include a genuinely larger-scale falsification case for the converged headless path, further evidence on the exact lower-order objective hierarchy, and richer irregular/calendar-state cases only when a focused capability requires them. The pooled-feedback allocator is not the active next question after its bounded inconclusive comparison.
+Accepted history now composes with Work–Method/productive-time recovery through repeated structural status advancement: a selected recovery can become the next active structure, newly started methods become hard history, and completed methods remain hard on the following cycle.
+
+That converged headless path has now also survived a materially larger **64 declared / 48 active** falsification case with 8 Work Packages, 4 flexible packages and 16 authorised structures. Baseline planning, accepted-history recovery and one rolling status advance matched a fixture-specific pure-Python serial oracle. The accepted crane outage changed untouched `WP04` from `CRANE` to `MANUAL` while the begun `WP02=CRANE` method remained hard, and the promoted `WP04=MANUAL` method remained hard after execution began. See [converged native scale falsification](docs/converged-native-scale-falsification.md).
+
+The larger case also exposed the next concrete scaling question: the baseline required **138 sequential lexicographic solver calls** and roughly **52.8 s** end-to-end on the retained runner, while model construction was only about **0.2 s**. High-value unresolved work therefore starts with canonicalisation-stage scaling before attempting the old 160/120 fixture unchanged. Further evidence on lower-order objective ordering and richer irregular/calendar-state cases remains focused follow-on work. The pooled-feedback allocator is not the active next question after its bounded inconclusive comparison.
 
 Do not substitute broad compatibility work, production hardening, a P6/MSP clone, full event sourcing, a generic objective-policy framework, a generic decomposition framework or a large UI framework for the next focused experiment.
 
