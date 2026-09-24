@@ -98,6 +98,8 @@ def validate_input(
         mode = record["execution_context"]["mode"]
         if mode.get("continuity", "SUSPENDABLE_AT_AVAILABILITY_GAPS") == "CONTINUOUS":
             raise ValueError("continuous in-progress structural composition is not in this bounded slice")
+        if mode.get("group_requirements"):
+            raise ValueError("in-progress anonymous group continuation is not in this bounded slice")
 
     fixed = _fixed_methods(problem, reference_plan, states)
     return states, fixed
