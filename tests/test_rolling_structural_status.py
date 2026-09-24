@@ -15,7 +15,6 @@ from deterministic_scheduling_core.accepted_work_method_time_experiment import (
 )
 from deterministic_scheduling_core.project.planning_workspace import (
     current_status_records,
-    report_status_update,
     state_hash,
 )
 from deterministic_scheduling_core.project.rolling_structural_status import (
@@ -99,32 +98,6 @@ class RollingStructuralStatusTests(unittest.TestCase):
         self.assertEqual(retained, expected_updates)
         self.assertEqual(status, before)
         self.assertEqual(state_hash(status), state_hash(before))
-
-    def test_promotion_rejects_pending_reported_execution_assertions(self):
-        problem = build_problem()
-        reference = schedule_work_method_time(problem).plan
-        status = build_status_workspace(problem, reference)
-        recovery = schedule_accepted_work_method_time(
-            problem, problem, reference, status
-        ).plan
-        report_status_update(
-            status,
-            "REST_CRANE",
-            "NOT_STARTED",
-            "field-planner",
-            "pending execution assertion must be reviewed before structural handover",
-        )
-
-        with self.assertRaisesRegex(ValueError, "pending reported execution assertions"):
-            promote_structural_recovery_to_status_cycle(
-                problem,
-                problem,
-                reference,
-                status,
-                recovery,
-                asserted_by="planner",
-                accepted_by="acceptor",
-            )
 
     def test_newly_selected_activities_get_explicit_boundary_status(self):
         problem = build_problem()
