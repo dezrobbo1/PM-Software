@@ -1,0 +1,47 @@
+name: Rolling structural status
+
+on:
+  push:
+    branches: [main, feat/rolling-structural-status]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rolling-structural-status-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  structural-cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned native planner
+        run: python -m pip install -e .
+      - name: Record exact source and runtime
+        run: |
+          mkdir -p /tmp/rolling-structural-status
+          git rev-parse HEAD > /tmp/rolling-structural-status/source-sha.txt
+          python -c 'import json,platform,ortools; print(json.dumps({"python":platform.python_version(),"platform":platform.platform(),"ortools":ortools.__version__}))' > /tmp/rolling-structural-status/runtime.json
+      - name: Run focused rolling structural-status tests
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_rolling_structural_status -v 2>&1 | tee /tmp/rolling-structural-status/tests.txt
+      - name: Run rolling structural-status experiment
+        run: |
+          set -euo pipefail
+          python -m deterministic_scheduling_core.rolling_structural_status_experiment --output /tmp/rolling-structural-status/results.json | tee /tmp/rolling-structural-status/console.txt
+      - name: Compile structural-cycle sources
+        run: python -m compileall -q src tests/test_rolling_structural_status.py
+      - name: Save source-bound rolling structural-status evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rolling-structural-status-${{ github.sha }}
+          path: /tmp/rolling-structural-status/
+          if-no-files-found: error
