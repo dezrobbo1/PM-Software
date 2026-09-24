@@ -26,17 +26,18 @@ have changed.
 `promote_structural_recovery_to_status_cycle(...)` performs one bounded
 same-status handover:
 
-1. validate the structural recovery;
-2. reuse its already-proved nested future plan as the next reference plan;
-3. reuse the exact compiled future problem as that plan's reference source;
-4. materialise the recovery's selected methods as the new active execution
+1. require any pending reported execution assertions to be resolved first;
+2. validate the structural recovery;
+3. reuse its already-proved nested future plan as the next reference plan;
+4. reuse the exact compiled future problem as that plan's reference source;
+5. materialise the recovery's selected methods as the new active execution
    structure;
-5. copy accepted records byte-for-byte for activities retained in that structure;
-6. reject promotion if any accepted executed activity would disappear;
-7. omit unexecuted activities from deselected alternatives;
-8. create explicit accepted `NOT_STARTED` assertions, at the current status
+6. copy accepted records byte-for-byte for activities retained in that structure;
+7. reject promotion if any accepted executed activity would disappear;
+8. omit unexecuted activities from deselected alternatives;
+9. create explicit accepted `NOT_STARTED` assertions, at the current status
    boundary, for newly selected activities;
-9. retain lineage to the prior status-state hash, recovery-plan hash, prior
+10. retain lineage to the prior status-state hash, recovery-plan hash, prior
    reference-plan hash and promoted reference-plan hash.
 
 Promotion does not call the solver and does not mutate the prior status workspace.
