@@ -66,7 +66,6 @@ def triangle_rigger_problem():
                 "pool_ids": ["RIGGER"],
                 "eligible_resource_ids": ["R1", "R2"],
             }],
-            "group_requirements": [],
         }
 
     project = {
@@ -90,7 +89,7 @@ def triangle_rigger_problem():
             {"id": "DONE", "name": "Done", "predecessors": ["A", "B", "C"],
              "modes": [{"id": "FIXED", "processing_ticks": 0, "calendar_id": "ALWAYS",
                         "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
-                        "requirements": [], "group_requirements": []}]},
+                        "requirements": []}]},
         ],
         "objective_activity_id": "DONE",
         # This legacy hint must not weaken whole-activity no-handover semantics.
