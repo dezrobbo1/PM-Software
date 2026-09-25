@@ -8,6 +8,7 @@ before any architecture is changed.
 from __future__ import annotations
 
 from copy import deepcopy
+from math import prod
 import json
 from pathlib import Path
 
@@ -241,12 +242,13 @@ def run_challenge() -> dict:
         + len(problem.project["activities"])
     )
 
+    authorised_structures = prod(len(package.methods) for package in problem.work_packages)
     shape = {
         "declared_activities": len(problem.project["activities"]),
         "selected_active_activities": len(projection["project"]["activities"]),
         "work_packages": len(problem.work_packages),
         "flexible_packages": sum(len(package.methods) > 1 for package in problem.work_packages),
-        "authorised_structures": 16,
+        "authorised_structures": authorised_structures,
         "unsupported_activity_fields": _unsupported_activity_fields(problem),
     }
 
@@ -291,6 +293,7 @@ def run_challenge() -> dict:
         projection_failure is not None
         and projection_failure["class"] == "UNSUPPORTED_ACTIVITY_SEMANTICS",
         stripped_projection_valid,
+        result["diagnostic_without_unsupported_semantics"]["placement_limit_would_be_exceeded"],
         result["portable_round_trip"],
         result["source_unchanged"],
     ))
