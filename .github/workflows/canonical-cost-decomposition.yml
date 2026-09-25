@@ -1,0 +1,50 @@
+name: Placement and canonical proof cost decomposition
+
+on:
+  push:
+    branches: [main, experiment/placement-canonical-cost-decomposition]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canonical-cost-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-cost-experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned native planner
+        run: python -m pip install -e .
+      - name: Record exact source and runtime
+        run: |
+          mkdir -p /tmp/canonical-cost
+          git rev-parse HEAD > /tmp/canonical-cost/source-sha.txt
+          python -c 'import json,platform,ortools; print(json.dumps({"python":platform.python_version(),"platform":platform.platform(),"ortools":ortools.__version__}))' > /tmp/canonical-cost/runtime.json
+      - name: Run exact equivalence and controlled cost matrix
+        env:
+          CANONICAL_COST_EVIDENCE_OUTPUT: /tmp/canonical-cost/results.json
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_canonical_cost_experiment -v 2>&1 | tee /tmp/canonical-cost/tests.txt
+      - name: Compile experiment sources
+        run: python -m compileall -q src tests/test_canonical_cost_experiment.py
+      - name: Digest retained evidence
+        run: |
+          cd /tmp/canonical-cost
+          sha256sum results.json runtime.json source-sha.txt tests.txt > SHA256SUMS
+      - name: Retain exact-head cost evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canonical-cost-${{ github.sha }}
+          path: /tmp/canonical-cost/
+          if-no-files-found: error
