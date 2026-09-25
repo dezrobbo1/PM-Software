@@ -18,6 +18,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -45,6 +47,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: canonical-cost-${{ github.sha }}
+          name: canonical-cost-${{ github.event.pull_request.head.sha || github.sha }}
           path: /tmp/canonical-cost/
           if-no-files-found: error
