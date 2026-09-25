@@ -451,9 +451,9 @@ def _classify_cost_outcome(cases: list[dict], evidence_valid: bool) -> tuple[str
         "end_to_end_speedup": scale["ratios"]["end_to_end_speedup"],
         "measured_predicates": predicates,
         "decision_rule": (
-            "A requires every measured predicate; B requires combined placement generation "
+            "A requires every measured predicate; D next rejects a challenger that does not "
+            "reduce calls or observed total cost; B then requires combined placement generation "
             "and CP-model assembly to exceed solving; "
-            "D applies when the exact challenger does not reduce calls or observed total cost; "
             "other exact mixed evidence is C. Correctness failure is E."
         ),
         "note": (
@@ -473,6 +473,13 @@ def _classify_cost_outcome(cases: list[dict], evidence_valid: bool) -> tuple[str
             "prove and adopt bounded exact canonical batching in the authoritative path",
             basis,
         )
+    if (challenger["total_stages"] >= sequential["total_stages"]
+            or challenger["end_to_end_ms"] >= sequential["end_to_end_ms"]):
+        return (
+            "D_CHALLENGER_NOT_JUSTIFIED",
+            "retain the authoritative sequential policy and revisit only with new evidence",
+            basis,
+        )
     if placement_and_model_assembly_ms > sequential["solve_ms"]:
         if construction_dominant_component == "placement_generation":
             recommendation = (
@@ -487,13 +494,6 @@ def _classify_cost_outcome(cases: list[dict], evidence_valid: bool) -> tuple[str
         return (
             "B_PLACEMENT_GENERATION_DOMINATED",
             recommendation,
-            basis,
-        )
-    if (challenger["total_stages"] >= sequential["total_stages"]
-            or challenger["end_to_end_ms"] >= sequential["end_to_end_ms"]):
-        return (
-            "D_CHALLENGER_NOT_JUSTIFIED",
-            "retain the authoritative sequential policy and revisit only with new evidence",
             basis,
         )
     return (

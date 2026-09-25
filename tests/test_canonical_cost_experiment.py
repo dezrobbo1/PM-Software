@@ -199,6 +199,10 @@ class CanonicalCostExperimentTests(unittest.TestCase):
         self.assertEqual(basis["construction_dominant_component"], "cp_model_assembly")
         self.assertIn("CP-model assembly", recommendation)
 
+        scale["challenger"]["end_to_end_ms"] = scale["sequential"]["end_to_end_ms"]
+        classification, _, _ = _classify_cost_outcome(assembly_dominated, True)
+        self.assertEqual(classification, "D_CHALLENGER_NOT_JUSTIFIED")
+
     def test_density_ladder_holds_stage_count_and_grows_model(self):
         cases = [self.by_name[f"density_{horizon}"] for horizon in (16, 64, 192, 480)]
         self.assertEqual({case["sequential"]["total_stages"] for case in cases}, {18})
