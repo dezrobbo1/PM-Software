@@ -9,6 +9,7 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from math import prod
 from time import perf_counter
+from typing import Any
 
 import ortools
 from ortools.sat.python import cp_model
@@ -35,6 +36,35 @@ MAX_WORKFACE_INTERVALS = 20_000
 class WorkMethodTimeResult:
     plan: dict
     metrics: dict
+
+
+@dataclass(frozen=True)
+class _Stage:
+    name: str
+    stage_type: str
+    expression: Any
+    maximum: int
+
+
+@dataclass
+class _CompiledWorkMethodTime:
+    problem: WorkMethodTimeProject
+    environment: Any
+    specs: dict
+    model: cp_model.CpModel
+    source: dict
+    members: dict
+    methods: dict
+    starts: dict
+    ends: dict
+    mode_vars: dict
+    choices: dict
+    stages: tuple[_Stage, ...]
+    placement_count: int
+    workface_interval_count: int
+    started_at: float
+    built_at: float
+    compile_metrics: dict
 
 
 def validate_problem(problem: WorkMethodTimeProject) -> None:
@@ -216,12 +246,18 @@ def validate_plan(problem: WorkMethodTimeProject, plan: dict) -> str:
     return ra.EXACT_FEASIBLE
 
 
-def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeResult:
-    """Calculate one joint structural/productive plan without mutating its input."""
+def _compile_work_method_time(problem: WorkMethodTimeProject) -> _CompiledWorkMethodTime:
+    """Build the shared bounded model and retain additive phase measurements."""
     started = perf_counter()
     problem = deepcopy(problem)
+    input_copy_ms = (perf_counter() - started) * 1000
+    validation_started = perf_counter()
     validate_problem(problem)
+    validation_ms = (perf_counter() - validation_started) * 1000
+    cases_started = perf_counter()
     environment, specs = _mode_cases(problem)
+    productive_case_compile_ms = (perf_counter() - cases_started) * 1000
+    assembly_started = perf_counter()
     model = cp_model.CpModel()
     source = problem.project
     members = membership(problem)
@@ -234,6 +270,7 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
     workface_intervals = {}
     placement_count = 0
     workface_interval_count = 0
+    placement_generation_ms = 0.0
     for ai, activity in enumerate(source["activities"]):
         aid = activity["id"]
         present = methods[members[aid]] if aid in members else model.new_constant(1)
@@ -246,11 +283,13 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
             mode_var = model.new_bool_var(f"mode_{ai}_{mi}")
             mode_vars[aid, mid] = mode_var
             spec = specs[aid, mid]
+            placement_started = perf_counter()
             placements = _group_placements(environment, spec, "B")
             if "latest_finish" in activity:
                 placements = tuple(p for p in placements if p.finish <= activity["latest_finish"])
             placements = tuple(sorted(placements, key=lambda p: (
                 p.start, p.finish, p.periods, tuple("" if r is None else r for r in p.assignments))))
+            placement_generation_ms += (perf_counter() - placement_started) * 1000
             placement_count += len(placements)
             if placement_count > 20000:
                 raise ValueError("bounded composition supports at most 20000 placement alternatives")
@@ -303,54 +342,184 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
         if intervals:
             model.add_no_overlap(intervals)
     timing = sum((i + 1) * starts[a["id"]] for i, a in enumerate(source["activities"]))
-    stages = [("finish", ends[source["objective_activity_id"]]), ("global_start_timing", timing)]
-    stages.extend((f"method:{p.id}", sum(i * methods[p.id, m.id] for i, m in enumerate(p.methods)))
-                  for p in problem.work_packages)
-    stages.extend((f"mode:{a['id']}", sum((i + 1) * mode_vars[a["id"], m["id"]]
-                                         for i, m in enumerate(a["modes"]))) for a in source["activities"])
-    stages.extend((f"placement:{a['id']}", sum((i + 1) * lit for i, (lit, _, _) in enumerate(choices[a["id"]])))
-                  for a in source["activities"])
+    stages = [
+        _Stage("finish", "finish", ends[source["objective_activity_id"]], environment.horizon),
+        _Stage(
+            "global_start_timing",
+            "global_timing",
+            timing,
+            environment.horizon * sum(range(1, len(source["activities"]) + 1)),
+        ),
+    ]
+    stages.extend(
+        _Stage(
+            f"method:{package.id}",
+            "method_canonical",
+            sum(i * methods[package.id, method.id] for i, method in enumerate(package.methods)),
+            len(package.methods) - 1,
+        )
+        for package in problem.work_packages
+    )
+    stages.extend(
+        _Stage(
+            f"mode:{activity['id']}",
+            "mode_canonical",
+            sum((i + 1) * mode_vars[activity["id"], mode["id"]]
+                for i, mode in enumerate(activity["modes"])),
+            len(activity["modes"]),
+        )
+        for activity in source["activities"]
+    )
+    stages.extend(
+        _Stage(
+            f"placement:{activity['id']}",
+            "placement_canonical",
+            sum((i + 1) * literal for i, (literal, _, _) in enumerate(choices[activity["id"]])),
+            len(choices[activity["id"]]),
+        )
+        for activity in source["activities"]
+    )
+    built = perf_counter()
+    return _CompiledWorkMethodTime(
+        problem=problem,
+        environment=environment,
+        specs=specs,
+        model=model,
+        source=source,
+        members=members,
+        methods=methods,
+        starts=starts,
+        ends=ends,
+        mode_vars=mode_vars,
+        choices=choices,
+        stages=tuple(stages),
+        placement_count=placement_count,
+        workface_interval_count=workface_interval_count,
+        started_at=started,
+        built_at=built,
+        compile_metrics={
+            "input_copy_ms": input_copy_ms,
+            "validation_ms": validation_ms,
+            "productive_case_compile_ms": productive_case_compile_ms,
+            "placement_generation_ms": placement_generation_ms,
+            "cp_model_assembly_ms": max(
+                0.0,
+                (built - assembly_started) * 1000 - placement_generation_ms,
+            ),
+            "base_variables": len(model.proto.variables),
+            "base_constraints": len(model.proto.constraints),
+        },
+    )
+
+
+def _new_solver() -> cp_model.CpSolver:
     solver = cp_model.CpSolver()
     solver.parameters.num_search_workers = 1
     solver.parameters.random_seed = 0
     solver.parameters.max_deterministic_time = MAX_DETERMINISTIC_TIME_PER_STAGE
-    built = perf_counter()
+    return solver
+
+
+def _solve_compiled_stages(
+    compiled: _CompiledWorkMethodTime,
+    stages: tuple[_Stage, ...],
+    *,
+    solver: cp_model.CpSolver | None = None,
+    cumulative_wall_ms: float = 0.0,
+    cumulative_deterministic_time: float = 0.0,
+):
+    """Prove and fix a declared sequence of exact objective stages."""
+    if solver is None:
+        solver = _new_solver()
     proof = []
-    for name, expression in stages:
-        model.minimize(expression)
-        status = solver.solve(model)
+    stage_metrics = []
+    for stage in stages:
+        compiled.model.minimize(stage.expression)
+        stage_started = perf_counter()
+        status = solver.solve(compiled.model)
+        elapsed_ms = (perf_counter() - stage_started) * 1000
         if status == cp_model.INFEASIBLE:
             raise SchedulingError("INFEASIBLE: no executable authorised structure within the declared horizon")
         if status != cp_model.OPTIMAL:
-            raise SchedulingError(f"{solver.status_name(status)}: {name} is not proven optimal; no authoritative plan returned")
-        value = solver.value(expression)
-        proof.append({"stage": name, "value": value, "status": "OPTIMAL"})
-        model.add(expression == value)
-    solved = perf_counter()
-    selected_methods = {p.id: next(m.id for m in p.methods if solver.value(methods[p.id, m.id]))
-                        for p in problem.work_packages}
+            raise SchedulingError(
+                f"{solver.status_name(status)}: {stage.name} is not proven optimal; "
+                "no authoritative plan returned"
+            )
+        value = solver.value(stage.expression)
+        proof.append({"stage": stage.name, "value": value, "status": "OPTIMAL"})
+        deterministic_time = float(solver.response_proto.deterministic_time)
+        cumulative_wall_ms += elapsed_ms
+        cumulative_deterministic_time += deterministic_time
+        stage_metrics.append({
+            "stage": stage.name,
+            "stage_type": stage.stage_type,
+            "status": "OPTIMAL",
+            "value": value,
+            "maximum": stage.maximum,
+            "elapsed_wall_ms": elapsed_ms,
+            "solver_wall_time_ms": float(solver.wall_time) * 1000,
+            "deterministic_time": deterministic_time,
+            "cumulative_wall_ms": cumulative_wall_ms,
+            "cumulative_deterministic_time": cumulative_deterministic_time,
+        })
+        compiled.model.add(stage.expression == value)
+    return solver, proof, stage_metrics
+
+
+def _solve_sequential(compiled: _CompiledWorkMethodTime):
+    """Prove the authoritative policy one canonical digit at a time."""
+    return _solve_compiled_stages(compiled, compiled.stages)
+
+
+def _extract_plan(
+    compiled: _CompiledWorkMethodTime,
+    solver: cp_model.CpSolver,
+    proof: list[dict],
+    *,
+    compiler: str,
+) -> tuple[dict, dict]:
+    """Extract and independently validate a solved joint candidate."""
+    extraction_started = perf_counter()
+    problem = compiled.problem
+    source = compiled.source
+    selected_methods = {
+        package.id: next(
+            method.id
+            for method in package.methods
+            if solver.value(compiled.methods[package.id, method.id])
+        )
+        for package in problem.work_packages
+    }
     selected_modes, entries, raw = {}, [], []
     for activity in source["activities"]:
         aid = activity["id"]
-        selected = [(mid, placement) for lit, mid, placement in choices[aid] if solver.value(lit)]
+        selected = [
+            (mid, placement)
+            for literal, mid, placement in compiled.choices[aid]
+            if solver.value(literal)
+        ]
         if not selected:
             continue
         mid, placement = selected[0]
         selected_modes[aid] = mid
-        spec = specs[aid, mid]
+        spec = compiled.specs[aid, mid]
         mode = next(m for m in activity["modes"] if m["id"] == mid)
         assignments = tuple((r.id, rid) for r, rid in zip(spec.requirements, placement.assignments))
         raw.append(ra.ScheduledEntry(aid, placement.start, placement.finish, placement.periods, assignments))
-        owner = members.get(aid, (None, None))
+        owner = compiled.members.get(aid, (None, None))
         entries.append({"activity_id": aid, "mode_id": mid, "work_package_id": owner[0], "method_id": owner[1],
                         "start": placement.start, "finish": placement.finish,
                         "periods": [list(p) for p in placement.periods],
                         "assignments": [[slot, rid] for slot, rid in assignments if not slot.startswith("@group/")],
                         "group_demands": [[d["group_id"], d["demand"]] for d in mode.get("group_requirements", [])]})
     fixed_case = _case(materialise(problem, selected_methods), selected_modes)
+    first_extraction_ms = (perf_counter() - extraction_started) * 1000
+    physical_started = perf_counter()
     check = check_allocation(fixed_case, tuple(raw))
+    allocation_ms = (perf_counter() - physical_started) * 1000
     if check.status != ra.EXACT_FEASIBLE:
         raise SchedulingError(f"joint result failed independent allocation: {check.reason}")
+    plan_started = perf_counter()
     plan = {"schema": PLAN_SCHEMA, "input_hash": input_hash(problem), "policy": POLICY,
             "selected_methods": selected_methods, "selected_modes": selected_modes, "entries": entries,
             "objective": [proof[0]["value"], proof[1]["value"]], "pooled_riggers": False,
@@ -358,13 +527,54 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
             "physical_status": check.status,
             "solver": {"name": "CP-SAT", "version": ortools.__version__, "workers": 1, "seed": 0,
                        "max_deterministic_time_per_stage": MAX_DETERMINISTIC_TIME_PER_STAGE,
-                       "compiler": "native-work-method-time/0", "stages": proof,
+                       "compiler": compiler, "stages": proof,
                        "repeatability": "canonical stage ordering in the same declared environment; not a cross-version guarantee"}}
     plan["plan_hash"] = _hash_plan(plan)
+    second_extraction_ms = (perf_counter() - plan_started) * 1000
+    validation_started = perf_counter()
     validate_plan(problem, plan)
-    return WorkMethodTimeResult(plan, {
-        "model_builds": 1, "solver_calls": len(stages), "placement_alternatives": placement_count,
-        "variables": len(model.proto.variables), "constraints": len(model.proto.constraints),
-        "build_ms": (built - started) * 1000, "solve_ms": (solved - built) * 1000,
-        "end_to_end_ms": (perf_counter() - started) * 1000,
-    })
+    full_validation_ms = (perf_counter() - validation_started) * 1000
+    return plan, {
+        "result_extraction_ms": first_extraction_ms + second_extraction_ms,
+        "independent_allocation_ms": allocation_ms,
+        "stored_plan_validation_ms": full_validation_ms,
+        "independent_validation_ms": allocation_ms + full_validation_ms,
+    }
+
+
+def _result_metrics(
+    compiled: _CompiledWorkMethodTime,
+    stage_metrics: list[dict],
+    extraction_metrics: dict,
+) -> dict:
+    solve_ms = sum(stage["elapsed_wall_ms"] for stage in stage_metrics)
+    return {
+        "model_builds": 1,
+        "solver_calls": len(stage_metrics),
+        "placement_alternatives": compiled.placement_count,
+        "workface_intervals": compiled.workface_interval_count,
+        "variables": len(compiled.model.proto.variables),
+        "constraints": len(compiled.model.proto.constraints),
+        "build_ms": (compiled.built_at - compiled.started_at) * 1000,
+        "solve_ms": solve_ms,
+        "end_to_end_ms": (perf_counter() - compiled.started_at) * 1000,
+        "stage_metrics": stage_metrics,
+        **compiled.compile_metrics,
+        **extraction_metrics,
+    }
+
+
+def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeResult:
+    """Calculate one joint structural/productive plan without mutating its input."""
+    compiled = _compile_work_method_time(problem)
+    solver, proof, stage_metrics = _solve_sequential(compiled)
+    plan, extraction_metrics = _extract_plan(
+        compiled,
+        solver,
+        proof,
+        compiler="native-work-method-time/0",
+    )
+    return WorkMethodTimeResult(
+        plan,
+        _result_metrics(compiled, stage_metrics, extraction_metrics),
+    )

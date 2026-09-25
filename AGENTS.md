@@ -384,7 +384,29 @@ The professional-shaped 160-possible / 120-active challenge has now been classif
 - the faithful selected projection accepts both fields, generates **64,068** raw placements and retains **64,032** after filtering late placements, above the retained 20,000 cap;
 - the current compiler shape would imply **334** sequential lexicographic stages if all 160 activities were admitted.
 
-The small controlled case agrees with independent raw-start enumeration; removing workface or protected finish changes the preferred plan. Do **not** raise the 64-activity admission limit yet. The next focused investigation is placement generation/canonicalisation and its proof budget; this is not evidence of 160/120 schedulability. See `docs/professional-workface-latest-finish.md`.
+The small controlled case agrees with independent raw-start enumeration; removing workface or protected finish changes the preferred plan. Do **not** raise the 64-activity admission limit yet. This is not evidence of 160/120 schedulability. See `docs/professional-workface-latest-finish.md`.
+
+The bounded placement/canonical cost decomposition then measured the current
+sequential oracle against one exact experimental batching challenger:
+
+- all 12 retained anchor/ladder cases matched methods, modes, complete canonical
+  vectors, placements, objectives, semantic plans and physical validation;
+- on one same-environment 64/48 run, base construction was about 124 ms and 138
+  sequential proofs were about 19.07 s;
+- safe mixed-radix batching reduced those 138 proofs to 11 and observed
+  end-to-end time by 3.89x;
+- a fixed 64-activity model shows proof cost growing with the number of stages,
+  while a separate fixed-stage ladder shows model/placement density growing
+  proof cost; raw placement generation remained secondary on the anchor.
+
+**Outcome A: canonical-proof dominated, with a material model-size interaction.**
+The machine-readable classifier derives that outcome from the measured dominance
+and challenger comparisons; correctness alone cannot produce A.
+The challenger is experimental and `schedule_work_method_time(...)` remains the
+sequential authority. A next focused milestone may prove and adopt bounded exact
+batching while retaining the sequential oracle. Do not combine that adoption
+with higher admission/placement limits or a generic decomposition framework. See
+`docs/placement-canonical-cost-decomposition.md`.
 
 Other focused candidates remain:
 

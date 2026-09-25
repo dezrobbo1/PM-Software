@@ -84,8 +84,8 @@ There is no approved reference plan in this slice. Optimise sequentially:
 4. declared mode index, activity by activity (inactive activity contributes zero);
 5. deterministic placement ordering for the remaining representation ties.
 
-Each proven optimum is fixed before the next stage. No exponential mixed-radix
-weight is used. A fixed-method comparator retains the original full-input start
+Each proven optimum is fixed before the next stage. The authoritative path uses
+no mixed-radix objective. A fixed-method comparator retains the original full-input start
 weights; compressing indices after removing an inactive method would change the
 comparison. The first two tiers and both declared choice vectors are compared.
 
@@ -168,6 +168,15 @@ The future-only Work-Method composition now also accepts `exclusion_groups` and
 history workface correctness. The faithful 160/120 projection now accepts both
 fields, but still fails at the 64-activity admission guard; see
 [the focused experiment](professional-workface-latest-finish.md).
+
+Additive cost instrumentation now reports compiler phases, base model size,
+every sequential proof stage and post-solve validation without changing the plan
+document or hash. A separate experimental challenger batches only the lower
+method/mode/placement vector with bounded exact mixed-radix blocks after finish
+and global timing are fixed. It matched the complete authoritative policy on the
+retained matrix and reduced the 64/48 anchor from 138 to 11 proof calls in one
+same-environment run. It is not used by `schedule_work_method_time(...)`; see
+[the cost decomposition](placement-canonical-cost-decomposition.md).
 
 CP-SAT API/status references checked for this implementation:
 https://developers.google.com/optimization/cp/cp_solver
