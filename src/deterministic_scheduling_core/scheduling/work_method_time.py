@@ -28,6 +28,7 @@ from .planning_workspace import _case, _group_placements
 PLAN_SCHEMA = "pm-native-work-method-time-plan/0"
 POLICY = "finish-global-start-timing-declared-methods-declared-modes-canonical-placement/0"
 MAX_DETERMINISTIC_TIME_PER_STAGE = 60.0
+MAX_WORKFACE_INTERVALS = 20_000
 
 
 @dataclass(frozen=True)
@@ -232,6 +233,7 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
     named_intervals = {r.id: [] for r in environment.resources}
     workface_intervals = {}
     placement_count = 0
+    workface_interval_count = 0
     for ai, activity in enumerate(source["activities"]):
         aid = activity["id"]
         present = methods[members[aid]] if aid in members else model.new_constant(1)
@@ -252,15 +254,22 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
             placement_count += len(placements)
             if placement_count > 20000:
                 raise ValueError("bounded composition supports at most 20000 placement alternatives")
+            # Multiple group names multiply optional intervals per placement.
+            # Bound that expansion before constructing any of this mode's intervals.
+            active_placements = sum(p.start < p.finish for p in placements)
+            workface_interval_count += active_placements * len(activity.get("exclusion_groups", []))
+            if workface_interval_count > MAX_WORKFACE_INTERVALS:
+                raise ValueError("bounded composition supports at most 20000 workface intervals")
             literals = []
             for pi, placement in enumerate(placements):
                 literal = model.new_bool_var(f"place_{ai}_{mi}_{pi}")
                 literals.append(literal)
                 choices[aid].append((literal, mid, placement))
-                for group in activity.get("exclusion_groups", []):
-                    workface_intervals.setdefault(group, []).append(model.new_optional_interval_var(
-                        placement.start, placement.finish - placement.start, placement.finish, literal,
-                        f"workface_{ai}_{mi}_{pi}_{group}"))
+                if placement.start < placement.finish:
+                    for group in activity.get("exclusion_groups", []):
+                        workface_intervals.setdefault(group, []).append(model.new_optional_interval_var(
+                            placement.start, placement.finish - placement.start, placement.finish, literal,
+                            f"workface_{ai}_{mi}_{pi}_{group}"))
                 for ri, (requirement, rid) in enumerate(zip(spec.requirements, placement.assignments)):
                     for si, (start, finish) in enumerate(placement.periods):
                         interval = model.new_optional_interval_var(start, finish - start, finish, literal,

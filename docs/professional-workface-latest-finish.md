@@ -11,7 +11,8 @@ editable amount of execution work. Portable input schema stays
 - An active activity with `exclusion_groups: ["WF-A"]` occupies every named
   workface over its half-open execution envelope `[start, finish)`. Another
   active activity in that group cannot enter during a productive suspension.
-  Distinct groups are independent; zero-length milestones occupy no time.
+  Distinct groups are independent; zero-length milestones create no workface
+  interval and occupy no time.
 - An active activity with integer `latest_finish` must finish at or before that
   tick. This is a hard constraint, never an objective penalty. An inactive
   method's deadline and workface names impose no occupancy or deadline.
@@ -19,6 +20,10 @@ editable amount of execution work. Portable input schema stays
   negative or beyond-horizon latest finishes are invalid. A fixed activity
   with `not_before + shortest declared processing_ticks > latest_finish` is
   structurally invalid. An optional method can be validly infeasible.
+- The bounded compiler permits at most 20,000 positive-duration optional
+  workface intervals in addition to the existing 20,000 placement-alternative
+  limit. Group membership multiplies intervals; excess is rejected before
+  constructing those intervals.
 
 The joint candidate filters late productive placements and adds optional
 no-overlap intervals over full execution envelopes for each workface. Its
@@ -40,8 +45,9 @@ over `[0,2)` and `[4,6)` while retaining its workface across `[2,4)`.
 | Shared workface, no deadline | FAST | 6 | 7 | B waits until A leaves its full envelope. |
 | Shared workface, B latest finish 3 | ALT | 2 | 7 | FAST cannot satisfy B's hard bound within the preferred schedule. |
 
-Removing only the workface from the workface case restores finish 6. Removing
-only B's deadline from the protected case restores the preferred FAST method;
+Removing the workface from the workface case restores finish 6. Removing only
+the workface from the protected case retains B's deadline and restores FAST at
+finish 6. Removing only B's deadline from the protected case also restores FAST;
 its B finish is 7 and would violate the protected tick 3. `C_ALT` has an
 impossible `latest_finish: 0` and names `WF-A`; it is inactive in the protected
 case, so it does not obstruct B. `A_FAST` also names `WF-A` and is inactive in

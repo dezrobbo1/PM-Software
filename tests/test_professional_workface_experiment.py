@@ -47,7 +47,7 @@ class ProfessionalWorkfaceTests(unittest.TestCase):
                                            "CHECK": "FIXED", "HANDOFF": "FIXED"}))
 
     def test_workface_counterfactual_and_suspendable_envelope(self):
-        no_face = self.cases["no_workface"]
+        no_face = self.cases["baseline"]
         face = self.cases["workface"]
         self.assertEqual(no_face["objective"][0], 6)
         self.assertEqual(face["objective"][0], 7)
@@ -58,6 +58,15 @@ class ProfessionalWorkfaceTests(unittest.TestCase):
         b = next(e for e in plan["entries"] if e["activity_id"] == "B")
         self.assertEqual(a["periods"], [[0, 2], [4, 6]])
         self.assertEqual((a["start"], a["finish"], b["start"]), (0, 6, 6))
+
+    def test_removing_only_workface_from_protected_case_restores_fast_method(self):
+        protected = self.cases["protected"]
+        no_face = self.cases["no_workface"]
+        self.assertEqual(protected["methods"]["BUILD"], "ALT")
+        self.assertEqual(no_face["methods"]["BUILD"], "FAST")
+        self.assertEqual(protected["objective"][0], 7)
+        self.assertEqual(no_face["objective"][0], 6)
+        self.assertEqual(protected["starts"]["B"], no_face["starts"]["B"])
 
     def test_protected_finish_changes_structure_and_inactive_fields_do_not_bind(self):
         protected = self.cases["protected"]
@@ -124,6 +133,14 @@ class ProfessionalWorkfaceTests(unittest.TestCase):
         plan = schedule_work_method_time(p).plan
         self.assertEqual(next(e for e in plan["entries"] if e["activity_id"] == "D")["start"], 1)
         self.assertEqual(validate_plan(p, plan), "PROVEN_FEASIBLE")
+
+    def test_workface_interval_expansion_is_bounded_before_creation(self):
+        p = build_problem(workface=True)
+        next(a for a in p.project["activities"] if a["id"] == "B")["exclusion_groups"] = [
+            f"WF-{i}" for i in range(4000)
+        ]
+        with self.assertRaisesRegex(ValueError, "20000 workface intervals"):
+            schedule_work_method_time(p)
 
     def test_repeated_plan_and_independent_raw_control(self):
         p = build_problem(workface=True, deadline=True)

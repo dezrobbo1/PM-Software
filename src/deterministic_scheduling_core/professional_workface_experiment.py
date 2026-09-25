@@ -111,7 +111,7 @@ def independent_control(problem: WorkMethodTimeProject) -> dict:
 def run_experiment() -> dict:
     cases = {}
     for label, workface, deadline in (("baseline", False, False), ("workface", True, False),
-                                      ("protected", True, True), ("no_workface", False, False),
+                                      ("protected", True, True), ("no_workface", False, True),
                                       ("no_deadline", True, False)):
         problem = build_problem(workface=workface, deadline=deadline)
         before = input_hash(problem)
