@@ -185,6 +185,20 @@ class CanonicalCostExperimentTests(unittest.TestCase):
         classification, _, _ = _classify_cost_outcome(contradicted, False)
         self.assertEqual(classification, "E_NEW_CORRECTNESS_FAILURE")
 
+        assembly_dominated = deepcopy(self.result["cases"])
+        scale = next(case for case in assembly_dominated
+                     if case["name"] == "converged_64_48")
+        solve_ms = scale["sequential"]["solve_ms"]
+        scale["sequential"]["placement_generation_ms"] = 1
+        scale["sequential"]["cp_model_assembly_ms"] = solve_ms * 2
+        scale["sequential"]["build_ms"] = solve_ms * 3
+        classification, recommendation, basis = _classify_cost_outcome(
+            assembly_dominated, True
+        )
+        self.assertEqual(classification, "B_PLACEMENT_GENERATION_DOMINATED")
+        self.assertEqual(basis["construction_dominant_component"], "cp_model_assembly")
+        self.assertIn("CP-model assembly", recommendation)
+
     def test_density_ladder_holds_stage_count_and_grows_model(self):
         cases = [self.by_name[f"density_{horizon}"] for horizon in (16, 64, 192, 480)]
         self.assertEqual({case["sequential"]["total_stages"] for case in cases}, {18})

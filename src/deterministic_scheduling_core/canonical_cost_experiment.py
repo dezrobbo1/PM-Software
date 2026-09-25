@@ -416,8 +416,13 @@ def _classify_cost_outcome(cases: list[dict], evidence_valid: bool) -> tuple[str
         for stage_type in ("method_canonical", "mode_canonical", "placement_canonical")
     )
     challenger_block_ms = challenger["stage_costs"]["canonical_block"]["elapsed_wall_ms"]
-    placement_model_construction_ms = (
-        sequential["placement_generation_ms"] + sequential["cp_model_assembly_ms"]
+    placement_generation_ms = sequential["placement_generation_ms"]
+    cp_model_assembly_ms = sequential["cp_model_assembly_ms"]
+    placement_and_model_assembly_ms = placement_generation_ms + cp_model_assembly_ms
+    construction_dominant_component = (
+        "placement_generation"
+        if placement_generation_ms >= cp_model_assembly_ms
+        else "cp_model_assembly"
     )
     predicates = {
         "sequential_solve_exceeds_build": sequential["solve_ms"] > sequential["build_ms"],
@@ -438,12 +443,16 @@ def _classify_cost_outcome(cases: list[dict], evidence_valid: bool) -> tuple[str
             lower_canonical_ms / sequential["solve_ms"]
         ),
         "solver_calls": [sequential["total_stages"], challenger["total_stages"]],
-        "placement_model_construction_ms": placement_model_construction_ms,
+        "placement_generation_ms": placement_generation_ms,
+        "cp_model_assembly_ms": cp_model_assembly_ms,
+        "placement_and_model_assembly_ms": placement_and_model_assembly_ms,
+        "construction_dominant_component": construction_dominant_component,
         "solve_wall_speedup": scale["ratios"]["solve_wall_speedup"],
         "end_to_end_speedup": scale["ratios"]["end_to_end_speedup"],
         "measured_predicates": predicates,
         "decision_rule": (
-            "A requires every measured predicate; B requires construction to exceed solving; "
+            "A requires every measured predicate; B requires combined placement generation "
+            "and CP-model assembly to exceed solving; "
             "D applies when the exact challenger does not reduce calls or observed total cost; "
             "other exact mixed evidence is C. Correctness failure is E."
         ),
@@ -464,10 +473,20 @@ def _classify_cost_outcome(cases: list[dict], evidence_valid: bool) -> tuple[str
             "prove and adopt bounded exact canonical batching in the authoritative path",
             basis,
         )
-    if placement_model_construction_ms > sequential["solve_ms"]:
+    if placement_and_model_assembly_ms > sequential["solve_ms"]:
+        if construction_dominant_component == "placement_generation":
+            recommendation = (
+                "investigate an alternative exact placement representation and generation "
+                "strategy"
+            )
+        else:
+            recommendation = (
+                "investigate an alternative exact placement representation and CP-model "
+                "assembly strategy"
+            )
         return (
             "B_PLACEMENT_GENERATION_DOMINATED",
-            "investigate an alternative exact placement representation and generation strategy",
+            recommendation,
             basis,
         )
     if (challenger["total_stages"] >= sequential["total_stages"]
