@@ -377,9 +377,17 @@ The converged headless path has now survived one materially larger bounded scale
 
 This is evidence that the former 32-activity limit was an experiment boundary on this case, not production-scale certification.
 
-The next work should continue to attack one unresolved core question at a time. Strong candidates are:
+The professional-shaped 160-possible / 120-active challenge has now been classified without changing production limits:
 
-- **professional-shape scale challenge:** adapt the earlier 160-possible / 120-active fixture to the converged native path and classify any failure as admission, placement generation, canonicalisation, CP-SAT proof budget, independent allocation or semantics before changing architecture;
+- the authoritative converged path fails first at the retained 64-declared-activity admission bound;
+- a faithful selected projection also exposes two missing professional semantics in the productive Work-Method profile: workface/exclusion groups and protected latest-finish constraints;
+- a diagnostic-only copy with those fields removed produces **64,068** placement alternatives, above the retained 20,000 cap;
+- the current compiler shape would imply **334** sequential lexicographic stages if all 160 activities were admitted.
+
+Do **not** raise the 64-activity admission limit yet. The next focused implementation should compose the missing workface/exclusion and protected latest-finish semantics into the converged Work-Method/productive-time path on a smaller controlled fixture, with independent validation. Then rerun the 160/120 professional-shaped challenge before addressing placement/canonicalisation scaling.
+
+Other focused candidates remain:
+
 - **calendar/state semantics:** only for a focused irregular-calendar or state-transition capability not answered by the bounded productive-time experiments;
 - **objective ordering:** gather further evidence before declaring structural-vs-temporal stability universally settled.
 

@@ -1,0 +1,47 @@
+name: Professional shape scale challenge
+
+on:
+  push:
+    branches: [main, experiment/professional-shape-160-classification]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: professional-shape-scale-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned native planner
+        run: python -m pip install -e .
+      - name: Record exact source and runtime
+        run: |
+          mkdir -p /tmp/professional-shape-scale
+          git rev-parse HEAD > /tmp/professional-shape-scale/source-sha.txt
+          python -c 'import json,platform,ortools; print(json.dumps({"python":platform.python_version(),"platform":platform.platform(),"ortools":ortools.__version__}))' > /tmp/professional-shape-scale/runtime.json
+      - name: Run focused classification tests
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_professional_scale_challenge -v 2>&1 | tee /tmp/professional-shape-scale/tests.txt
+      - name: Run professional-shape challenge
+        run: |
+          set -euo pipefail
+          python -m deterministic_scheduling_core.professional_scale_challenge --output /tmp/professional-shape-scale/results.json | tee /tmp/professional-shape-scale/console.txt
+      - name: Compile challenge sources
+        run: python -m compileall -q src tests/test_professional_scale_challenge.py
+      - name: Save source-bound classification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: professional-shape-scale-${{ github.sha }}
+          path: /tmp/professional-shape-scale/
+          if-no-files-found: error

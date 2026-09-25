@@ -1,0 +1,69 @@
+"""Tests for professional-shaped 160/120 converged-path barrier classification."""
+from __future__ import annotations
+
+import unittest
+
+from deterministic_scheduling_core.professional_scale_challenge import (
+    ACTIVE_ACTIVITIES,
+    AUTHORISED_STRUCTURES,
+    DECLARED_ACTIVITIES,
+    FLEXIBLE_PACKAGES,
+    WORK_PACKAGES,
+    run_challenge,
+)
+
+
+class ProfessionalScaleChallengeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.result = run_challenge()
+
+    def test_fixture_preserves_professional_shape(self):
+        shape = self.result["shape"]
+        self.assertEqual(shape["declared_activities"], DECLARED_ACTIVITIES)
+        self.assertEqual(shape["selected_active_activities"], ACTIVE_ACTIVITIES)
+        self.assertEqual(shape["work_packages"], WORK_PACKAGES)
+        self.assertEqual(shape["flexible_packages"], FLEXIBLE_PACKAGES)
+        self.assertEqual(shape["authorised_structures"], AUTHORISED_STRUCTURES)
+        self.assertEqual(shape["unsupported_activity_fields"], ["exclusion_groups", "latest_finish"])
+
+    def test_current_authoritative_path_fails_first_at_admission(self):
+        failure = self.result["authoritative_first_failure"]
+        self.assertIsNotNone(failure)
+        self.assertEqual(failure["class"], "ADMISSION_BOUND")
+        self.assertIn("1..64 declared activities", failure["message"])
+
+    def test_faithful_selected_projection_exposes_missing_semantics(self):
+        failure = self.result["selected_projection_failure"]
+        self.assertIsNotNone(failure)
+        self.assertEqual(failure["class"], "UNSUPPORTED_ACTIVITY_SEMANTICS")
+        self.assertIn("unsupported activity fields", failure["message"])
+
+    def test_diagnostic_stripped_projection_reaches_next_scale_checks(self):
+        diagnostic = self.result["diagnostic_without_unsupported_semantics"]
+        self.assertTrue(diagnostic["projection_valid"])
+        self.assertIsNone(diagnostic["projection_error"])
+        self.assertIsInstance(diagnostic["placement_alternatives"], int)
+        self.assertGreater(
+            diagnostic["placement_alternatives"],
+            diagnostic["placement_limit"],
+        )
+        self.assertTrue(diagnostic["placement_limit_would_be_exceeded"])
+        self.assertEqual(diagnostic["lexicographic_stage_count_if_admitted"], 334)
+
+    def test_challenge_is_classification_only_and_immutable(self):
+        self.assertTrue(self.result["portable_round_trip"])
+        self.assertTrue(self.result["source_unchanged"])
+        self.assertTrue(self.result["evidence_valid"])
+        self.assertEqual(
+            self.result["classification"]["first_authoritative_barrier"],
+            "ADMISSION_BOUND",
+        )
+        self.assertEqual(
+            self.result["classification"]["semantic_projection_barrier"],
+            "EXCLUSION_GROUPS_AND_LATEST_FINISH_UNSUPPORTED",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
