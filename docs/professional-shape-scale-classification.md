@@ -1,5 +1,11 @@
 # Professional-Shape 160/120 Scale Classification v0
 
+Historical PR #40 classification. The subsequent future-only semantic experiment
+closed the two missing-field gaps. The faithful selected projection now validates,
+generates 64,068 raw placements and retains 64,032 after the deadline filter; see
+[the updated result](professional-workface-latest-finish.md). The original
+classification below records the pre-integration state.
+
 ## Question
 
 What is the first real barrier when the earlier professional-shaped scheduling

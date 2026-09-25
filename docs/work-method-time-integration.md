@@ -158,20 +158,16 @@ is presumed solely because this contract or the implementation exists.
 
 No UI, hosting, invitations, accepted actuals, status advancement, approvals,
 reference-plan stability, method changes on begun work, arbitrary preemption,
-new elapsed/curing semantics, temporal relationship types, workface exclusions,
-latest-finish/frozen-coordinate profile, aspiration policy or adaptive repair is
+new elapsed/curing semantics, temporal relationship types, a generic workface
+capacity model, soft deadlines, frozen-coordinate profile, aspiration policy or adaptive repair is
 introduced. Unsupported productive-project fields continue to be rejected.
 
-Later convergence work has composed accepted history and rolling structural
-status, but the professional-shaped 160/120 classification has now shown that
-two exclusions in this original boundary remain materially relevant:
-`exclusion_groups` for workface constraints and `latest_finish` for protected
-handoffs are both absent from the productive Work-Method profile. The 160/120
-fixture must not be made to fit by deleting those semantics.
-
-The next focused semantic integration is therefore those workface/exclusion and
-protected latest-finish constraints on a smaller controlled fixture. Only after
-that should the professional-shaped scale challenge be rerun.
+Later convergence work composed accepted history and rolling structural status.
+The future-only Work-Method composition now also accepts `exclusion_groups` and
+`latest_finish` with bounded hard semantics. This does not establish accepted-
+history workface correctness. The faithful 160/120 projection now accepts both
+fields, but still fails at the 64-activity admission guard; see
+[the focused experiment](professional-workface-latest-finish.md).
 
 CP-SAT API/status references checked for this implementation:
 https://developers.google.com/optimization/cp/cp_solver
