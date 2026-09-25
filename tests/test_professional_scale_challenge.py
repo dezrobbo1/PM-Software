@@ -44,7 +44,11 @@ class ProfessionalScaleChallengeTests(unittest.TestCase):
         self.assertTrue(diagnostic["projection_valid"])
         self.assertIsNone(diagnostic["projection_error"])
         self.assertIsInstance(diagnostic["placement_alternatives"], int)
-        self.assertGreater(diagnostic["placement_alternatives"], 0)
+        self.assertGreater(
+            diagnostic["placement_alternatives"],
+            diagnostic["placement_limit"],
+        )
+        self.assertTrue(diagnostic["placement_limit_would_be_exceeded"])
         self.assertEqual(diagnostic["lexicographic_stage_count_if_admitted"], 334)
 
     def test_challenge_is_classification_only_and_immutable(self):
