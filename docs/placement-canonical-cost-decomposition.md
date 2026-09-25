@@ -56,11 +56,14 @@ they answer different questions.
 | Existing anchor | 13 declared / 11 active Work-Method integration | small known composition and plan-hash control |
 | Professional semantics anchor | 10 declared / 8 active | active workface exclusion, hard latest finish and an inactive constrained alternative |
 | Admitted scale anchor | 64 declared / 48 active | retained 5,626-placement converged scale case and 138-stage oracle |
-| Stage ladder | 8, 16, 32, 48, 64 active | one legal placement per activity; canonical stage count grows |
+| Activity/stage ladder | 8, 16, 32, 48, 64 active | one legal placement per activity; activity count, base model and canonical stage count grow together |
+| Fixed-model proof-prefix ladder | one 64-activity / 64-placement model | base variables and constraints remain fixed while 18, 34, 66, 98 or 130 sequential stages are proved |
 | Placement ladder | horizon 16, 64, 192, 480 with 8 active | 18 authoritative stages stay fixed while placements grow from 129 to 3,841 |
 
 The ladders are diagnostic controls, not production benchmarks. They remain
-within all retained bounds.
+within all retained bounds. Only the final fixed-model prefix row proves the
+complete policy; shorter rows measure proof cost and do not produce candidate
+plans.
 
 ## Exact batching challenger
 
@@ -117,6 +120,17 @@ performance promises.
 | Density 64 | 513 | 18 | 43.62 | 3 | 16.64 | 2.62x | 2.21x |
 | Density 192 | 1,537 | 18 | 111.23 | 4 | 63.15 | 1.76x | 1.64x |
 | Density 480 | 3,841 | 18 | 499.22 | 4 | 321.57 | 1.55x | 1.52x |
+
+The additional fixed-model prefix control held 64 activities, 64 placements,
+257 variables and 319 base constraints constant:
+
+| Canonical stages proved | Total stages | Observed solve ms |
+|---:|---:|---:|
+| 16 | 18 | 26.93 |
+| 32 | 34 | 68.45 |
+| 64 | 66 | 83.06 |
+| 96 | 98 | 139.34 |
+| 128 | 130 | 180.81 |
 
 For the 64/48 anchor, pre-solve construction was 123.97 ms:
 
@@ -179,11 +193,13 @@ placement set, but it was secondary on the 64/48 anchor: 123.97 ms build versus
 The 136 lower canonical proofs contributed 78.90% of sequential solve wall time
 on 64/48. Mode and placement proofs were the largest aggregates.
 
-**Q3 — scaling driver:** both axes matter. With simple one-placement activities,
-18 to 130 stages increased observed solve time from 7.55 to 198.82 ms. At a
-fixed 18 stages, 129 to 3,841 placements increased it from 20.65 to 499.22 ms.
-The real anchor therefore contains an interaction: more proofs, each over a
-larger model. Raw placement generation itself was only 16.59 ms there.
+**Q3 — scaling driver:** both axes matter. On the fixed 64-activity model, 18 to
+130 prefix stages increased observed proof time from 26.93 to 180.81 ms. At a
+fixed 18 complete-policy stages, 129 to 3,841 placements increased it from 20.65
+to 499.22 ms. The separate activity ladder shows their natural combined growth,
+not a pure stage-only effect. The real anchor therefore contains an interaction:
+more proofs, each over a larger model. Raw placement generation itself was only
+16.59 ms there.
 
 **Q4 — safe adjacent decisions:** yes for this bounded vector. Mixed-radix blocks
 preserved declared lexicographic order without approaching the conservative
@@ -192,6 +208,13 @@ integer limit.
 **Q5 — benefit:** yes on every retained case. The 64/48 challenger reduced calls
 from 138 to 11 and observed end-to-end time by 3.89x while matching the complete
 policy and semantic plan exactly.
+
+The machine-readable classifier derives the result from direct comparisons on
+the 64/48 anchor: solve cost exceeds build cost, lower canonical proofs exceed
+the two global proofs, safe blocks reduce lower canonical cost, and the challenger
+reduces calls, solve wall time and end-to-end wall time. It uses no fixed speedup
+threshold. A correctness mismatch would instead produce E; a run contradicting
+the measured challenger benefit cannot produce A.
 
 **Classification: A — canonical-proof dominated, with a material model-size
 interaction.** The evidence supports a next milestone to prove and adopt the

@@ -218,7 +218,7 @@ def semantic_plan(plan: dict) -> dict:
 
 
 def build_stage_ladder(activity_count: int) -> WorkMethodTimeProject:
-    """Create fixed one-placement activities so only canonical digit count grows."""
+    """Grow activity/stage count while retaining one placement per activity."""
     if activity_count not in {8, 16, 32, 48, 64}:
         raise ValueError("stage ladder supports 8, 16, 32, 48 or 64 activities")
     activities = []
@@ -350,6 +350,140 @@ def _cost_summary(metrics: dict) -> dict:
     }
 
 
+def run_fixed_model_stage_prefix_ladder() -> dict:
+    """Measure proof-count growth on one fixed 64-activity compiled model.
+
+    These are diagnostic policy-prefix proofs, not complete challenger plans. The
+    base model, placement set and declared activities remain identical in every
+    row; only the number of adjacent authoritative stages proved is increased.
+    """
+    problem = build_stage_ladder(64)
+    before = input_hash(problem)
+    rows = []
+    for canonical_stage_count in (16, 32, 64, 96, 128):
+        compiled = _compile_work_method_time(problem)
+        stages = compiled.stages[:2 + canonical_stage_count]
+        _, _, stage_metrics = _solve_compiled_stages(compiled, stages)
+        rows.append({
+            "canonical_stages_proven": canonical_stage_count,
+            "total_stages": len(stages),
+            "declared_activities": len(problem.project["activities"]),
+            "placement_alternatives": compiled.placement_count,
+            "base_variables": compiled.compile_metrics["base_variables"],
+            "base_constraints": compiled.compile_metrics["base_constraints"],
+            "build_ms": (compiled.built_at - compiled.started_at) * 1000,
+            "solve_ms": sum(stage["elapsed_wall_ms"] for stage in stage_metrics),
+            "deterministic_time": sum(
+                stage["deterministic_time"] for stage in stage_metrics
+            ),
+            "stage_evidence": stage_metrics,
+        })
+    fixed_shape = len({
+        (
+            row["declared_activities"],
+            row["placement_alternatives"],
+            row["base_variables"],
+            row["base_constraints"],
+        )
+        for row in rows
+    }) == 1
+    return {
+        "purpose": "isolate sequential proof-stage count on a fixed compiled model",
+        "complete_policy_only_in_final_row": True,
+        "rows": rows,
+        "fixed_model_shape": fixed_shape,
+        "source_unchanged": input_hash(problem) == before,
+        "evidence_valid": (
+            fixed_shape
+            and input_hash(problem) == before
+            and all(all(stage["status"] == "OPTIMAL" for stage in row["stage_evidence"])
+                    for row in rows)
+        ),
+    }
+
+
+def _classify_cost_outcome(cases: list[dict], evidence_valid: bool) -> tuple[str, str, dict]:
+    """Classify this bounded run from direct measured-cost comparisons."""
+    scale = next(case for case in cases if case["name"] == "converged_64_48")
+    sequential = scale["sequential"]
+    challenger = scale["challenger"]
+    global_proof_ms = sum(
+        sequential["stage_costs"][stage_type]["elapsed_wall_ms"]
+        for stage_type in ("finish", "global_timing")
+    )
+    lower_canonical_ms = sum(
+        sequential["stage_costs"][stage_type]["elapsed_wall_ms"]
+        for stage_type in ("method_canonical", "mode_canonical", "placement_canonical")
+    )
+    challenger_block_ms = challenger["stage_costs"]["canonical_block"]["elapsed_wall_ms"]
+    placement_model_construction_ms = (
+        sequential["placement_generation_ms"] + sequential["cp_model_assembly_ms"]
+    )
+    predicates = {
+        "sequential_solve_exceeds_build": sequential["solve_ms"] > sequential["build_ms"],
+        "lower_canonical_exceeds_global_proofs": lower_canonical_ms > global_proof_ms,
+        "blocks_reduce_lower_canonical_cost": challenger_block_ms < lower_canonical_ms,
+        "challenger_reduces_solver_calls": challenger["total_stages"] < sequential["total_stages"],
+        "challenger_reduces_solve_wall": challenger["solve_ms"] < sequential["solve_ms"],
+        "challenger_reduces_end_to_end_wall": (
+            challenger["end_to_end_ms"] < sequential["end_to_end_ms"]
+        ),
+    }
+    basis = {
+        "fixture": "converged_64_48",
+        "sequential_solve_share_of_end_to_end": (
+            sequential["solve_ms"] / sequential["end_to_end_ms"]
+        ),
+        "lower_canonical_share_of_sequential_solve": (
+            lower_canonical_ms / sequential["solve_ms"]
+        ),
+        "solver_calls": [sequential["total_stages"], challenger["total_stages"]],
+        "placement_model_construction_ms": placement_model_construction_ms,
+        "solve_wall_speedup": scale["ratios"]["solve_wall_speedup"],
+        "end_to_end_speedup": scale["ratios"]["end_to_end_speedup"],
+        "measured_predicates": predicates,
+        "decision_rule": (
+            "A requires every measured predicate; B requires construction to exceed solving; "
+            "D applies when the exact challenger does not reduce calls or observed total cost; "
+            "other exact mixed evidence is C. Correctness failure is E."
+        ),
+        "note": (
+            "This is a bounded exact-head observation, not a universal threshold or "
+            "cross-environment performance guarantee."
+        ),
+    }
+    if not evidence_valid:
+        return (
+            "E_NEW_CORRECTNESS_FAILURE",
+            "classify and fix the exact-equivalence failure before scale optimisation",
+            basis,
+        )
+    if all(predicates.values()):
+        return (
+            "A_CANONICAL_PROOF_DOMINATED",
+            "prove and adopt bounded exact canonical batching in the authoritative path",
+            basis,
+        )
+    if placement_model_construction_ms > sequential["solve_ms"]:
+        return (
+            "B_PLACEMENT_GENERATION_DOMINATED",
+            "investigate an alternative exact placement representation and generation strategy",
+            basis,
+        )
+    if (challenger["total_stages"] >= sequential["total_stages"]
+            or challenger["end_to_end_ms"] >= sequential["end_to_end_ms"]):
+        return (
+            "D_CHALLENGER_NOT_JUSTIFIED",
+            "retain the authoritative sequential policy and revisit only with new evidence",
+            basis,
+        )
+    return (
+        "C_MIXED_BOTTLENECK",
+        "choose the first intervention from the measured dominant cost and dependency order",
+        basis,
+    )
+
+
 def run_cost_decomposition() -> dict:
     cases = []
     for name, family, problem in fixture_matrix():
@@ -427,6 +561,7 @@ def run_cost_decomposition() -> dict:
                 "source_unchanged": input_hash(problem) == before,
             },
         })
+    fixed_model_stage_prefix = run_fixed_model_stage_prefix_ladder()
     professional_scale = run_challenge()
     professional_scale_valid = (
         professional_scale["evidence_valid"]
@@ -437,13 +572,12 @@ def run_cost_decomposition() -> dict:
     )
     evidence_valid = (
         all(all(case["equivalence"].values()) for case in cases)
+        and fixed_model_stage_prefix["evidence_valid"]
         and professional_scale_valid
     )
-    scale = next(case for case in cases if case["name"] == "converged_64_48")
-    scale_sequential = scale["sequential"]
-    lower_canonical_ms = sum(
-        scale_sequential["stage_costs"][stage_type]["elapsed_wall_ms"]
-        for stage_type in ("method_canonical", "mode_canonical", "placement_canonical")
+    classification, recommendation, classification_basis = _classify_cost_outcome(
+        cases,
+        evidence_valid,
     )
     return {
         "milestone": "placement-canonical-cost-decomposition-v0",
@@ -458,34 +592,12 @@ def run_cost_decomposition() -> dict:
         },
         "integer_safety_bound": MAX_SAFE_BLOCK_VALUE,
         "cases": cases,
+        "fixed_model_stage_prefix_ladder": fixed_model_stage_prefix,
         "professional_scale_follow_up": professional_scale,
         "evidence_valid": evidence_valid,
-        "classification_basis": {
-            "fixture": "converged_64_48",
-            "sequential_solve_share_of_end_to_end": (
-                scale_sequential["solve_ms"] / scale_sequential["end_to_end_ms"]
-            ),
-            "lower_canonical_share_of_sequential_solve": (
-                lower_canonical_ms / scale_sequential["solve_ms"]
-            ),
-            "solver_calls": [
-                scale_sequential["total_stages"], scale["challenger"]["total_stages"]
-            ],
-            "solve_wall_speedup": scale["ratios"]["solve_wall_speedup"],
-            "end_to_end_speedup": scale["ratios"]["end_to_end_speedup"],
-            "note": (
-                "This is a bounded exact-head observation, not a universal threshold or "
-                "cross-environment performance guarantee."
-            ),
-        },
-        "classification": (
-            "A_CANONICAL_PROOF_DOMINATED" if evidence_valid else "E_NEW_CORRECTNESS_FAILURE"
-        ),
-        "recommended_next_milestone": (
-            "prove and adopt bounded exact canonical batching in the authoritative path"
-            if evidence_valid
-            else "classify and fix the exact-equivalence failure before scale optimisation"
-        ),
+        "classification_basis": classification_basis,
+        "classification": classification,
+        "recommended_next_milestone": recommendation,
     }
 
 

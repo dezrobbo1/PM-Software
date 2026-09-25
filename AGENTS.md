@@ -395,10 +395,13 @@ sequential oracle against one exact experimental batching challenger:
   sequential proofs were about 19.07 s;
 - safe mixed-radix batching reduced those 138 proofs to 11 and observed
   end-to-end time by 3.89x;
-- controlled ladders show that both stage count and model/placement density grow
-  proof cost, while raw placement generation remained secondary on the anchor.
+- a fixed 64-activity model shows proof cost growing with the number of stages,
+  while a separate fixed-stage ladder shows model/placement density growing
+  proof cost; raw placement generation remained secondary on the anchor.
 
 **Outcome A: canonical-proof dominated, with a material model-size interaction.**
+The machine-readable classifier derives that outcome from the measured dominance
+and challenger comparisons; correctness alone cannot produce A.
 The challenger is experimental and `schedule_work_method_time(...)` remains the
 sequential authority. A next focused milestone may prove and adopt bounded exact
 batching while retaining the sequential oracle. Do not combine that adoption

@@ -14,6 +14,7 @@ from ortools.sat.python import cp_model
 from deterministic_scheduling_core.canonical_cost_experiment import (
     MAX_SAFE_BLOCK_VALUE,
     CanonicalDigit,
+    _classify_cost_outcome,
     build_lexicographic_blocks,
     run_cost_decomposition,
     schedule_batched_challenger,
@@ -146,6 +147,34 @@ class CanonicalCostExperimentTests(unittest.TestCase):
                          [8, 16, 32, 48, 64])
         self.assertEqual([case["sequential"]["total_stages"] for case in cases],
                          [18, 34, 66, 98, 130])
+
+    def test_fixed_model_prefix_ladder_isolates_sequential_proof_count(self):
+        evidence = self.result["fixed_model_stage_prefix_ladder"]
+        self.assertTrue(evidence["evidence_valid"])
+        self.assertTrue(evidence["complete_policy_only_in_final_row"])
+        rows = evidence["rows"]
+        self.assertEqual([row["total_stages"] for row in rows], [18, 34, 66, 98, 130])
+        self.assertEqual(len({(
+            row["declared_activities"],
+            row["placement_alternatives"],
+            row["base_variables"],
+            row["base_constraints"],
+        ) for row in rows}), 1)
+        self.assertEqual(rows[0]["declared_activities"], 64)
+        self.assertEqual(rows[0]["placement_alternatives"], 64)
+
+    def test_exit_classification_is_derived_from_measured_costs(self):
+        classification, _, basis = _classify_cost_outcome(self.result["cases"], True)
+        self.assertEqual(classification, "A_CANONICAL_PROOF_DOMINATED")
+        self.assertTrue(all(basis["measured_predicates"].values()))
+
+        contradicted = deepcopy(self.result["cases"])
+        scale = next(case for case in contradicted if case["name"] == "converged_64_48")
+        scale["challenger"]["end_to_end_ms"] = scale["sequential"]["end_to_end_ms"] * 2
+        classification, _, _ = _classify_cost_outcome(contradicted, True)
+        self.assertEqual(classification, "D_CHALLENGER_NOT_JUSTIFIED")
+        classification, _, _ = _classify_cost_outcome(contradicted, False)
+        self.assertEqual(classification, "E_NEW_CORRECTNESS_FAILURE")
 
     def test_density_ladder_holds_stage_count_and_grows_model(self):
         cases = [self.by_name[f"density_{horizon}"] for horizon in (16, 64, 192, 480)]
