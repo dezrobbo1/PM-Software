@@ -380,11 +380,11 @@ This is evidence that the former 32-activity limit was an experiment boundary on
 The professional-shaped 160-possible / 120-active challenge has now been classified without changing production limits:
 
 - the authoritative converged path fails first at the retained 64-declared-activity admission bound;
-- a faithful selected projection also exposes two missing professional semantics in the productive Work-Method profile: workface/exclusion groups and protected latest-finish constraints;
-- a diagnostic-only copy with those fields removed produces **64,068** placement alternatives, above the retained 20,000 cap;
+- the two formerly missing semantics now compose in the bounded future-only productive Work-Method path; an active workface occupies the entire execution envelope and active latest-finish is hard;
+- the faithful selected projection accepts both fields, generates **64,068** raw placements and retains **64,032** after filtering late placements, above the retained 20,000 cap;
 - the current compiler shape would imply **334** sequential lexicographic stages if all 160 activities were admitted.
 
-Do **not** raise the 64-activity admission limit yet. The next focused implementation should compose the missing workface/exclusion and protected latest-finish semantics into the converged Work-Method/productive-time path on a smaller controlled fixture, with independent validation. Then rerun the 160/120 professional-shaped challenge before addressing placement/canonicalisation scaling.
+The small controlled case agrees with independent raw-start enumeration; removing workface or protected finish changes the preferred plan. Do **not** raise the 64-activity admission limit yet. The next focused investigation is placement generation/canonicalisation and its proof budget; this is not evidence of 160/120 schedulability. See `docs/professional-workface-latest-finish.md`.
 
 Other focused candidates remain:
 

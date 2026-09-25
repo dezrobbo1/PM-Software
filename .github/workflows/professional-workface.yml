@@ -1,0 +1,41 @@
+name: Professional workface and protected finish
+
+on:
+  push:
+    branches: [main, feat/workface-latest-finish-convergence]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: professional-workface-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e .
+      - name: Source and runtime
+        run: |
+          mkdir -p /tmp/professional-workface
+          git rev-parse HEAD > /tmp/professional-workface/source-sha.txt
+          python -c 'import json,platform,ortools; print(json.dumps({"python":platform.python_version(),"platform":platform.platform(),"ortools":ortools.__version__}))' > /tmp/professional-workface/runtime.json
+      - name: Focused tests and independent control
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_professional_workface_experiment -v 2>&1 | tee /tmp/professional-workface/tests.txt
+          python -m deterministic_scheduling_core.professional_workface_experiment | tee /tmp/professional-workface/control.json
+      - name: Retain exact-source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: professional-workface-${{ github.sha }}
+          path: /tmp/professional-workface/
+          if-no-files-found: error

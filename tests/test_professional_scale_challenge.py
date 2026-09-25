@@ -25,7 +25,7 @@ class ProfessionalScaleChallengeTests(unittest.TestCase):
         self.assertEqual(shape["work_packages"], WORK_PACKAGES)
         self.assertEqual(shape["flexible_packages"], FLEXIBLE_PACKAGES)
         self.assertEqual(shape["authorised_structures"], AUTHORISED_STRUCTURES)
-        self.assertEqual(shape["unsupported_activity_fields"], ["exclusion_groups", "latest_finish"])
+        self.assertEqual(shape["unsupported_activity_fields"], [])
 
     def test_current_authoritative_path_fails_first_at_admission(self):
         failure = self.result["authoritative_first_failure"]
@@ -33,17 +33,18 @@ class ProfessionalScaleChallengeTests(unittest.TestCase):
         self.assertEqual(failure["class"], "ADMISSION_BOUND")
         self.assertIn("1..64 declared activities", failure["message"])
 
-    def test_faithful_selected_projection_exposes_missing_semantics(self):
+    def test_faithful_selected_projection_accepts_both_semantics(self):
         failure = self.result["selected_projection_failure"]
-        self.assertIsNotNone(failure)
-        self.assertEqual(failure["class"], "UNSUPPORTED_ACTIVITY_SEMANTICS")
-        self.assertIn("unsupported activity fields", failure["message"])
+        self.assertIsNone(failure)
+        self.assertTrue(self.result["faithful_projection_valid"])
 
-    def test_diagnostic_stripped_projection_reaches_next_scale_checks(self):
-        diagnostic = self.result["diagnostic_without_unsupported_semantics"]
+    def test_diagnostic_faithful_projection_reaches_next_scale_checks(self):
+        diagnostic = self.result["diagnostic_faithful_projection"]
         self.assertTrue(diagnostic["projection_valid"])
         self.assertIsNone(diagnostic["projection_error"])
         self.assertIsInstance(diagnostic["placement_alternatives"], int)
+        self.assertEqual(diagnostic["raw_generated_placements"], 64068)
+        self.assertEqual(diagnostic["placement_alternatives"], 64032)
         self.assertGreater(
             diagnostic["placement_alternatives"],
             diagnostic["placement_limit"],
@@ -61,7 +62,7 @@ class ProfessionalScaleChallengeTests(unittest.TestCase):
         )
         self.assertEqual(
             self.result["classification"]["semantic_projection_barrier"],
-            "EXCLUSION_GROUPS_AND_LATEST_FINISH_UNSUPPORTED",
+            None,
         )
 
 

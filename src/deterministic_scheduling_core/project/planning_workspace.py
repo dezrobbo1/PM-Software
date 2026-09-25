@@ -37,8 +37,10 @@ def _ids(items: list[dict], label: str) -> set[str]:
     return set(ids)
 
 
-def validate(workspace: Workspace) -> None:
+def validate(workspace: Workspace, *, allow_future_constraints: bool = False) -> None:
     """Validate the deliberately small editable input, not a general project schema."""
+    if allow_future_constraints and workspace.get("schema") == STATUS_SCHEMA:
+        raise ValueError("future-only constraints are not supported in accepted-history workspaces")
     if workspace.get("schema") not in {SCHEMA, GROUP_SCHEMA, STATUS_SCHEMA}:
         raise ValueError(f"expected schema {SCHEMA}, {GROUP_SCHEMA} or {STATUS_SCHEMA}")
     if workspace["schema"] != STATUS_SCHEMA and "execution" in workspace:
@@ -85,12 +87,26 @@ def validate(workspace: Workspace) -> None:
             raise ValueError("this workspace supports known calendars and capacity-one physical resources")
     by_resource = {resource["id"]: resource for resource in project["resources"]}
     for activity in project["activities"]:
-        if set(activity) - {"id", "name", "modes", "predecessors", "not_before"}:
+        allowed_activity = {"id", "name", "modes", "predecessors", "not_before"}
+        if allow_future_constraints:
+            allowed_activity |= {"exclusion_groups", "latest_finish"}
+        if set(activity) - allowed_activity:
             raise ValueError(f"unsupported activity fields on {activity['id']}")
         if not activity["modes"]:
             raise ValueError("each activity needs an authorised mode")
         _ids(activity["modes"], "mode")
         _integer(activity.get("not_before", 0), "not_before")
+        if allow_future_constraints:
+            if "latest_finish" in activity:
+                _integer(activity["latest_finish"], "latest_finish")
+                if activity["latest_finish"] > horizon:
+                    raise ValueError("latest_finish must lie within the planning horizon")
+            if "exclusion_groups" in activity:
+                groups_value = activity["exclusion_groups"]
+                if (not isinstance(groups_value, list) or any(
+                    not isinstance(group, str) or not group.strip() for group in groups_value
+                ) or len(groups_value) != len(set(groups_value))):
+                    raise ValueError("exclusion_groups must be an array of distinct nonempty strings")
         if not set(activity.get("predecessors", [])) <= activities:
             raise ValueError("unknown predecessor")
         for mode in activity["modes"]:

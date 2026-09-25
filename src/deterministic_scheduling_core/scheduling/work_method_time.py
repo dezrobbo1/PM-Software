@@ -28,6 +28,7 @@ from .planning_workspace import _case, _group_placements
 PLAN_SCHEMA = "pm-native-work-method-time-plan/0"
 POLICY = "finish-global-start-timing-declared-methods-declared-modes-canonical-placement/0"
 MAX_DETERMINISTIC_TIME_PER_STAGE = 60.0
+MAX_WORKFACE_INTERVALS = 20_000
 
 
 @dataclass(frozen=True)
@@ -63,7 +64,15 @@ def validate_problem(problem: WorkMethodTimeProject) -> None:
                 raise ValueError("nonempty execution-method ID required")
     validate_project(structural_view(problem))
     for selected in method_selections(problem):
-        validate_workspace(materialise(problem, selected))
+        validate_workspace(materialise(problem, selected), allow_future_constraints=True)
+    members = membership(problem)
+    fixed_packages = {package.id for package in problem.work_packages if len(package.methods) == 1}
+    for activity in source["activities"]:
+        latest = activity.get("latest_finish")
+        owner = members.get(activity["id"])
+        if latest is not None and (owner is None or owner[0] in fixed_packages):
+            if activity.get("not_before", 0) + min(m["processing_ticks"] for m in activity["modes"]) > latest:
+                raise ValueError(f"{activity['id']}: fixed activity cannot finish by latest_finish from not_before")
 
 
 def _mode_cases(problem: WorkMethodTimeProject):
@@ -133,6 +142,9 @@ def _validate_physics(problem: WorkMethodTimeProject, plan: dict):
                           "start", "finish", "periods", "assignments", "group_demands"}:
             raise ValueError("unsupported plan entry fields")
         aid = entry["activity_id"]
+        latest = active[aid].get("latest_finish")
+        if latest is not None and entry["finish"] > latest:
+            raise ValueError(f"{aid}: active finish exceeds latest_finish")
         if (entry["mode_id"] != selected_modes[aid]
                 or (entry["work_package_id"], entry["method_id"]) != members.get(aid, (None, None))):
             raise ValueError("entry has incorrect mode/structure ownership")
@@ -155,6 +167,14 @@ def _validate_physics(problem: WorkMethodTimeProject, plan: dict):
                                     tuple(tuple(p) for p in entry["periods"]),
                                     tuple((r.id, None if r.id.startswith("@group/") else witness[aid, r.id])
                                           for r in spec.requirements)))
+    workfaces = {}
+    for entry in entries:
+        for group in active[entry["activity_id"]].get("exclusion_groups", []):
+            for other in workfaces.get(group, []):
+                if (entry["start"] < entry["finish"] and other["start"] < other["finish"]
+                        and entry["start"] < other["finish"] and other["start"] < entry["finish"]):
+                    raise ValueError(f"{group}: active workface execution envelopes overlap")
+            workfaces.setdefault(group, []).append(entry)
     check = check_allocation(case, tuple(raw))
     if check.status != ra.EXACT_FEASIBLE:
         raise ValueError(f"independent physical validation failed: {check.reason}")
@@ -211,7 +231,9 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
         model.add_exactly_one([methods[package.id, m.id] for m in package.methods])
     starts, ends, presence, mode_vars, choices = {}, {}, {}, {}, {}
     named_intervals = {r.id: [] for r in environment.resources}
+    workface_intervals = {}
     placement_count = 0
+    workface_interval_count = 0
     for ai, activity in enumerate(source["activities"]):
         aid = activity["id"]
         present = methods[members[aid]] if aid in members else model.new_constant(1)
@@ -225,16 +247,29 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
             mode_vars[aid, mid] = mode_var
             spec = specs[aid, mid]
             placements = _group_placements(environment, spec, "B")
+            if "latest_finish" in activity:
+                placements = tuple(p for p in placements if p.finish <= activity["latest_finish"])
             placements = tuple(sorted(placements, key=lambda p: (
                 p.start, p.finish, p.periods, tuple("" if r is None else r for r in p.assignments))))
             placement_count += len(placements)
             if placement_count > 20000:
                 raise ValueError("bounded composition supports at most 20000 placement alternatives")
+            # Multiple group names multiply optional intervals per placement.
+            # Bound that expansion before constructing any of this mode's intervals.
+            active_placements = sum(p.start < p.finish for p in placements)
+            workface_interval_count += active_placements * len(activity.get("exclusion_groups", []))
+            if workface_interval_count > MAX_WORKFACE_INTERVALS:
+                raise ValueError("bounded composition supports at most 20000 workface intervals")
             literals = []
             for pi, placement in enumerate(placements):
                 literal = model.new_bool_var(f"place_{ai}_{mi}_{pi}")
                 literals.append(literal)
                 choices[aid].append((literal, mid, placement))
+                if placement.start < placement.finish:
+                    for group in activity.get("exclusion_groups", []):
+                        workface_intervals.setdefault(group, []).append(model.new_optional_interval_var(
+                            placement.start, placement.finish - placement.start, placement.finish, literal,
+                            f"workface_{ai}_{mi}_{pi}_{group}"))
                 for ri, (requirement, rid) in enumerate(zip(spec.requirements, placement.assignments)):
                     for si, (start, finish) in enumerate(placement.periods):
                         interval = model.new_optional_interval_var(start, finish - start, finish, literal,
@@ -262,6 +297,9 @@ def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeR
                         model.add(starts[root] >= ends[prior_method.completion_activity_id]).only_enforce_if(
                             [methods[package.id, method.id], methods[predecessor, prior_method.id]])
     for intervals in named_intervals.values():
+        if intervals:
+            model.add_no_overlap(intervals)
+    for intervals in workface_intervals.values():
         if intervals:
             model.add_no_overlap(intervals)
     timing = sum((i + 1) * starts[a["id"]] for i, a in enumerate(source["activities"]))

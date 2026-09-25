@@ -7,7 +7,6 @@ before any architecture is changed.
 """
 from __future__ import annotations
 
-from copy import deepcopy
 from math import prod
 import json
 from pathlib import Path
@@ -156,7 +155,7 @@ def _selected_standard_methods(problem: WorkMethodTimeProject) -> dict[str, str]
 
 
 def _unsupported_activity_fields(problem: WorkMethodTimeProject) -> list[str]:
-    supported = {"id", "name", "modes", "predecessors", "not_before"}
+    supported = {"id", "name", "modes", "predecessors", "not_before", "exclusion_groups", "latest_finish"}
     return sorted({
         field
         for activity in problem.project["activities"]
@@ -165,26 +164,20 @@ def _unsupported_activity_fields(problem: WorkMethodTimeProject) -> list[str]:
     })
 
 
-def _strip_unsupported_activity_fields(problem: WorkMethodTimeProject) -> WorkMethodTimeProject:
-    project = deepcopy(problem.project)
-    for activity in project["activities"]:
-        activity.pop("latest_finish", None)
-        activity.pop("exclusion_groups", None)
-    return WorkMethodTimeProject(project, problem.work_packages, problem.reports)
-
-
-def _diagnostic_placement_count(problem: WorkMethodTimeProject) -> int:
-    """Count current placement alternatives without solving or changing admission."""
+def _diagnostic_placement_count(problem: WorkMethodTimeProject) -> tuple[int, int]:
+    """Count generated and deadline-eligible placements without solving/admission."""
     environment, specs = _mode_cases(problem)
-    count = 0
+    raw = eligible = 0
     for activity in problem.project["activities"]:
         for mode in activity["modes"]:
-            count += len(_group_placements(
+            placements = _group_placements(
                 environment,
                 specs[activity["id"], mode["id"]],
                 "B",
-            ))
-    return count
+            )
+            raw += len(placements)
+            eligible += sum(p.finish <= activity.get("latest_finish", environment.horizon) for p in placements)
+    return raw, eligible
 
 
 def run_challenge() -> dict:
@@ -209,7 +202,7 @@ def run_challenge() -> dict:
     projection_failure = None
     projection = materialise(problem, methods)
     try:
-        validate_workspace(projection)
+        validate_workspace(projection, allow_future_constraints=True)
     except ValueError as exc:
         projection_failure = {
             "class": (
@@ -220,21 +213,8 @@ def run_challenge() -> dict:
             "message": str(exc),
         }
 
-    stripped = _strip_unsupported_activity_fields(problem)
-    stripped_projection = materialise(stripped, methods)
-    stripped_projection_valid = True
-    stripped_projection_error = None
-    try:
-        validate_workspace(stripped_projection)
-    except ValueError as exc:
-        stripped_projection_valid = False
-        stripped_projection_error = str(exc)
-
-    placement_count = (
-        _diagnostic_placement_count(stripped)
-        if stripped_projection_valid
-        else None
-    )
+    placement_counts = _diagnostic_placement_count(problem) if projection_failure is None else None
+    placement_count = placement_counts[1] if placement_counts else None
     stage_count_if_admitted = (
         2
         + len(problem.work_packages)
@@ -258,9 +238,11 @@ def run_challenge() -> dict:
         "portable_round_trip": to_document(round_trip) == to_document(problem),
         "authoritative_first_failure": authoritative_failure,
         "selected_projection_failure": projection_failure,
-        "diagnostic_without_unsupported_semantics": {
-            "projection_valid": stripped_projection_valid,
-            "projection_error": stripped_projection_error,
+        "faithful_projection_valid": projection_failure is None,
+        "diagnostic_faithful_projection": {
+            "projection_valid": projection_failure is None,
+            "projection_error": projection_failure["message"] if projection_failure else None,
+            "raw_generated_placements": placement_counts[0] if placement_counts else None,
             "placement_alternatives": placement_count,
             "placement_limit": CURRENT_PLACEMENT_LIMIT,
             "placement_limit_would_be_exceeded": (
@@ -271,12 +253,11 @@ def run_challenge() -> dict:
         "source_unchanged": input_hash(problem) == source_hash,
         "classification": {
             "first_authoritative_barrier": "ADMISSION_BOUND",
-            "semantic_projection_barrier": "EXCLUSION_GROUPS_AND_LATEST_FINISH_UNSUPPORTED",
+            "semantic_projection_barrier": None,
             "next_action": (
-                "Do not raise the 64-activity limit yet. First compose workface/exclusion "
-                "constraints and protected latest-finish semantics into the converged "
-                "Work-Method/productive-time path on a smaller focused fixture; then rerun "
-                "this 160/120 challenge and classify placement/canonicalisation limits."
+                "The faithful selected projection accepts workface and protected latest-finish fields. "
+                "Keep the 64-activity admission guard; investigate placement generation and "
+                "canonicalisation stages separately before considering scale admission."
             ),
         },
     }
@@ -287,13 +268,12 @@ def run_challenge() -> dict:
         shape["work_packages"] == WORK_PACKAGES,
         shape["flexible_packages"] == FLEXIBLE_PACKAGES,
         shape["authorised_structures"] == AUTHORISED_STRUCTURES,
-        shape["unsupported_activity_fields"] == ["exclusion_groups", "latest_finish"],
+        shape["unsupported_activity_fields"] == [],
         authoritative_failure is not None
         and authoritative_failure["class"] == "ADMISSION_BOUND",
-        projection_failure is not None
-        and projection_failure["class"] == "UNSUPPORTED_ACTIVITY_SEMANTICS",
-        stripped_projection_valid,
-        result["diagnostic_without_unsupported_semantics"]["placement_limit_would_be_exceeded"],
+        projection_failure is None,
+        result["diagnostic_faithful_projection"]["projection_valid"],
+        result["diagnostic_faithful_projection"]["placement_limit_would_be_exceeded"],
         result["portable_round_trip"],
         result["source_unchanged"],
     ))
@@ -321,7 +301,7 @@ def main() -> None:
     print("projection:", json.dumps(result["selected_projection_failure"], sort_keys=True))
     print(
         "diagnostic:",
-        json.dumps(result["diagnostic_without_unsupported_semantics"], sort_keys=True),
+        json.dumps(result["diagnostic_faithful_projection"], sort_keys=True),
     )
     print("next:", result["classification"]["next_action"])
     print(result["boundary"])
