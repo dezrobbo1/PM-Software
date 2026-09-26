@@ -1,5 +1,10 @@
 # Authoritative exact canonical batching v0
 
+The later, diagnostic-only [controlling-finish proof decomposition](controlling-finish-proof-decomposition.md)
+investigates the dominant finish stage after adoption. It retains the production
+compiler and all plan hashes; the historical adoption measurements below remain
+PR #43 observations.
+
 PR #42 compared the then-authoritative one-solve-per-digit Work-Method/productive-
 time scheduler with an exact mixed-radix challenger. It found canonical proof
 dominance on the retained 64/48 case. This milestone adopts that bounded proof
