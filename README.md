@@ -521,6 +521,8 @@ The subsequent bounded adoption makes batching authoritative in `schedule_work_m
 
 The [controlling-finish proof decomposition](docs/controlling-finish-proof-decomposition.md) investigates the next admitted cost without changing production code. On 64/48, finish optimization needed 5.478 deterministic seconds locally; feasibility at the authoritative finish of 19 needed 0.068, and finish by 18 was proved infeasible in presolve. Fixing methods and modes or pruning inactive alternatives left material objective proof cost. A placement census and two controlled ladders support **Outcome D: temporal placement / model representation dominated, with a method-choice interaction**. The result is diagnostic evidence, not a new scheduling algorithm or scale-limit increase.
 
+The follow-up [exact finish-search and factored-placement experiment](docs/factored-placement-finish-search.md) tests a complete 2×2 matrix. All four cells reproduce the same finish, canonical vector, placements and physical plan. The unknown-optimum bounded search takes more total deterministic effort on 64/48; factoring anonymous group witnesses keeps the exact legacy placement ranks but increases actual model variables and constraints. **Outcome E: neither experimental challenger is justified for adoption on this anchor.** Production scheduling and all limits remain unchanged.
+
 Do not substitute broad compatibility work, production hardening, a P6/MSP clone, full event sourcing, a generic objective-policy framework, a generic decomposition framework or a large UI framework for the next focused experiment.
 
 ## External-format adapter boundary

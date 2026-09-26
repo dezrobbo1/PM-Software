@@ -1,5 +1,9 @@
 # Controlling finish proof cost decomposition v0
 
+The later [2×2 exact finish-search and factored-placement experiment](factored-placement-finish-search.md)
+tests the hypotheses below. It retains this PR #44 evidence as historical
+observations and leaves production scheduling unchanged.
+
 ## Question and boundary
 
 PR #43 made exact canonical batching authoritative, reducing the 64-declared / 48-active case to 11 proof calls. The first, controlling-finish optimization became the largest admitted solve cost. This experiment asks which parts of that cost depend on knowing the optimum, structure, modes, physical identity, or placement representation. It does not change the production compiler, policy, plan hash, accepted history, lineage, or admission limits.
