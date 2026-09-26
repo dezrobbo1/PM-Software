@@ -523,6 +523,8 @@ The [controlling-finish proof decomposition](docs/controlling-finish-proof-decom
 
 The follow-up [exact finish-search and factored-placement experiment](docs/factored-placement-finish-search.md) tests a complete 2×2 matrix. All four cells reproduce the same finish, canonical vector, placements and physical plan. The unknown-optimum bounded search takes more total deterministic effort on 64/48; factoring anonymous group witnesses keeps the exact legacy placement ranks but increases actual model variables and constraints. **Outcome E: neither experimental challenger is justified for adoption on this anchor.** Production scheduling and all limits remain unchanged.
 
+The [exact lower-bound propagation experiment](docs/finish-lower-bound-propagation.md) finds a cheap solver-independent precedence bound already equal to the 64/48 optimum of 19. Injecting it, a calendar/placement-aware bound, or even diagnostic `finish >= 19` does not reduce the retained 5.478 deterministic-second finish proof. Budgeted solver snapshots do not establish an earlier incumbent with a lagging objective bound. **Outcome E: lower-bound strength does not explain this anchor's objective cost.** This remains diagnostic only.
+
 Do not substitute broad compatibility work, production hardening, a P6/MSP clone, full event sourcing, a generic objective-policy framework, a generic decomposition framework or a large UI framework for the next focused experiment.
 
 ## External-format adapter boundary
