@@ -24,7 +24,9 @@ class FactoredFinishSearchTests(unittest.TestCase):
                 raise AssertionError("evidence JSON source SHA must match checked-out PR head")
         output = os.getenv("FACTORED_FINISH_EVIDENCE_OUTPUT")
         if output:
-            Path(output).write_text(json.dumps(cls.result, indent=2, sort_keys=True) + "\n")
+            path = Path(output)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(cls.result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     def test_base_and_complete_policy_matrix(self):
         r = self.result
