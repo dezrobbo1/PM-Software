@@ -37,6 +37,7 @@ class FinishLowerBoundTests(unittest.TestCase):
                           ("declared_activities", "authorised_structures", "placement_alternatives",
                            "base_variables", "base_constraints", "workface_intervals")],
                          [64, 16, 5626, 5832, 3860, 0])
+        self.assertEqual(r["anchor"]["source_input_hash"], input_hash(build_problem()))
 
     def test_budget_samples_and_oracle_injection(self):
         r = self.result
@@ -101,6 +102,13 @@ class FinishLowerBoundTests(unittest.TestCase):
 
     def test_adversarial_professional_named_and_anonymous_controls(self):
         controls = self.result["controls"]
+        from deterministic_scheduling_core.native_work_method_time import build_problem as small_problem
+        named_source = small_problem()
+        self.assertTrue(any(len(requirement["eligible_resource_ids"]) > 1
+                            for activity in named_source.project["activities"]
+                            for mode in activity["modes"]
+                            for requirement in mode.get("requirements", [])))
+        self.assertEqual(controls["small"]["source_input_hash"], input_hash(named_source))
         self.assertEqual(controls["professional"]["finish"], 7)
         self.assertEqual(controls["suspended_workface"]["finish"], 7)
         self.assertEqual(controls["anonymous_group"]["finish"], 5)

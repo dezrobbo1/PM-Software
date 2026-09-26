@@ -14,6 +14,7 @@ incumbent? Each sample starts with a fresh copy of the **same** 5,626-placement,
 5,832-variable, 3,860-constraint objective-free production model. Its text proto
 SHA-256 in OR-Tools 9.15.6755 is
 `02828dd59cfd718abf1f4ff2f612094ed05f8fcde6a4d688ce16b895eeb07ea7`.
+The JSON also records the complete source-input hash for each fixture.
 The injected diagnostic adds precisely one `finish >= L` constraint, then proves
 the unchanged finish objective OPTIMAL. Selected methods are separately fixed in
 the same union model; the selected-network control is explicitly a pruned model.

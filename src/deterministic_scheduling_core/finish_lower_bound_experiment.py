@@ -199,7 +199,8 @@ def _fixture(problem, *, exact_plan=None, injected=False):
         raise AssertionError(f"inadmissible derived lower bound: {bounds}, F={f}")
     for row in bounds.values():
         row["gap_ticks"] = f - row["value"]
-    result = {"finish": f, "bounds": bounds, "base": base, "plan_hash": exact_plan["plan_hash"],
+    result = {"finish": f, "bounds": bounds, "base": base,
+              "source_input_hash": original, "plan_hash": exact_plan["plan_hash"],
               "bound_domain_compilation_wall_ms": bound_domain_compilation_ms,
               "selected_methods": exact_plan["selected_methods"],
               "selected_modes": exact_plan["selected_modes"], "entries": exact_plan["entries"],
