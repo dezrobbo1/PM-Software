@@ -423,6 +423,14 @@ temporal placement/model representation with a method-choice interaction. See
 be imported by production scheduling, and these measurements justify no limit
 change or new architecture in this milestone.
 
+The later 2×2 exact finish-search and anonymous-group factoring experiment
+preserves complete policy and independent physical feasibility on all four
+cells. Bounded unknown-optimum search uses more deterministic effort on the
+retained 64/48 case. Factoring preserves every flattened canonical rank but
+adds conjunction variables and increases real model size. See
+`docs/factored-placement-finish-search.md` for Outcome E and controls. Keep both
+challengers experimental; do not adopt either or raise any scale bound.
+
 Other focused candidates remain:
 
 - **calendar/state semantics:** only for a focused irregular-calendar or state-transition capability not answered by the bounded productive-time experiments;
