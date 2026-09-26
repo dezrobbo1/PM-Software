@@ -48,3 +48,10 @@ The smaller professional control uses both the protected deadline with an inacti
 Frozen base-main production plan hashes remain unchanged for small (`458a5927a645fb2eed8a8ac432c0262d2bfcf23d3ae222a4e9f32d4682569ab5`), professional (`61add1ea57ede769cb676aa11f93b31eb5696f8f691b22b22a38b9f146172a7d`) and 64/48 (`88f125d76b5cdbe4f18e14834767e964e5b29f2db21a2c839481e1399e21f63f`) plans. The professional 160/120 classifier still accepts faithful workface/deadline semantics, stops at the 64-activity guard, counts 64,068 raw and 64,032 deadline-eligible placements against the unchanged 20,000 cap. No 160/120 scheduling is attempted.
 
 The dedicated workflow saves the exact head SHA, Python and OR-Tools versions, focused tests, complete JSON with per-proof deterministic counters, and SHA-256 checksums. Wall times are measurements, never correctness assertions. No production scheduling path imports this module.
+
+The later [exact lower-bound propagation diagnostic](finish-lower-bound-propagation.md)
+tests an objective-bound explanation on the unchanged R0 model. Its retained
+LB1 equals F=19 before injection, but even diagnostic oracle `finish >= F`
+does not reduce the optimiser's deterministic effort. This new observation
+narrows the interpretation of the historical Outcome D; it does not rewrite
+the earlier proof, census or classification.

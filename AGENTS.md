@@ -431,6 +431,15 @@ adds conjunction variables and increases real model size. See
 `docs/factored-placement-finish-search.md` for Outcome E and controls. Keep both
 challengers experimental; do not adopt either or raise any scale bound.
 
+The follow-up exact controlling-finish lower-bound experiment finds that
+solver-independent logic/precedence LB1 already equals F=19 on the 64/48 anchor.
+Injecting LB1–LB3, or even the oracle diagnostic finish >= F, leaves the
+finish proof's deterministic effort unchanged in the retained run. Budgeted
+response-proto observations cannot establish an incumbent-before-bound gap.
+See `docs/finish-lower-bound-propagation.md` for admissibility arguments, total
+costs and Outcome E. Do not add these lower bounds to production from this
+evidence; do not change its model, policy, hashes or scale bounds.
+
 Other focused candidates remain:
 
 - **calendar/state semantics:** only for a focused irregular-calendar or state-transition capability not answered by the bounded productive-time experiments;

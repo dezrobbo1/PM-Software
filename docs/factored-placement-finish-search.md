@@ -56,3 +56,9 @@ Production plan hashes on verified base main remain small `458a5927a645fb2eed8a8
 **E — neither challenger justified on this retained anchor.** S1 makes more exact solver calls and consumes more deterministic effort. R1 reduces temporal choice count but preserves pair literals and increases variables, constraints and model text. Its modest proof variation is insufficient evidence for adopting a larger model. The next separate milestone should investigate exact objective lower-bound propagation with new controls before selecting any production search or representation change. No limit or production scheduling policy changes follow from this experiment.
 
 The dedicated read-only-permission CI workflow retains the source SHA, runtime, focused tests, full machine-readable report and checksums. Wall times are observations; deterministic counters and exact feasibility/semantic facts are separately labeled.
+
+The subsequent [lower-bound propagation diagnostic](finish-lower-bound-propagation.md)
+tests the objective-bound hypothesis directly. Its cheap logic bound already
+matches F=19 on the anchor, while injecting that bound or diagnostic oracle F
+does not reduce exact finish-proof deterministic effort. PR #45 remains
+historical 2×2 evidence; neither challenger was adopted.
