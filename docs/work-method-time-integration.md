@@ -75,7 +75,8 @@ not deleted or patched to obtain feasibility.
 
 ## Initial-plan policy and proof
 
-There is no approved reference plan in this slice. Optimise sequentially:
+There is no approved reference plan in this slice. Optimise lexicographically
+in this declared order:
 
 1. controlling finish;
 2. weighted start-time sum, using each activity's index in the full declared
@@ -84,10 +85,13 @@ There is no approved reference plan in this slice. Optimise sequentially:
 4. declared mode index, activity by activity (inactive activity contributes zero);
 5. deterministic placement ordering for the remaining representation ties.
 
-Each proven optimum is fixed before the next stage. The authoritative path uses
-no mixed-radix objective. A fixed-method comparator retains the original full-input start
-weights; compressing indices after removing an inactive method would change the
-comparison. The first two tiers and both declared choice vectors are compared.
+Finish and global timing are each proved and fixed separately. The authoritative
+path then proves adjacent lower-order digits in bounded, exact mixed-radix
+blocks, fixing each block before the next. The retained sequential oracle
+proves and fixes each digit separately. A fixed-method comparator retains the
+original full-input start weights; compressing indices after removing an
+inactive method would change the comparison. The first two tiers and both
+declared choice vectors are compared.
 
 Canonical stage ordering is a same-environment repeatability control, not a
 cross-version/platform guarantee. Every CP-SAT stage has a deterministic-work
