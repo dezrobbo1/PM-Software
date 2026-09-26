@@ -257,7 +257,9 @@ def run_challenge() -> dict:
             "next_action": (
                 "The faithful selected projection accepts workface and protected latest-finish fields. "
                 "Keep the 64-activity admission guard; investigate placement generation and "
-                "canonicalisation stages separately before considering scale admission."
+                "global proof/model construction under authoritative batching before "
+                "considering scale admission. The 334-stage estimate describes the "
+                "retained sequential oracle, not the authoritative batched path."
             ),
         },
     }

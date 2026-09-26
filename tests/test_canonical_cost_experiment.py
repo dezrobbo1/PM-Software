@@ -27,6 +27,7 @@ from deterministic_scheduling_core.professional_workface_experiment import (
 from deterministic_scheduling_core.project.planning_workspace import digest
 from deterministic_scheduling_core.project.work_method_time import WorkMethodTimeProject
 from deterministic_scheduling_core.scheduling.work_method_time import (
+    _schedule_work_method_time_sequential_oracle,
     schedule_work_method_time,
     validate_plan,
     validate_problem,
@@ -86,7 +87,7 @@ class CanonicalCostExperimentTests(unittest.TestCase):
             path.write_text(json.dumps(cls.result, indent=2) + "\n", encoding="utf-8")
         cls.by_name = {case["name"]: case for case in cls.result["cases"]}
 
-    def test_instrumentation_preserves_known_authoritative_plan_bytes(self):
+    def test_sequential_oracle_preserves_known_historical_plan_bytes(self):
         known = {
             "small": (build_problem(), "3d8409958ca0b0248d78aad631ce4e0ded7f6c6a5af15ee5c6a108121fcdc7d0"),
             "professional": (
@@ -96,7 +97,7 @@ class CanonicalCostExperimentTests(unittest.TestCase):
         }
         for name, (problem, expected_hash) in known.items():
             with self.subTest(name=name):
-                result = schedule_work_method_time(problem)
+                result = _schedule_work_method_time_sequential_oracle(problem)
                 self.assertEqual(result.plan["plan_hash"], expected_hash)
                 self.assertIn("validation_ms", result.metrics)
                 self.assertIn("stage_metrics", result.metrics)
@@ -249,10 +250,10 @@ class CanonicalCostExperimentTests(unittest.TestCase):
 
     def test_direct_challenger_projection_matches_authoritative_plan_fields(self):
         problem = build_problem()
-        sequential = schedule_work_method_time(problem)
-        challenger = schedule_batched_challenger(problem)
-        self.assertEqual(semantic_plan(sequential.plan), semantic_plan(challenger.plan))
-        self.assertNotEqual(sequential.plan["solver"]["compiler"], challenger.plan["solver"]["compiler"])
+        oracle = _schedule_work_method_time_sequential_oracle(problem)
+        authoritative = schedule_work_method_time(problem)
+        self.assertEqual(semantic_plan(oracle.plan), semantic_plan(authoritative.plan))
+        self.assertNotEqual(oracle.plan["solver"]["compiler"], authoritative.plan["solver"]["compiler"])
 
 
 if __name__ == "__main__":

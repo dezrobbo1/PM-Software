@@ -1,11 +1,9 @@
 """Bounded placement/build cost measurement and exact canonical batching control."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 from math import prod
 from pathlib import Path
 from time import perf_counter
-from typing import Iterable
 import argparse
 import json
 import platform
@@ -28,131 +26,17 @@ from deterministic_scheduling_core.project.work_method_time import (
     input_hash,
 )
 from deterministic_scheduling_core.scheduling.work_method_time import (
-    _CompiledWorkMethodTime,
-    _Stage,
     WorkMethodTimeResult,
     _compile_work_method_time,
-    _extract_plan,
-    _result_metrics,
+    _schedule_work_method_time_batched,
+    _schedule_work_method_time_sequential_oracle,
     _solve_compiled_stages,
     schedule_work_method_time,
     validate_plan,
 )
-
-
-MAX_SAFE_BLOCK_VALUE = (1 << 60) - 1
-
-
-@dataclass(frozen=True)
-class CanonicalDigit:
-    name: str
-    maximum: int
-
-
-@dataclass(frozen=True)
-class CanonicalBlock:
-    name: str
-    digits: tuple[CanonicalDigit, ...]
-    coefficients: tuple[int, ...]
-    maximum: int
-    safety_bound: int
-
-    def to_document(self) -> dict:
-        return {
-            "name": self.name,
-            "digits": [
-                {"name": digit.name, "maximum": digit.maximum, "coefficient": coefficient}
-                for digit, coefficient in zip(self.digits, self.coefficients)
-            ],
-            "maximum_possible_value": self.maximum,
-            "integer_safety_bound": self.safety_bound,
-        }
-
-
-def _finish_block(
-    index: int,
-    digits: list[CanonicalDigit],
-    safety_bound: int,
-) -> CanonicalBlock:
-    coefficients = []
-    coefficient = 1
-    for digit in reversed(digits):
-        coefficients.append(coefficient)
-        coefficient *= digit.maximum + 1
-    coefficients.reverse()
-    maximum = coefficient - 1
-    return CanonicalBlock(
-        f"canonical_block:{index:03d}",
-        tuple(digits),
-        tuple(coefficients),
-        maximum,
-        safety_bound,
-    )
-
-
-def build_lexicographic_blocks(
-    digits: Iterable[CanonicalDigit],
-    *,
-    safety_bound: int = MAX_SAFE_BLOCK_VALUE,
-) -> tuple[CanonicalBlock, ...]:
-    """Greedily group adjacent digits with an auditable mixed-radix bound.
-
-    For digits d[i] in [0, max[i]], each coefficient is the product of all
-    less-significant radices. Therefore one unit in any more-significant digit
-    exceeds the maximum possible contribution of every lower digit. A block is
-    closed before its complete domain would exceed the conservative bound.
-    """
-    if type(safety_bound) is not int or safety_bound < 0 or safety_bound > MAX_SAFE_BLOCK_VALUE:
-        raise ValueError(f"safety_bound must be an integer in 0..{MAX_SAFE_BLOCK_VALUE}")
-    blocks: list[CanonicalBlock] = []
-    current: list[CanonicalDigit] = []
-    current_maximum = 0
-    seen = set()
-    for digit in digits:
-        if (not isinstance(digit, CanonicalDigit) or not isinstance(digit.name, str)
-                or not digit.name or type(digit.maximum) is not int or digit.maximum < 0):
-            raise ValueError("canonical digits need a unique name and nonnegative integer maximum")
-        if digit.name in seen:
-            raise ValueError("canonical digit names must be unique")
-        seen.add(digit.name)
-        if digit.maximum > safety_bound:
-            raise ValueError(f"{digit.name}: digit maximum exceeds the integer safety bound")
-        candidate = digit.maximum if not current else (
-            (current_maximum + 1) * (digit.maximum + 1) - 1
-        )
-        if current and candidate > safety_bound:
-            blocks.append(_finish_block(len(blocks), current, safety_bound))
-            current = [digit]
-            current_maximum = digit.maximum
-        else:
-            current.append(digit)
-            current_maximum = candidate
-    if current:
-        blocks.append(_finish_block(len(blocks), current, safety_bound))
-    if any(block.maximum > safety_bound for block in blocks):
-        raise ValueError("internal error: unsafe canonical block")
-    return tuple(blocks)
-
-
-def _batched_canonical_stages(
-    compiled: _CompiledWorkMethodTime,
-    blocks: tuple[CanonicalBlock, ...],
-) -> tuple[_Stage, ...]:
-    canonical = {stage.name: stage for stage in compiled.stages[2:]}
-    digit_vars = {}
-    for digit in (digit for block in blocks for digit in block.digits):
-        stage = canonical[digit.name]
-        variable = compiled.model.new_int_var(0, digit.maximum, f"canonical_digit_{digit.name}")
-        compiled.model.add(variable == stage.expression)
-        digit_vars[digit.name] = variable
-    result = []
-    for block in blocks:
-        expression = sum(
-            coefficient * digit_vars[digit.name]
-            for digit, coefficient in zip(block.digits, block.coefficients)
-        )
-        result.append(_Stage(block.name, "canonical_block", expression, block.maximum))
-    return tuple(result)
+from deterministic_scheduling_core.scheduling.canonical_batching import (
+    MAX_SAFE_BLOCK_VALUE, CanonicalBlock, CanonicalDigit, build_lexicographic_blocks,
+)
 
 
 def schedule_batched_challenger(
@@ -160,56 +44,10 @@ def schedule_batched_challenger(
     *,
     safety_bound: int = MAX_SAFE_BLOCK_VALUE,
 ) -> WorkMethodTimeResult:
-    """Solve the same policy with bounded exact blocks; never used by production."""
-    compiled = _compile_work_method_time(problem)
-    canonical_digits = tuple(
-        CanonicalDigit(stage.name, stage.maximum) for stage in compiled.stages[2:]
+    """Compatibility wrapper for the historical PR #42 experiment only."""
+    return _schedule_work_method_time_batched(
+        problem, safety_bound=safety_bound, compiler="canonical-batching-challenger/0",
     )
-    blocks = build_lexicographic_blocks(canonical_digits, safety_bound=safety_bound)
-    solver, global_proof, global_stage_metrics = _solve_compiled_stages(
-        compiled,
-        compiled.stages[:2],
-    )
-    block_started = perf_counter()
-    stages = _batched_canonical_stages(compiled, blocks)
-    block_assembly_ms = (perf_counter() - block_started) * 1000
-    solver, block_proof, block_stage_metrics = _solve_compiled_stages(
-        compiled,
-        stages,
-        solver=solver,
-        cumulative_wall_ms=global_stage_metrics[-1]["cumulative_wall_ms"],
-        cumulative_deterministic_time=(
-            global_stage_metrics[-1]["cumulative_deterministic_time"]
-        ),
-    )
-    proof = global_proof + block_proof
-    stage_metrics = global_stage_metrics + block_stage_metrics
-    plan, extraction_metrics = _extract_plan(
-        compiled,
-        solver,
-        proof,
-        compiler="canonical-batching-challenger/0",
-    )
-    metrics = _result_metrics(compiled, stage_metrics, extraction_metrics)
-    metrics.update({
-        "canonical_block_assembly_ms": block_assembly_ms,
-        "canonical_digits": [
-            {"name": digit.name, "maximum": digit.maximum} for digit in canonical_digits
-        ],
-        "canonical_blocks": [block.to_document() for block in blocks],
-        "canonical_block_count": len(blocks),
-        "integer_safety_bound": safety_bound,
-        "canonical_vector": [
-            {
-                "name": stage.name,
-                "stage_type": stage.stage_type,
-                "value": solver.value(stage.expression),
-                "maximum": stage.maximum,
-            }
-            for stage in compiled.stages[2:]
-        ],
-    })
-    return WorkMethodTimeResult(plan, metrics)
 
 
 def semantic_plan(plan: dict) -> dict:
@@ -470,14 +308,14 @@ def _classify_cost_outcome(cases: list[dict], evidence_valid: bool) -> tuple[str
     if all(predicates.values()):
         return (
             "A_CANONICAL_PROOF_DOMINATED",
-            "prove and adopt bounded exact canonical batching in the authoritative path",
+            "investigate the bounded placement/model-size and finish/global-proof interaction",
             basis,
         )
     if (challenger["total_stages"] >= sequential["total_stages"]
             or challenger["end_to_end_ms"] >= sequential["end_to_end_ms"]):
         return (
             "D_CHALLENGER_NOT_JUSTIFIED",
-            "retain the authoritative sequential policy and revisit only with new evidence",
+            "treat this wall observation as diagnostic; do not change the authoritative proof policy without correctness evidence",
             basis,
         )
     if placement_and_model_assembly_ms > sequential["solve_ms"]:
@@ -504,12 +342,17 @@ def _classify_cost_outcome(cases: list[dict], evidence_valid: bool) -> tuple[str
 
 
 def run_cost_decomposition() -> dict:
+    """Compare authoritative batching with the retained sequential oracle.
+
+    The historical ``challenger`` output key is retained for PR #42 evidence
+    consumers; it now describes the authoritative batched run.
+    """
     cases = []
     for name, family, problem in fixture_matrix():
         before = input_hash(problem)
-        sequential = schedule_work_method_time(problem)
-        challenger = schedule_batched_challenger(problem)
-        repeat = schedule_batched_challenger(problem)
+        sequential = _schedule_work_method_time_sequential_oracle(problem)
+        challenger = schedule_work_method_time(problem)
+        repeat = schedule_work_method_time(problem)
         validate_plan(problem, sequential.plan)
         validate_plan(problem, challenger.plan)
         semantic_equal = semantic_plan(sequential.plan) == semantic_plan(challenger.plan)
@@ -534,9 +377,10 @@ def run_cost_decomposition() -> dict:
         cases.append({
             "name": name,
             "family": family,
-            "authoritative_plan_hash": sequential.plan["plan_hash"],
-            "authoritative_semantic_digest": digest(semantic_plan(sequential.plan)),
-            "challenger_semantic_digest": digest(semantic_plan(challenger.plan)),
+            "roles": {"sequential": "legacy_oracle", "challenger": "authoritative_batching"},
+            "authoritative_plan_hash": challenger.plan["plan_hash"],
+            "authoritative_semantic_digest": digest(semantic_plan(challenger.plan)),
+            "sequential_oracle_semantic_digest": digest(semantic_plan(sequential.plan)),
             "shape": {
                 **_shape(problem, sequential.plan),
                 "placement_alternatives": sequential.metrics["placement_alternatives"],
@@ -599,7 +443,8 @@ def run_cost_decomposition() -> dict:
         evidence_valid,
     )
     return {
-        "milestone": "placement-canonical-cost-decomposition-v0",
+        "milestone": "authoritative-canonical-batching-v0-follow-up",
+        "measurement_roles": {"sequential": "legacy_oracle", "challenger": "authoritative_batching"},
         "measurement_note": (
             "wall-clock values are observations from this run; deterministic_time is the "
             "OR-Tools proof counter returned by each solve and is not wall time"

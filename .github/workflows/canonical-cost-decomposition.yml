@@ -1,4 +1,4 @@
-name: Placement and canonical proof cost decomposition
+name: Canonical proof cost / authoritative versus oracle
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
           mkdir -p /tmp/canonical-cost
           git rev-parse HEAD > /tmp/canonical-cost/source-sha.txt
           python -c 'import json,platform,ortools; print(json.dumps({"python":platform.python_version(),"platform":platform.platform(),"ortools":ortools.__version__}))' > /tmp/canonical-cost/runtime.json
-      - name: Run exact equivalence and controlled cost matrix
+      - name: Compare authoritative batching against retained sequential oracle
         env:
           CANONICAL_COST_EVIDENCE_OUTPUT: /tmp/canonical-cost/results.json
           PYTHONHASHSEED: "0"

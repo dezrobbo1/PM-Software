@@ -1,0 +1,302 @@
+{
+  "schema": "pm-native-work-method-time-plan/0",
+  "input_hash": "e1eaacb44a46a86b457df446d1861027694d977e9adb1fa9f91d2f0042e7f791",
+  "policy": "finish-global-start-timing-declared-methods-declared-modes-canonical-placement/0",
+  "selected_methods": {
+    "BUILD": "ALT",
+    "ACCESS": "FIXED",
+    "CREW": "FAST",
+    "CHECK": "FIXED",
+    "HANDOFF": "FIXED"
+  },
+  "selected_modes": {
+    "A_ALT": "FIXED",
+    "B": "FIXED",
+    "C_FAST": "FIXED",
+    "D": "FIXED",
+    "E": "FIXED",
+    "F": "FIXED",
+    "G": "FIXED",
+    "DONE": "FIXED"
+  },
+  "entries": [
+    {
+      "activity_id": "A_ALT",
+      "mode_id": "FIXED",
+      "work_package_id": "BUILD",
+      "method_id": "ALT",
+      "start": 6,
+      "finish": 7,
+      "periods": [
+        [
+          6,
+          7
+        ]
+      ],
+      "assignments": [],
+      "group_demands": []
+    },
+    {
+      "activity_id": "B",
+      "mode_id": "FIXED",
+      "work_package_id": "ACCESS",
+      "method_id": "FIXED",
+      "start": 2,
+      "finish": 3,
+      "periods": [
+        [
+          2,
+          3
+        ]
+      ],
+      "assignments": [
+        [
+          "MECH",
+          "M"
+        ]
+      ],
+      "group_demands": []
+    },
+    {
+      "activity_id": "C_FAST",
+      "mode_id": "FIXED",
+      "work_package_id": "CREW",
+      "method_id": "FAST",
+      "start": 0,
+      "finish": 1,
+      "periods": [
+        [
+          0,
+          1
+        ]
+      ],
+      "assignments": [
+        [
+          "MECH",
+          "M"
+        ]
+      ],
+      "group_demands": []
+    },
+    {
+      "activity_id": "D",
+      "mode_id": "FIXED",
+      "work_package_id": "CHECK",
+      "method_id": "FIXED",
+      "start": 1,
+      "finish": 1,
+      "periods": [],
+      "assignments": [],
+      "group_demands": []
+    },
+    {
+      "activity_id": "E",
+      "mode_id": "FIXED",
+      "work_package_id": "CHECK",
+      "method_id": "FIXED",
+      "start": 1,
+      "finish": 1,
+      "periods": [],
+      "assignments": [],
+      "group_demands": []
+    },
+    {
+      "activity_id": "F",
+      "mode_id": "FIXED",
+      "work_package_id": "CHECK",
+      "method_id": "FIXED",
+      "start": 1,
+      "finish": 1,
+      "periods": [],
+      "assignments": [],
+      "group_demands": []
+    },
+    {
+      "activity_id": "G",
+      "mode_id": "FIXED",
+      "work_package_id": "CHECK",
+      "method_id": "FIXED",
+      "start": 1,
+      "finish": 1,
+      "periods": [],
+      "assignments": [],
+      "group_demands": []
+    },
+    {
+      "activity_id": "DONE",
+      "mode_id": "FIXED",
+      "work_package_id": "HANDOFF",
+      "method_id": "FIXED",
+      "start": 7,
+      "finish": 7,
+      "periods": [],
+      "assignments": [],
+      "group_demands": []
+    }
+  ],
+  "objective": [
+    7,
+    118
+  ],
+  "pooled_riggers": false,
+  "allocation_witness": [
+    [
+      "B",
+      "MECH",
+      "M"
+    ],
+    [
+      "C_FAST",
+      "MECH",
+      "M"
+    ]
+  ],
+  "physical_status": "PROVEN_FEASIBLE",
+  "solver": {
+    "name": "CP-SAT",
+    "version": "9.15.6755",
+    "workers": 1,
+    "seed": 0,
+    "max_deterministic_time_per_stage": 60.0,
+    "compiler": "native-work-method-time/0",
+    "stages": [
+      {
+        "stage": "finish",
+        "value": 7,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "global_start_timing",
+        "value": 118,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "method:BUILD",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "method:ACCESS",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "method:CREW",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "method:CHECK",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "method:HANDOFF",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:A_FAST",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:A_ALT",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:B",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:C_FAST",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:C_ALT",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:D",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:E",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:F",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:G",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:DONE",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:A_FAST",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:A_ALT",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:B",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:C_FAST",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:C_ALT",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:D",
+        "value": 2,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:E",
+        "value": 2,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:F",
+        "value": 2,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:G",
+        "value": 2,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:DONE",
+        "value": 8,
+        "status": "OPTIMAL"
+      }
+    ],
+    "repeatability": "canonical stage ordering in the same declared environment; not a cross-version guarantee"
+  },
+  "plan_hash": "dea09dd2458b901faa1410c343827cc7bfd0f140ad059b1b87a47381575518bd"
+}

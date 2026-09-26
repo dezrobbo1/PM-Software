@@ -1,0 +1,435 @@
+{
+  "schema": "pm-native-work-method-time-plan/0",
+  "input_hash": "28c6e73ff1e5303973a1a3cb1783ff317df640a2030bd87e365239f6e20d4987",
+  "policy": "finish-global-start-timing-declared-methods-declared-modes-canonical-placement/0",
+  "selected_methods": {
+    "RELEASE_WORK": "FIXED",
+    "REMOVE": "LIFT",
+    "SUPPORT": "FIXED",
+    "HANDOFF": "FIXED"
+  },
+  "selected_modes": {
+    "RELEASE": "FIXED",
+    "L1": "NORMAL",
+    "L2": "FIXED",
+    "P1": "FIXED",
+    "R1": "FIXED",
+    "R2": "FIXED",
+    "R_END": "FIXED",
+    "C_SERVICE": "FIXED",
+    "SUPPORT_END": "FIXED",
+    "QA": "FIXED",
+    "DONE": "FIXED"
+  },
+  "entries": [
+    {
+      "activity_id": "RELEASE",
+      "mode_id": "FIXED",
+      "work_package_id": "RELEASE_WORK",
+      "method_id": "FIXED",
+      "start": 20,
+      "finish": 20,
+      "periods": [],
+      "assignments": [],
+      "group_demands": []
+    },
+    {
+      "activity_id": "L1",
+      "mode_id": "NORMAL",
+      "work_package_id": "REMOVE",
+      "method_id": "LIFT",
+      "start": 20,
+      "finish": 27,
+      "periods": [
+        [
+          20,
+          24
+        ],
+        [
+          25,
+          27
+        ]
+      ],
+      "assignments": [
+        [
+          "MECH",
+          "M1"
+        ],
+        [
+          "CRANE",
+          "C04"
+        ]
+      ],
+      "group_demands": []
+    },
+    {
+      "activity_id": "L2",
+      "mode_id": "FIXED",
+      "work_package_id": "REMOVE",
+      "method_id": "LIFT",
+      "start": 27,
+      "finish": 28,
+      "periods": [
+        [
+          27,
+          28
+        ]
+      ],
+      "assignments": [
+        [
+          "MECH",
+          "M1"
+        ]
+      ],
+      "group_demands": []
+    },
+    {
+      "activity_id": "P1",
+      "mode_id": "FIXED",
+      "work_package_id": "SUPPORT",
+      "method_id": "FIXED",
+      "start": 20,
+      "finish": 24,
+      "periods": [
+        [
+          20,
+          24
+        ]
+      ],
+      "assignments": [
+        [
+          "SPECIALIST",
+          "M2"
+        ]
+      ],
+      "group_demands": []
+    },
+    {
+      "activity_id": "R1",
+      "mode_id": "FIXED",
+      "work_package_id": "SUPPORT",
+      "method_id": "FIXED",
+      "start": 20,
+      "finish": 22,
+      "periods": [
+        [
+          20,
+          22
+        ]
+      ],
+      "assignments": [],
+      "group_demands": [
+        [
+          "RIGGING",
+          1
+        ]
+      ]
+    },
+    {
+      "activity_id": "R2",
+      "mode_id": "FIXED",
+      "work_package_id": "SUPPORT",
+      "method_id": "FIXED",
+      "start": 20,
+      "finish": 22,
+      "periods": [
+        [
+          20,
+          22
+        ]
+      ],
+      "assignments": [],
+      "group_demands": [
+        [
+          "RIGGING",
+          1
+        ]
+      ]
+    },
+    {
+      "activity_id": "R_END",
+      "mode_id": "FIXED",
+      "work_package_id": "SUPPORT",
+      "method_id": "FIXED",
+      "start": 22,
+      "finish": 22,
+      "periods": [],
+      "assignments": [],
+      "group_demands": []
+    },
+    {
+      "activity_id": "C_SERVICE",
+      "mode_id": "FIXED",
+      "work_package_id": "SUPPORT",
+      "method_id": "FIXED",
+      "start": 24,
+      "finish": 25,
+      "periods": [
+        [
+          24,
+          25
+        ]
+      ],
+      "assignments": [
+        [
+          "CRANE",
+          "C04"
+        ]
+      ],
+      "group_demands": []
+    },
+    {
+      "activity_id": "SUPPORT_END",
+      "mode_id": "FIXED",
+      "work_package_id": "SUPPORT",
+      "method_id": "FIXED",
+      "start": 25,
+      "finish": 25,
+      "periods": [],
+      "assignments": [],
+      "group_demands": []
+    },
+    {
+      "activity_id": "QA",
+      "mode_id": "FIXED",
+      "work_package_id": "HANDOFF",
+      "method_id": "FIXED",
+      "start": 28,
+      "finish": 30,
+      "periods": [
+        [
+          28,
+          30
+        ]
+      ],
+      "assignments": [
+        [
+          "INSPECT",
+          "M2"
+        ]
+      ],
+      "group_demands": []
+    },
+    {
+      "activity_id": "DONE",
+      "mode_id": "FIXED",
+      "work_package_id": "HANDOFF",
+      "method_id": "FIXED",
+      "start": 30,
+      "finish": 30,
+      "periods": [],
+      "assignments": [],
+      "group_demands": []
+    }
+  ],
+  "objective": [
+    30,
+    2000
+  ],
+  "pooled_riggers": false,
+  "allocation_witness": [
+    [
+      "C_SERVICE",
+      "CRANE",
+      "C04"
+    ],
+    [
+      "L1",
+      "CRANE",
+      "C04"
+    ],
+    [
+      "L1",
+      "MECH",
+      "M1"
+    ],
+    [
+      "L2",
+      "MECH",
+      "M1"
+    ],
+    [
+      "P1",
+      "SPECIALIST",
+      "M2"
+    ],
+    [
+      "QA",
+      "INSPECT",
+      "M2"
+    ]
+  ],
+  "physical_status": "PROVEN_FEASIBLE",
+  "solver": {
+    "name": "CP-SAT",
+    "version": "9.15.6755",
+    "workers": 1,
+    "seed": 0,
+    "max_deterministic_time_per_stage": 60.0,
+    "compiler": "native-work-method-time/0",
+    "stages": [
+      {
+        "stage": "finish",
+        "value": 30,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "global_start_timing",
+        "value": 2000,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "method:RELEASE_WORK",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "method:REMOVE",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "method:SUPPORT",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "method:HANDOFF",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:RELEASE",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:L1",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:L2",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:S1",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:S2",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:P1",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:R1",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:R2",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:R_END",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:C_SERVICE",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:SUPPORT_END",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:QA",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "mode:DONE",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:RELEASE",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:L1",
+        "value": 13,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:L2",
+        "value": 25,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:S1",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:S2",
+        "value": 0,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:P1",
+        "value": 7,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:R1",
+        "value": 13,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:R2",
+        "value": 14,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:R_END",
+        "value": 23,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:C_SERVICE",
+        "value": 1,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:SUPPORT_END",
+        "value": 26,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:QA",
+        "value": 13,
+        "status": "OPTIMAL"
+      },
+      {
+        "stage": "placement:DONE",
+        "value": 31,
+        "status": "OPTIMAL"
+      }
+    ],
+    "repeatability": "canonical stage ordering in the same declared environment; not a cross-version guarantee"
+  },
+  "plan_hash": "3d8409958ca0b0248d78aad631ce4e0ded7f6c6a5af15ee5c6a108121fcdc7d0"
+}

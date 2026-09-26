@@ -75,7 +75,8 @@ not deleted or patched to obtain feasibility.
 
 ## Initial-plan policy and proof
 
-There is no approved reference plan in this slice. Optimise sequentially:
+There is no approved reference plan in this slice. Optimise lexicographically
+in this declared order:
 
 1. controlling finish;
 2. weighted start-time sum, using each activity's index in the full declared
@@ -84,10 +85,13 @@ There is no approved reference plan in this slice. Optimise sequentially:
 4. declared mode index, activity by activity (inactive activity contributes zero);
 5. deterministic placement ordering for the remaining representation ties.
 
-Each proven optimum is fixed before the next stage. The authoritative path uses
-no mixed-radix objective. A fixed-method comparator retains the original full-input start
-weights; compressing indices after removing an inactive method would change the
-comparison. The first two tiers and both declared choice vectors are compared.
+Finish and global timing are each proved and fixed separately. The authoritative
+path then proves adjacent lower-order digits in bounded, exact mixed-radix
+blocks, fixing each block before the next. The retained sequential oracle
+proves and fixes each digit separately. A fixed-method comparator retains the
+original full-input start weights; compressing indices after removing an
+inactive method would change the comparison. The first two tiers and both
+declared choice vectors are compared.
 
 Canonical stage ordering is a same-environment repeatability control, not a
 cross-version/platform guarantee. Every CP-SAT stage has a deterministic-work
@@ -169,14 +173,14 @@ history workface correctness. The faithful 160/120 projection now accepts both
 fields, but still fails at the 64-activity admission guard; see
 [the focused experiment](professional-workface-latest-finish.md).
 
-Additive cost instrumentation now reports compiler phases, base model size,
-every sequential proof stage and post-solve validation without changing the plan
-document or hash. A separate experimental challenger batches only the lower
-method/mode/placement vector with bounded exact mixed-radix blocks after finish
-and global timing are fixed. It matched the complete authoritative policy on the
-retained matrix and reduced the 64/48 anchor from 138 to 11 proof calls in one
-same-environment run. It is not used by `schedule_work_method_time(...)`; see
-[the cost decomposition](placement-canonical-cost-decomposition.md).
+Additive cost instrumentation reports compiler phases, base model size, proof
+stages and post-solve validation outside persisted plan identity. PR #42's
+experimental mixed-radix challenger matched the then-authoritative sequential
+policy and reduced the 64/48 anchor from 138 to 11 calls. The subsequently adopted
+`schedule_work_method_time(...)` now proves finish and global timing individually,
+then exactly batches method/mode/placement digits. Historical sequential plans
+remain valid without re-solving; see [adoption](authoritative-canonical-batching.md)
+and [the historical cost decomposition](placement-canonical-cost-decomposition.md).
 
 CP-SAT API/status references checked for this implementation:
 https://developers.google.com/optimization/cp/cp_solver
