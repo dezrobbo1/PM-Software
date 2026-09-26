@@ -110,3 +110,6 @@ not explain every internal CP-SAT search decision or imply that exact bounds
 never help other projects. A separately authorised next investigation could
 inspect the existing finish objective/model formulation and CP-SAT presolve and
 search behaviour under exact controls. This PR implements no such change.
+
+The separately authorised follow-up is documented in
+[exact finish objective and LB-seeded search](finish-objective-search-formulation.md).

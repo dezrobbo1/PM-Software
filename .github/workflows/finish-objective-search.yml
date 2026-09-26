@@ -1,0 +1,52 @@
+name: Experimental exact finish objective and seeded search
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finish-objective-search-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-objective-search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install planner
+        run: python -m pip install -e .
+      - name: Record checked-out source and runtime
+        run: |
+          mkdir -p /tmp/finish-objective-search
+          git rev-parse HEAD > /tmp/finish-objective-search/source-sha.txt
+          python -c 'import json,platform,ortools; print(json.dumps({"python":platform.python_version(),"ortools":ortools.__version__,"platform":platform.platform()}))' > /tmp/finish-objective-search/runtime.json
+      - name: Exact formulation and seeded search controls
+        env:
+          PYTHONHASHSEED: "0"
+          FINISH_OBJECTIVE_EVIDENCE_OUTPUT: /tmp/finish-objective-search/results.json
+          SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_finish_objective_search_experiment -v 2>&1 | tee /tmp/finish-objective-search/tests.txt
+      - name: Verify evidence source and checksums
+        run: |
+          python -m compileall -q src/deterministic_scheduling_core/finish_objective_search_experiment.py tests/test_finish_objective_search_experiment.py
+          python -c 'import json,pathlib; p=pathlib.Path("/tmp/finish-objective-search"); assert json.loads((p/"results.json").read_text())["source_sha"] == (p/"source-sha.txt").read_text().strip()'
+          cd /tmp/finish-objective-search
+          sha256sum source-sha.txt runtime.json results.json tests.txt > SHA256SUMS
+      - name: Upload source-bound evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: finish-objective-search-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/finish-objective-search/
+          if-no-files-found: warn
