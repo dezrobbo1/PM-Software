@@ -60,7 +60,12 @@ scheduler or anonymous resource witnesses.
 
 The 64/48 LB0–LB3 derivations took approximately 0.019, 10.9, 10.8 and
 16.4 ms respectively in the first retained run; all used **zero solver time**
-for derivation. The respective gaps to F are 19, 0, 0, 0 ticks. Their injected
+for derivation. These are marginal calculations after the placement domains
+are compiled. The JSON separately records the shared domain-compilation wall
+cost, every fresh proof-model compile, the incremental derivation-plus-proof
+cost, and a conservative total including both compilations. Thus LB3's
+placement-generation cost is not hidden. The respective gaps to F are
+19, 0, 0, 0 ticks. Their injected
 finish proofs all took 5.478313 deterministic seconds, equal to no injected
 bound. A perfect oracle bound `finish >= F` also took 5.478313. Thus even a
 cheap deployable exact LB1 did not change the solver's deterministic work here;

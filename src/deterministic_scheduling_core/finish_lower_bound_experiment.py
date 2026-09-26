@@ -30,7 +30,9 @@ from deterministic_scheduling_core.working_time_experiment import WorkCalendar, 
 
 
 def _objective_proof(problem, lower=None, *, fixed_methods=None, expected_base=None):
+    compile_started = perf_counter()
     compiled = _compile_work_method_time(problem)
+    compiler_build_ms = (perf_counter() - compile_started) * 1000
     base = _identity(compiled)
     if expected_base is not None and base != expected_base:
         raise AssertionError("objective proof did not use identical pre-control base model")
@@ -47,7 +49,9 @@ def _objective_proof(problem, lower=None, *, fixed_methods=None, expected_base=N
         raise AssertionError(f"finish objective did not prove optimality: {row['status']}")
     row.update({"finish": int(solver.value(stage)), "pre_control_base": base,
                 "method_fix_constraints": controls,
-                "bound_constraints": int(lower is not None), "injected_lower_bound": lower})
+                "bound_constraints": int(lower is not None), "injected_lower_bound": lower,
+                "compiler_build_wall_ms": compiler_build_ms,
+                "compile_plus_proof_wall_ms": compiler_build_ms + row["observed_wall_ms"]})
     return row
 
 
@@ -186,7 +190,9 @@ def _fixture(problem, *, exact_plan=None, injected=False):
     if exact_plan is None:
         exact_plan = schedule_work_method_time(problem).plan
     f = exact_plan["objective"][0]
+    compile_started = perf_counter()
     compiled = _compile_work_method_time(problem)
+    bound_domain_compilation_ms = (perf_counter() - compile_started) * 1000
     base = _identity(compiled)
     bounds = derive_bounds(problem, compiled)
     if any(row["value"] > f for row in bounds.values()):
@@ -194,6 +200,7 @@ def _fixture(problem, *, exact_plan=None, injected=False):
     for row in bounds.values():
         row["gap_ticks"] = f - row["value"]
     result = {"finish": f, "bounds": bounds, "base": base, "plan_hash": exact_plan["plan_hash"],
+              "bound_domain_compilation_wall_ms": bound_domain_compilation_ms,
               "selected_methods": exact_plan["selected_methods"],
               "selected_modes": exact_plan["selected_modes"], "entries": exact_plan["entries"],
               "physical_status": exact_plan["physical_status"],
@@ -211,6 +218,9 @@ def _fixture(problem, *, exact_plan=None, injected=False):
             result["injected"][name] = {
                 "proof": proof, "derivation_wall_ms": row["derivation_wall_ms"],
                 "total_observed_wall_ms": row["derivation_wall_ms"] + proof["observed_wall_ms"],
+                "total_with_shared_domain_compilation_wall_ms": (
+                    bound_domain_compilation_ms + row["derivation_wall_ms"]
+                    + proof["compile_plus_proof_wall_ms"]),
                 "derivation_solver_deterministic_time": 0,
             }
     return result

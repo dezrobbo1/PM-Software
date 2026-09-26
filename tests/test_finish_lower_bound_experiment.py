@@ -82,6 +82,8 @@ class FinishLowerBoundTests(unittest.TestCase):
                 self.assertEqual(proof["pre_control_base"], row["base"])
                 self.assertEqual(proof["injected_lower_bound"], row["bounds"][name]["value"])
                 self.assertGreaterEqual(entry["total_observed_wall_ms"], proof["observed_wall_ms"])
+                self.assertGreaterEqual(entry["total_with_shared_domain_compilation_wall_ms"],
+                                        entry["total_observed_wall_ms"] + proof["compiler_build_wall_ms"])
                 self.assertEqual(entry["derivation_solver_deterministic_time"], 0)
 
     def test_method_and_selected_network_diagnostics(self):
