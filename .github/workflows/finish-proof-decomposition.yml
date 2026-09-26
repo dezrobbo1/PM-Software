@@ -1,0 +1,49 @@
+name: Controlling finish proof decomposition
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finish-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  independent-proof-diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned planner
+        run: python -m pip install -e .
+      - name: Record exact source and runtime
+        run: |
+          mkdir -p /tmp/finish-proof
+          git rev-parse HEAD > /tmp/finish-proof/source-sha.txt
+          python -c 'import json,platform,ortools; print(json.dumps({"python":platform.python_version(),"platform":platform.platform(),"ortools":ortools.__version__}))' > /tmp/finish-proof/runtime.json
+      - name: Run focused proof and model-identity tests
+        env:
+          PYTHONHASHSEED: "0"
+          FINISH_PROOF_EVIDENCE_OUTPUT: /tmp/finish-proof/results.json
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_finish_proof_experiment -v 2>&1 | tee /tmp/finish-proof/tests.txt
+      - name: Retain complete machine-readable experiment
+        run: |
+          python -m compileall -q src/deterministic_scheduling_core/finish_proof_experiment.py tests/test_finish_proof_experiment.py
+          cd /tmp/finish-proof
+          sha256sum results.json runtime.json source-sha.txt tests.txt > SHA256SUMS
+      - name: Upload exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: finish-proof-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/finish-proof/
+          if-no-files-found: warn

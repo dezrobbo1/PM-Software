@@ -412,6 +412,17 @@ hashes, while new truthful block metadata produces new artifact hashes. See
 `docs/authoritative-canonical-batching.md` for adoption. Do not raise admission
 or placement limits as part of this change.
 
+The subsequent diagnostic-only controlling-finish decomposition starts each
+64/48 proof from the same compiler proto. The authoritative optimum is 19:
+finish optimization used about 5.478 deterministic seconds in one local run,
+feasibility at 19 used 0.068, and finish by 18 proved infeasible in presolve.
+Fixing structure and modes or pruning inactive alternatives left material
+optimization work. The census and controlled ladders support bounded outcome D,
+temporal placement/model representation with a method-choice interaction. See
+`docs/controlling-finish-proof-decomposition.md`. The diagnostic module must not
+be imported by production scheduling, and these measurements justify no limit
+change or new architecture in this milestone.
+
 Other focused candidates remain:
 
 - **calendar/state semantics:** only for a focused irregular-calendar or state-transition capability not answered by the bounded productive-time experiments;

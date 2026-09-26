@@ -519,6 +519,8 @@ The PR #42 cost decomposition retained that admission profile and compared the t
 
 The subsequent bounded adoption makes batching authoritative in `schedule_work_method_time(...)`, preserving the same finish → global timing → methods → modes → placements policy and retaining the original sequential solver as a private test oracle. Frozen sequential-era plans validate without solving or hash migration; new plans include truthful canonical-block proofs and therefore have new plan hashes even when their scheduling semantics agree exactly. See [authoritative canonical batching](docs/authoritative-canonical-batching.md). The 64-activity and 20,000-placement limits remain unchanged. Further lower-order objective evidence and richer irregular/calendar-state cases remain separate questions.
 
+The [controlling-finish proof decomposition](docs/controlling-finish-proof-decomposition.md) investigates the next admitted cost without changing production code. On 64/48, finish optimization needed 5.478 deterministic seconds locally; feasibility at the authoritative finish of 19 needed 0.068, and finish by 18 was proved infeasible in presolve. Fixing methods and modes or pruning inactive alternatives left material objective proof cost. A placement census and two controlled ladders support **Outcome D: temporal placement / model representation dominated, with a method-choice interaction**. The result is diagnostic evidence, not a new scheduling algorithm or scale-limit increase.
+
 Do not substitute broad compatibility work, production hardening, a P6/MSP clone, full event sourcing, a generic objective-policy framework, a generic decomposition framework or a large UI framework for the next focused experiment.
 
 ## External-format adapter boundary
