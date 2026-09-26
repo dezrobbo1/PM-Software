@@ -32,12 +32,14 @@ jobs:
         env:
           PYTHONHASHSEED: "0"
           FACTORED_FINISH_EVIDENCE_OUTPUT: /tmp/factored-finish/results.json
+          SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           python -m unittest tests.test_factored_finish_search_experiment -v 2>&1 | tee /tmp/factored-finish/tests.txt
       - name: Digest exact-head evidence
         run: |
           python -m compileall -q src/deterministic_scheduling_core/factored_finish_search_experiment.py tests/test_factored_finish_search_experiment.py
+          python -c 'import json,pathlib; root=pathlib.Path("/tmp/factored-finish"); assert json.loads((root/"results.json").read_text())["source_sha"] == (root/"source-sha.txt").read_text().strip()'
           cd /tmp/factored-finish
           sha256sum source-sha.txt runtime.json results.json tests.txt > SHA256SUMS
       - name: Upload source-bound matrix

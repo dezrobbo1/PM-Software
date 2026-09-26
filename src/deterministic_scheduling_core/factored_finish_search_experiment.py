@@ -67,6 +67,8 @@ def model_census(compiled, *, representation=None):
         "no_overlap_constraints": sum(c.has_no_overlap() for c in proto.constraints),
         "cumulative_constraints": sum(c.has_cumulative() for c in proto.constraints),
         "flattened_placements": compiled.placement_count,
+        "declared_activities": len(compiled.source["activities"]),
+        "authorised_structures": prod(len(p.methods) for p in compiled.problem.work_packages),
         "workface_intervals": compiled.workface_interval_count,
         "method_choices": sum(len(p.methods) for p in compiled.problem.work_packages),
         "mode_choices": sum(len(a["modes"]) for a in compiled.source["activities"]),

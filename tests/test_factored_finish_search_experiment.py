@@ -3,6 +3,7 @@ import inspect
 import json
 import os
 from pathlib import Path
+import subprocess
 import unittest
 
 from deterministic_scheduling_core import factored_finish_search_experiment as experiment
@@ -16,7 +17,11 @@ from deterministic_scheduling_core.scheduling import work_method_time
 class FactoredFinishSearchTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.result = experiment.run_experiment(source_sha=os.getenv("GITHUB_SHA"))
+        cls.result = experiment.run_experiment(source_sha=os.getenv("SOURCE_HEAD_SHA"))
+        if os.getenv("SOURCE_HEAD_SHA"):
+            actual_head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+            if cls.result["source_sha"] != actual_head:
+                raise AssertionError("evidence JSON source SHA must match checked-out PR head")
         output = os.getenv("FACTORED_FINISH_EVIDENCE_OUTPUT")
         if output:
             Path(output).write_text(json.dumps(cls.result, indent=2, sort_keys=True) + "\n")
