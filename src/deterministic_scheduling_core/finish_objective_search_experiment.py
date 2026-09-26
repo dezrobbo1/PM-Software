@@ -34,16 +34,19 @@ from deterministic_scheduling_core.scheduling.work_method_time import (
 
 
 def _direct_expression(compiled):
+    """Express objective finish through existing flattened placement literals."""
     aid = compiled.source["objective_activity_id"]
     # The unchanged production compiler already imposes this exact equality.
     return sum(placement.finish * literal for literal, _, placement in compiled.choices[aid])
 
 
 def _semantic_digest(plan):
+    """Hash only the scheduling projection, excluding experimental metadata."""
     return sha256(json.dumps(semantic_plan(plan), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def _base_identity(compiled):
+    """Capture the objective-free production compiler's exact model identity."""
     return {**_identity(compiled), "source_input_hash": input_hash(compiled.problem),
             "objective_end_domain": list(compiled.model.proto.variables[
                 compiled.ends[compiled.source["objective_activity_id"]].index].domain),
@@ -51,6 +54,7 @@ def _base_identity(compiled):
 
 
 def _response(solver, status, started):
+    """Read stable response-proto proof counters and measured wall duration."""
     result = solver.response_proto
     return {"status": solver.status_name(status), "deterministic_time": float(result.deterministic_time),
             "branches": int(result.num_branches), "conflicts": int(result.num_conflicts),
@@ -104,6 +108,7 @@ def _complete(compiled, finish, first, *, solver=None):
 
 
 def _minimize(problem, formulation, expected_base):
+    """Prove either equivalent finish objective, then the full declared policy."""
     started = perf_counter()
     compiled = _compile_work_method_time(problem)
     build_ms = (perf_counter() - started) * 1000
@@ -141,6 +146,7 @@ def _minimize(problem, formulation, expected_base):
 
 
 def _query(compiled, bound, expected_base):
+    """Clone the identical R0 base for one independent satisfaction query."""
     if _base_identity(compiled) != expected_base:
         raise AssertionError("SAT queries did not share the identical starting compiler base")
     started = perf_counter()
@@ -210,6 +216,7 @@ def _seeded_search(compiled, lower, expected_base):
 
 
 def _derive(problem, bound_name, compiled=None):
+    """Invoke the unchanged admissible PR #46 network bound implementation."""
     level = int(bound_name[-1])
     started = perf_counter()
     value, structures = _network_lower_bound(problem, level, compiled)
@@ -221,6 +228,7 @@ def _derive(problem, bound_name, compiled=None):
 
 
 def _seeded(problem, bound_name, formulation, expected_base):
+    """Account for bound derivation, exact SAT search and fresh policy proof."""
     started = perf_counter()
     compiled = _compile_work_method_time(problem)
     base_compile_ms = (perf_counter() - started) * 1000
@@ -252,6 +260,7 @@ def _seeded(problem, bound_name, formulation, expected_base):
 
 
 def _control(problem, *, formulations=("C1_end", "C2_direct"), all_bounds=True):
+    """Compare every matrix cell against the authoritative semantic plan."""
     started = perf_counter()
     original_hash = input_hash(problem)
     authority = schedule_work_method_time(problem)
@@ -281,7 +290,54 @@ def _control(problem, *, formulations=("C1_end", "C2_direct"), all_bounds=True):
             "end_to_end_wall_ms": (perf_counter() - started) * 1000}
 
 
+def _classify(rows):
+    """Classify measured total costs; a semantic pass alone cannot claim benefit."""
+    anchor, named = rows["anchor"], rows["small_named"]
+    baseline, seeded = anchor["cells"]["C1_end/S0"], anchor["cells"]["C1_end/S2-LB1"]
+    direct = anchor["cells"]["C2_direct/S0"]
+    benefit = baseline["total_deterministic_time"] - seeded["total_deterministic_time"]
+    named_benefit = (named["cells"]["C1_end/S0"]["total_deterministic_time"] -
+                     named["cells"]["C1_end/S2-LB1"]["total_deterministic_time"])
+    comparisons = [rows[name] for name in ("small_named", "professional", "anonymous_group",
+                                           "suspended_workface")]
+    comparisons += list(rows["activity_ladder"].values()) + list(rows["density_ladder"].values())
+    adverse = sum(max(0, row["cells"]["C1_end/S2-LB1"]["total_deterministic_time"] -
+                      row["cells"]["C1_end/S0"]["total_deterministic_time"])
+                  for row in comparisons)
+    wall_saving = baseline["end_to_end_wall_ms"] - seeded["end_to_end_wall_ms"]
+    direct_saving = baseline["total_deterministic_time"] - direct["total_deterministic_time"]
+    if benefit > adverse and named_benefit > 0 and wall_saving > 0:
+        category, name, recommendation = (
+            "A", "LB-seeded exact search justified in the admitted controls",
+            "Prove production adoption of exact LB-seeded finish search while retaining the "
+            "existing objective and full canonical policy; study small-case overhead.")
+    elif benefit > 0 and named_benefit <= 0:
+        category, name, recommendation = (
+            "D", "Only exact-LB cases benefit in the retained controls",
+            "Investigate a bounded conditional strategy before considering production adoption.")
+    elif direct_saving > 0 and benefit <= adverse:
+        category, name, recommendation = (
+            "B", "Direct objective formulation is the more promising control",
+            "Prove exact production adoption of the objective formulation separately.")
+    elif benefit <= 0 and direct_saving <= 0:
+        category, name, recommendation = (
+            "E", "Neither challenger improves the admitted anchor",
+            "Retain the current production finish optimiser.")
+    else:
+        category, name, recommendation = (
+            "F", "Measured costs are mixed or wall observations do not support adoption",
+            "Investigate objective/search cost on another exact admitted case before adoption.")
+    return {"category": category, "name": name, "recommended_next_milestone": recommendation,
+            "basis": {"anchor_total_deterministic_saving": benefit,
+                      "other_control_deterministic_regressions_total": adverse,
+                      "named_nonexact_bound_deterministic_saving": named_benefit,
+                      "anchor_end_to_end_wall_saving_ms": wall_saving,
+                      "direct_objective_deterministic_saving": direct_saving},
+            "interpretation": "Contextual observations, not a universal speed threshold or correctness gate"}
+
+
 def run_experiment(*, source_sha=None):
+    """Run admitted controls, ladders, historical S1 and classifier once."""
     fixtures = {"small": small_problem(), "professional": professional_problem(workface=True, deadline=True),
                 "scale_64_48": scale_problem()}
     sources = {name: input_hash(p) for name, p in fixtures.items()}
@@ -320,6 +376,9 @@ def run_experiment(*, source_sha=None):
         raise AssertionError("professional classifier changed")
     if any(input_hash(p) != sources[name] for name, p in fixtures.items()):
         raise AssertionError("source inputs changed")
+    rows = {"anchor": anchor, "small_named": small, "professional": professional,
+            "anonymous_group": group, "suspended_workface": suspended,
+            "activity_ladder": activity, "density_ladder": density}
     return {"milestone": "exact-finish-objective-formulation-lb-seeded-search-v0",
             "source_sha": source_sha, "runtime": {"python": platform.python_version(),
                                                  "ortools": ortools.__version__},
@@ -328,13 +387,11 @@ def run_experiment(*, source_sha=None):
             "anonymous_group": group, "suspended_workface": suspended,
             "activity_ladder": activity, "density_ladder": density,
             "historical_S1_same_environment": historical, "professional_scale": classifier,
-            "classification": {"category": "A", "name": "LB-seeded exact search justified in the admitted controls",
-                               "recommended_next_milestone":
-                                   "Prove production adoption of exact LB-seeded finish search while retaining "
-                                   "the existing objective and full canonical policy; study the small-case overhead."}}
+            "classification": _classify(rows)}
 
 
 def main():
+    """Persist source-bound machine evidence from the experiment CLI."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-sha")

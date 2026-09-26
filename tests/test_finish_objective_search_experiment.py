@@ -1,5 +1,6 @@
 """Exact R0 objective formulation and LB-seeded finish search controls."""
 import inspect
+from copy import deepcopy
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,7 @@ from deterministic_scheduling_core.scheduling import work_method_time
 class FinishObjectiveSearchTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        """Run the costly controlled matrix once and bind optional evidence to HEAD."""
         cls.result = experiment.run_experiment(source_sha=os.getenv("SOURCE_HEAD_SHA"))
         expected = os.getenv("SOURCE_HEAD_SHA")
         if expected:
@@ -33,6 +35,7 @@ class FinishObjectiveSearchTests(unittest.TestCase):
             target.write_text(json.dumps(cls.result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     def test_production_identity_independent_control_and_base(self):
+        """Guard the frozen hashes, independent F and objective-free base."""
         r = self.result
         self.assertEqual(r["production_hashes"], BASE_HASHES)
         self.assertEqual((r["small_named"]["production_hash"], r["professional"]["production_hash"],
@@ -50,6 +53,7 @@ class FinishObjectiveSearchTests(unittest.TestCase):
         self.assertEqual(len(a["base"]["proto_text_sha256"]), 64)
 
     def test_algebraic_equality_for_every_feasible_small_assignment(self):
+        """Search for an impossible end-versus-expression counterexample."""
         compiled = work_method_time._compile_work_method_time(small_problem())
         end = compiled.stages[0].expression
         expr = experiment._direct_expression(compiled)
@@ -59,6 +63,7 @@ class FinishObjectiveSearchTests(unittest.TestCase):
         self.assertEqual(work_method_time._new_solver().solve(compiled.model), cp_model.INFEASIBLE)
 
     def test_complete_matrix_matches_every_policy_digit_and_physical_witness(self):
+        """Compare all complete policy and physical projections across cells."""
         for name in ("anchor", "small_named", "professional", "anonymous_group", "suspended_workface"):
             row = self.result[name]
             with self.subTest(name=name):
@@ -98,6 +103,7 @@ class FinishObjectiveSearchTests(unittest.TestCase):
                         self.assertTrue(all(p["status"] == "OPTIMAL" for p in cell["policy_proofs"]))
 
     def test_nonexact_and_exact_bounds_query_traces(self):
+        """Check both immediate bound hits and certified F-1 misses."""
         for name, expected in (("anchor", [19, 19, 19]), ("small_named", [27, 28, 28]),
                                ("professional", [4, 6, 6]), ("anonymous_group", [3, 3, 3])):
             row = self.result[name]
@@ -116,6 +122,7 @@ class FinishObjectiveSearchTests(unittest.TestCase):
                                         for q in trace))
 
     def test_supported_incumbent_and_bound_diagnostics_are_finish_only(self):
+        """Ensure callback observations belong to the finish proof alone."""
         cell = self.result["anchor"]["cells"]["C1_end/S0"]
         self.assertEqual(cell["incumbents"][0]["objective"], 19)
         self.assertEqual(cell["finish_proof"]["best_objective_bound"], 19)
@@ -127,6 +134,7 @@ class FinishObjectiveSearchTests(unittest.TestCase):
         self.assertGreater(cell["finish_proof"]["binary_propagations"], 0)
 
     def test_controls_and_ladders(self):
+        """Exercise professional constraints and retained size/density cases."""
         r = self.result
         self.assertEqual(r["small_named"]["finish"], 30)
         self.assertTrue(any(len(req["eligible_resource_ids"]) > 1
@@ -157,6 +165,7 @@ class FinishObjectiveSearchTests(unittest.TestCase):
         self.assertTrue(historical["finish_feasible"] and historical["one_tick_better_infeasible"])
 
     def test_unknown_rejected_and_queries_do_not_leak(self):
+        """Reject an unproved SAT answer and guard independent clone bounds."""
         problem = small_problem()
         compiled = work_method_time._compile_work_method_time(problem)
         base = experiment._base_identity(compiled)
@@ -175,6 +184,7 @@ class FinishObjectiveSearchTests(unittest.TestCase):
                 experiment._query(compiled, 27, base)
 
     def test_repeatability_on_nonexact_bound(self):
+        """Repeat a nontrivial query trace without mutating source input."""
         problem = small_problem()
         before = input_hash(problem)
         base = experiment._base_identity(work_method_time._compile_work_method_time(problem))
@@ -187,6 +197,7 @@ class FinishObjectiveSearchTests(unittest.TestCase):
         self.assertEqual(before, input_hash(problem))
 
     def test_classifier_production_isolation_and_input(self):
+        """Keep the experiment out of production and 160/120 outside admission."""
         r = self.result
         p = r["professional_scale"]
         self.assertTrue(p["faithful_projection_valid"])
@@ -195,13 +206,29 @@ class FinishObjectiveSearchTests(unittest.TestCase):
                                ("raw_generated_placements", "placement_alternatives", "placement_limit")),
                          (64068, 64032, 20000))
         self.assertNotIn("finish_objective_search_experiment", inspect.getsource(work_method_time))
-        self.assertEqual(r["classification"]["category"], "A")
+        measured = experiment._classify(r)
+        self.assertEqual(r["classification"], measured)
+        self.assertIn(measured["category"], "ABCDEF")
+        self.assertIn("anchor_total_deterministic_saving", measured["basis"])
         source = scale_problem()
         before = input_hash(source)
         for bound in ("LB1", "LB2", "LB3"):
             experiment._derive(source, bound,
                                work_method_time._compile_work_method_time(source) if bound == "LB3" else None)
         self.assertEqual(input_hash(source), before)
+
+    def test_adverse_measured_cost_cannot_claim_outcome_a(self):
+        """Reject a favorable classification when measured costs turn adverse."""
+        controls = deepcopy(self.result)
+        cells = controls["anchor"]["cells"]
+        cells["C1_end/S2-LB1"]["total_deterministic_time"] = (
+            cells["C1_end/S0"]["total_deterministic_time"] + 1)
+        self.assertNotEqual(experiment._classify(controls)["category"], "A")
+        controls = deepcopy(self.result)
+        cells = controls["anchor"]["cells"]
+        cells["C1_end/S2-LB1"]["end_to_end_wall_ms"] = (
+            cells["C1_end/S0"]["end_to_end_wall_ms"] + 1)
+        self.assertNotEqual(experiment._classify(controls)["category"], "A")
 
 
 if __name__ == "__main__":

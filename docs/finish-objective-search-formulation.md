@@ -127,3 +127,13 @@ handling and truthful proof metadata across historical plans and recovery
 before making it authoritative. **This experiment adopts nothing:** no new
 objective, search strategy, scale bound, resource semantics, plan hash or
 accepted-history/lineage behavior enters production.
+
+The machine result **derives** its outcome from measured complete-policy
+deterministic costs and anchor end-to-end wall observation: anchor S2 savings
+must exceed the sum of deterministic regressions across retained controls,
+the non-exact-bound named case must benefit, and anchor observed wall cost
+must fall. Otherwise it reports D, E or F as supported by the values; a
+direct-objective benefit can instead report B. The result includes every
+quantity used in that classification. No test asserts a fixed speed ratio or
+requires Outcome A on a noisy runner; semantic equivalence is independent of
+the measured performance interpretation.
