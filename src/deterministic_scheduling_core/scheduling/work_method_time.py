@@ -25,6 +25,9 @@ from deterministic_scheduling_core.project.work_method_time import (
 from deterministic_scheduling_core.resource_allocation_repair_experiment import check_allocation
 from .engine import validate_project
 from .planning_workspace import _case, _group_placements
+from .canonical_batching import (
+    MAX_SAFE_BLOCK_VALUE, CanonicalBlock, CanonicalDigit, build_lexicographic_blocks,
+)
 
 PLAN_SCHEMA = "pm-native-work-method-time-plan/0"
 POLICY = "finish-global-start-timing-declared-methods-declared-modes-canonical-placement/0"
@@ -467,8 +470,29 @@ def _solve_compiled_stages(
 
 
 def _solve_sequential(compiled: _CompiledWorkMethodTime):
-    """Prove the authoritative policy one canonical digit at a time."""
+    """Retained legacy oracle: prove each canonical digit separately."""
     return _solve_compiled_stages(compiled, compiled.stages)
+
+
+def _canonical_block_stages(
+    compiled: _CompiledWorkMethodTime, blocks: tuple[CanonicalBlock, ...],
+) -> tuple[_Stage, ...]:
+    """Add exact digit witnesses; form block objectives in declared digit order."""
+    canonical = {stage.name: stage for stage in compiled.stages[2:]}
+    digit_vars = {}
+    for digit in (digit for block in blocks for digit in block.digits):
+        stage = canonical[digit.name]
+        variable = compiled.model.new_int_var(0, digit.maximum, f"canonical_digit_{digit.name}")
+        compiled.model.add(variable == stage.expression)
+        digit_vars[digit.name] = variable
+    result = []
+    for block in blocks:
+        expression = sum(
+            coefficient * digit_vars[digit.name]
+            for digit, coefficient in zip(block.digits, block.coefficients)
+        )
+        result.append(_Stage(block.name, "canonical_block", expression, block.maximum))
+    return tuple(result)
 
 
 def _extract_plan(
@@ -477,6 +501,7 @@ def _extract_plan(
     proof: list[dict],
     *,
     compiler: str,
+    canonical_blocks: list[dict] | None = None,
 ) -> tuple[dict, dict]:
     """Extract and independently validate a solved joint candidate."""
     extraction_started = perf_counter()
@@ -529,6 +554,8 @@ def _extract_plan(
                        "max_deterministic_time_per_stage": MAX_DETERMINISTIC_TIME_PER_STAGE,
                        "compiler": compiler, "stages": proof,
                        "repeatability": "canonical stage ordering in the same declared environment; not a cross-version guarantee"}}
+    if canonical_blocks is not None:
+        plan["solver"]["canonical_blocks"] = canonical_blocks
     plan["plan_hash"] = _hash_plan(plan)
     second_extraction_ms = (perf_counter() - plan_started) * 1000
     validation_started = perf_counter()
@@ -565,7 +592,66 @@ def _result_metrics(
 
 
 def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeResult:
-    """Calculate one joint structural/productive plan without mutating its input."""
+    """Calculate the authoritative exact-batched joint structural/productive plan."""
+    return _schedule_work_method_time_batched(problem)
+
+
+def _schedule_work_method_time_batched(
+    problem: WorkMethodTimeProject, *, safety_bound: int = MAX_SAFE_BLOCK_VALUE,
+    compiler: str = "native-work-method-time-batched/0",
+) -> WorkMethodTimeResult:
+    """Prove globals separately, then adjacent lower digits in exact safe blocks."""
+    compiled = _compile_work_method_time(problem)
+    canonical_digits = tuple(
+        CanonicalDigit(stage.name, stage.maximum) for stage in compiled.stages[2:]
+    )
+    blocks = build_lexicographic_blocks(canonical_digits, safety_bound=safety_bound)
+    solver, global_proof, global_stage_metrics = _solve_compiled_stages(
+        compiled, compiled.stages[:2],
+    )
+    block_started = perf_counter()
+    block_stages = _canonical_block_stages(compiled, blocks)
+    block_assembly_ms = (perf_counter() - block_started) * 1000
+    solver, block_proof, block_stage_metrics = _solve_compiled_stages(
+        compiled, block_stages, solver=solver,
+        cumulative_wall_ms=global_stage_metrics[-1]["cumulative_wall_ms"],
+        cumulative_deterministic_time=global_stage_metrics[-1]["cumulative_deterministic_time"],
+    )
+    block_documents = [
+        {**block.to_document(), "solved_value": stage["value"]}
+        for block, stage in zip(blocks, block_proof)
+    ]
+    plan, extraction_metrics = _extract_plan(
+        compiled, solver, global_proof + block_proof,
+        compiler=compiler, canonical_blocks=block_documents,
+    )
+    metrics = _result_metrics(
+        compiled, global_stage_metrics + block_stage_metrics, extraction_metrics,
+    )
+    metrics.update({
+        "canonical_block_assembly_ms": block_assembly_ms,
+        "canonical_digits": [
+            {"name": digit.name, "maximum": digit.maximum} for digit in canonical_digits
+        ],
+        "canonical_blocks": block_documents,
+        "canonical_block_count": len(blocks),
+        "integer_safety_bound": safety_bound,
+        "canonical_vector": [
+            {
+                "name": stage.name, "stage_type": stage.stage_type,
+                "value": solver.value(stage.expression), "maximum": stage.maximum,
+            }
+            for stage in compiled.stages[2:]
+        ],
+    })
+    metrics["end_to_end_ms"] = (perf_counter() - compiled.started_at) * 1000
+    return WorkMethodTimeResult(plan, metrics)
+
+
+def _schedule_work_method_time_sequential_oracle(
+    problem: WorkMethodTimeProject,
+) -> WorkMethodTimeResult:
+    """Test-only historical sequential policy, including original proof identity."""
     compiled = _compile_work_method_time(problem)
     solver, proof, stage_metrics = _solve_sequential(compiled)
     plan, extraction_metrics = _extract_plan(

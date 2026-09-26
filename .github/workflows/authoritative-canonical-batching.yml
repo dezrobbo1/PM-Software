@@ -1,0 +1,47 @@
+name: Authoritative exact canonical batching
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: authoritative-batching-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  historical-and-exact-control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned planner
+        run: python -m pip install -e .
+      - name: Record exact runtime and source
+        run: |
+          mkdir -p /tmp/authoritative-batching
+          git rev-parse HEAD > /tmp/authoritative-batching/source-sha.txt
+          python -c 'import json,platform,ortools; print(json.dumps({"python":platform.python_version(),"ortools":ortools.__version__}))' > /tmp/authoritative-batching/runtime.json
+      - name: Historical compatibility and adoption equivalence
+        env:
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_authoritative_canonical_batching -v 2>&1 | tee /tmp/authoritative-batching/tests.txt
+      - name: Digest exact-head evidence
+        run: |
+          cd /tmp/authoritative-batching
+          sha256sum runtime.json source-sha.txt tests.txt > SHA256SUMS
+      - name: Retain source-bound evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authoritative-batching-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/authoritative-batching/
+          if-no-files-found: error

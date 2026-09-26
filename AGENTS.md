@@ -402,11 +402,15 @@ sequential oracle against one exact experimental batching challenger:
 **Outcome A: canonical-proof dominated, with a material model-size interaction.**
 The machine-readable classifier derives that outcome from the measured dominance
 and challenger comparisons; correctness alone cannot produce A.
-The challenger is experimental and `schedule_work_method_time(...)` remains the
-sequential authority. A next focused milestone may prove and adopt bounded exact
-batching while retaining the sequential oracle. Do not combine that adoption
-with higher admission/placement limits or a generic decomposition framework. See
-`docs/placement-canonical-cost-decomposition.md`.
+That was the historical PR #42 result. Bounded exact batching is now the
+`schedule_work_method_time(...)` authority; the original sequential solver remains
+a private compatibility/control oracle. Finish and global timing are independent
+OPTIMAL stages; method/mode/placement decisions use integer-safe exact blocks.
+Frozen sequential-era plans and rolling lineage remain valid under their original
+hashes, while new truthful block metadata produces new artifact hashes. See
+`docs/placement-canonical-cost-decomposition.md` for historical measurements and
+`docs/authoritative-canonical-batching.md` for adoption. Do not raise admission
+or placement limits as part of this change.
 
 Other focused candidates remain:
 

@@ -96,8 +96,11 @@ headroom below CP-SAT's signed 64-bit integer limit. A single digit above the
 bound is rejected. The artifact records every digit, maximum, coefficient,
 block membership and maximum possible block value; no saturation is allowed.
 
-This challenger lives in `canonical_cost_experiment.py`. It is not called by the
-authoritative scheduler.
+This paragraph describes the historical PR #42 experiment. Subsequently the
+same block mathematics moved to `scheduling/canonical_batching.py`, and the
+authoritative scheduler adopted it. The experiment now compares authoritative
+batching against the retained sequential oracle; see
+[the adoption evidence](authoritative-canonical-batching.md).
 
 ## Representative observed results
 

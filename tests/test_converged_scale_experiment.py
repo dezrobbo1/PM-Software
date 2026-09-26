@@ -62,7 +62,8 @@ class ConvergedScaleExperimentTests(unittest.TestCase):
             self.assertIn(key, metrics)
             self.assertGreater(metrics[key], 0)
         self.assertEqual(metrics["solver_calls"], baseline["solver_stages"])
-        self.assertGreater(baseline["solver_stages"], 100)
+        self.assertEqual(baseline["solver_stages"], 11)
+        self.assertEqual(metrics["canonical_block_count"], 9)
         self.assertLessEqual(metrics["placement_alternatives"], 20000)
 
     def test_t1_recovery_locks_begun_package_and_changes_untouched_crane_package(self):

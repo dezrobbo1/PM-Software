@@ -169,14 +169,14 @@ history workface correctness. The faithful 160/120 projection now accepts both
 fields, but still fails at the 64-activity admission guard; see
 [the focused experiment](professional-workface-latest-finish.md).
 
-Additive cost instrumentation now reports compiler phases, base model size,
-every sequential proof stage and post-solve validation without changing the plan
-document or hash. A separate experimental challenger batches only the lower
-method/mode/placement vector with bounded exact mixed-radix blocks after finish
-and global timing are fixed. It matched the complete authoritative policy on the
-retained matrix and reduced the 64/48 anchor from 138 to 11 proof calls in one
-same-environment run. It is not used by `schedule_work_method_time(...)`; see
-[the cost decomposition](placement-canonical-cost-decomposition.md).
+Additive cost instrumentation reports compiler phases, base model size, proof
+stages and post-solve validation outside persisted plan identity. PR #42's
+experimental mixed-radix challenger matched the then-authoritative sequential
+policy and reduced the 64/48 anchor from 138 to 11 calls. The subsequently adopted
+`schedule_work_method_time(...)` now proves finish and global timing individually,
+then exactly batches method/mode/placement digits. Historical sequential plans
+remain valid without re-solving; see [adoption](authoritative-canonical-batching.md)
+and [the historical cost decomposition](placement-canonical-cost-decomposition.md).
 
 CP-SAT API/status references checked for this implementation:
 https://developers.google.com/optimization/cp/cp_solver
