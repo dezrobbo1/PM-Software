@@ -1,4 +1,4 @@
-"""R0-only finish objective and admissible-LB search controls; never production."""
+"""Historical S0/R0 finish objective and admissible-LB controls; never production."""
 from __future__ import annotations
 
 import argparse
@@ -29,7 +29,7 @@ from deterministic_scheduling_core.project.work_method_time import input_hash
 from deterministic_scheduling_core.scheduling.canonical_batching import CanonicalDigit, build_lexicographic_blocks
 from deterministic_scheduling_core.scheduling.work_method_time import (
     _canonical_block_stages, _compile_work_method_time, _extract_plan, _new_solver,
-    _solve_compiled_stages, policy_key, schedule_work_method_time, validate_plan,
+    _solve_compiled_stages, policy_key, _schedule_work_method_time_batched, validate_plan,
 )
 
 
@@ -263,7 +263,7 @@ def _control(problem, *, formulations=("C1_end", "C2_direct"), all_bounds=True):
     """Compare every matrix cell against the authoritative semantic plan."""
     started = perf_counter()
     original_hash = input_hash(problem)
-    authority = schedule_work_method_time(problem)
+    authority = _schedule_work_method_time_batched(problem)
     authoritative_digest = _semantic_digest(authority.plan)
     expected_vector = [{"name": "finish", "value": authority.plan["objective"][0]},
                        {"name": "global_start_timing", "value": authority.plan["objective"][1]}]
@@ -351,7 +351,7 @@ def run_experiment(*, source_sha=None):
         ("placement_alternatives", "base_variables", "base_constraints")) != (5626, 5832, 3860):
         raise AssertionError("64/48 anchor shape or F changed")
     independent = solve_fixed_controls(fixtures["scale_64_48"])["best"]
-    plan = schedule_work_method_time(fixtures["scale_64_48"]).plan
+    plan = _schedule_work_method_time_batched(fixtures["scale_64_48"]).plan
     if independent is None or policy_key(fixtures["scale_64_48"], plan["selected_methods"],
                                          plan["selected_modes"], plan["objective"]) != policy_key(
                                              fixtures["scale_64_48"], independent["methods"],

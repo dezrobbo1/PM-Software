@@ -98,7 +98,9 @@ class AuthoritativeCanonicalBatchingTests(unittest.TestCase):
                 stages = batch.plan["solver"]["stages"]
                 digit_values = {row["name"]: row["value"] for row in batch.metrics["canonical_vector"]}
                 self.assertEqual(len(stages), 2 + len(blocks))
-                self.assertEqual(len(stages), batch.metrics["solver_calls"])
+                self.assertEqual(len(stages), batch.metrics["policy_stage_count"])
+                self.assertEqual(batch.metrics["solver_calls"],
+                                 batch.metrics["finish_query_count"] + len(stages) - 1)
                 self.assertEqual([row["stage"] for row in stages[2:]], [row["name"] for row in blocks])
                 for block, stage in zip(blocks, stages[2:]):
                     self.assertEqual(stage["status"], "OPTIMAL")
@@ -131,7 +133,7 @@ class AuthoritativeCanonicalBatchingTests(unittest.TestCase):
         self.assertEqual(recovery.plan["status_state_hash"], historic_status)
         self.assertEqual(recovery.plan["fixed_methods"]["REMOVE"], "LIFT")
         self.assertEqual(recovery.plan["selected_methods"]["RESTORE"], "MANUAL")
-        self.assertEqual(recovery.plan["future_plan"]["solver"]["compiler"], "native-work-method-time-batched/0")
+        self.assertEqual(recovery.plan["future_plan"]["solver"]["compiler"], "native-work-method-time-lb1-seeded/0")
         future_problem, _, _ = _compile_future_problem(problem, problem, reference, status)
         oracle = _schedule_work_method_time_sequential_oracle(future_problem)
         self.assertEqual(semantic_plan(recovery.plan["future_plan"]), semantic_plan(oracle.plan))
@@ -162,7 +164,7 @@ class AuthoritativeCanonicalBatchingTests(unittest.TestCase):
             validate_cycle(cycle)
         recovery = calculate_structural_recovery(cycle).plan
         self.assertEqual(recovery["reference_plan_hash"], ROLLING_HASH)
-        self.assertEqual(recovery["future_plan"]["solver"]["compiler"], "native-work-method-time-batched/0")
+        self.assertEqual(recovery["future_plan"]["solver"]["compiler"], "native-work-method-time-lb1-seeded/0")
         promoted = promote_structural_recovery_to_status_cycle(
             cycle.current_problem, cycle.reference_problem, cycle.reference_plan,
             cycle.status_workspace, recovery, asserted_by="planner", accepted_by="acceptor",
@@ -173,7 +175,7 @@ class AuthoritativeCanonicalBatchingTests(unittest.TestCase):
         self.assertEqual(link["prior_reference_plan_hash"], ROLLING_HASH)
         self.assertEqual(link["recovery_plan_hash"], recovery["plan_hash"])
         self.assertEqual(link["promoted_reference_plan_hash"], promoted.reference_plan["plan_hash"])
-        self.assertEqual(promoted.reference_plan["solver"]["compiler"], "native-work-method-time-batched/0")
+        self.assertEqual(promoted.reference_plan["solver"]["compiler"], "native-work-method-time-lb1-seeded/0")
         advanced = advance_structural_status_cycle(
             promoted, 6, _t2_assertions(),
             asserted_by="planner", accepted_by="acceptor",

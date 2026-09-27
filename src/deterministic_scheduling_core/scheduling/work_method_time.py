@@ -28,6 +28,8 @@ from .planning_workspace import _case, _group_placements
 from .canonical_batching import (
     MAX_SAFE_BLOCK_VALUE, CanonicalBlock, CanonicalDigit, build_lexicographic_blocks,
 )
+from .finish_lower_bound import authorised_precedence_lower_bound
+from .finish_search import prove_finish
 
 PLAN_SCHEMA = "pm-native-work-method-time-plan/0"
 POLICY = "finish-global-start-timing-declared-methods-declared-modes-canonical-placement/0"
@@ -592,8 +594,74 @@ def _result_metrics(
 
 
 def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeResult:
-    """Calculate the authoritative exact-batched joint structural/productive plan."""
-    return _schedule_work_method_time_batched(problem)
+    """Calculate the authoritative LB1-exact finish and batched policy plan."""
+    return _schedule_work_method_time_lb1(problem)
+
+
+def _schedule_work_method_time_lb1(problem: WorkMethodTimeProject) -> WorkMethodTimeResult:
+    """Prove finish with one shared 60-unit SAT budget; retain lower blocks."""
+    compiled = _compile_work_method_time(problem)
+    bound_started = perf_counter()
+    lower, structures = authorised_precedence_lower_bound(compiled.problem)
+    bound_ms = (perf_counter() - bound_started) * 1000
+    finish, queries, remaining, base_digest = prove_finish(
+        compiled, lower, new_solver=_new_solver, budget=MAX_DETERMINISTIC_TIME_PER_STAGE,
+    )
+    query_ms = sum(row["elapsed_wall_ms"] for row in queries)
+    query_deterministic = sum(row["deterministic_time"] for row in queries)
+    finish_proof = {"stage": "finish", "value": finish, "status": "PROVEN_EXACT",
+                    "proof_kind": "lb1-seeded-sat-search/0",
+                    "lower_bound": {"kind": "authorised-precedence-relaxation/0", "value": lower},
+                    "queries": [{"bound": row["bound"], "result": row["result"]} for row in queries]}
+    finish_metrics = {"stage": "finish", "stage_type": "finish", "status": "PROVEN_EXACT",
+                      "value": finish, "maximum": compiled.stages[0].maximum,
+                      "solver_calls": len(queries), "elapsed_wall_ms": query_ms,
+                      "solver_wall_time_ms": sum(row["solver_wall_time_ms"] for row in queries),
+                      "deterministic_time": query_deterministic,
+                      "cumulative_wall_ms": query_ms,
+                      "cumulative_deterministic_time": query_deterministic}
+    compiled.model.add(compiled.stages[0].expression == finish)
+    canonical_digits = tuple(CanonicalDigit(stage.name, stage.maximum) for stage in compiled.stages[2:])
+    blocks = build_lexicographic_blocks(canonical_digits)
+    solver, timing, timing_metrics = _solve_compiled_stages(
+        compiled, compiled.stages[1:2], cumulative_wall_ms=query_ms,
+        cumulative_deterministic_time=query_deterministic,
+    )
+    block_started = perf_counter()
+    block_stages = _canonical_block_stages(compiled, blocks)
+    block_assembly_ms = (perf_counter() - block_started) * 1000
+    solver, canonical, block_metrics = _solve_compiled_stages(
+        compiled, block_stages, solver=solver,
+        cumulative_wall_ms=timing_metrics[-1]["cumulative_wall_ms"],
+        cumulative_deterministic_time=timing_metrics[-1]["cumulative_deterministic_time"],
+    )
+    block_documents = [{**block.to_document(), "solved_value": proof["value"]}
+                       for block, proof in zip(blocks, canonical)]
+    plan, extraction = _extract_plan(
+        compiled, solver, [finish_proof, *timing, *canonical],
+        compiler="native-work-method-time-lb1-seeded/0", canonical_blocks=block_documents,
+    )
+    metrics = _result_metrics(compiled, [finish_metrics, *timing_metrics, *block_metrics], extraction)
+    metrics.update({
+        "solver_calls": len(queries) + len(timing_metrics) + len(block_metrics),
+        "policy_stage_count": 1 + len(timing_metrics) + len(block_metrics),
+        "finish_query_count": len(queries), "finish_lower_bound": lower,
+        "finish_lower_bound_structures": structures,
+        "finish_lower_bound_derivation_ms": bound_ms,
+        "finish_search_deterministic_time": query_deterministic,
+        "finish_search_wall_ms": query_ms,
+        "finish_remaining_deterministic_budget": remaining,
+        "finish_query_metrics": queries, "finish_base_proto_sha256": base_digest,
+        "canonical_block_assembly_ms": block_assembly_ms,
+        "canonical_digits": [{"name": digit.name, "maximum": digit.maximum} for digit in canonical_digits],
+        "canonical_blocks": block_documents, "canonical_block_count": len(blocks),
+        "integer_safety_bound": MAX_SAFE_BLOCK_VALUE,
+        "canonical_vector": [{"name": stage.name, "stage_type": stage.stage_type,
+                              "value": solver.value(stage.expression), "maximum": stage.maximum}
+                             for stage in compiled.stages[2:]],
+    })
+    metrics["end_to_end_ms"] = (perf_counter() - compiled.started_at) * 1000
+    return WorkMethodTimeResult(plan, metrics)
 
 
 def _schedule_work_method_time_batched(

@@ -1,0 +1,317 @@
+{
+  "allocation_witness": [
+    [
+      "B",
+      "MECH",
+      "M"
+    ],
+    [
+      "C_FAST",
+      "MECH",
+      "M"
+    ]
+  ],
+  "entries": [
+    {
+      "activity_id": "A_ALT",
+      "assignments": [],
+      "finish": 7,
+      "group_demands": [],
+      "method_id": "ALT",
+      "mode_id": "FIXED",
+      "periods": [
+        [
+          6,
+          7
+        ]
+      ],
+      "start": 6,
+      "work_package_id": "BUILD"
+    },
+    {
+      "activity_id": "B",
+      "assignments": [
+        [
+          "MECH",
+          "M"
+        ]
+      ],
+      "finish": 3,
+      "group_demands": [],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [
+        [
+          2,
+          3
+        ]
+      ],
+      "start": 2,
+      "work_package_id": "ACCESS"
+    },
+    {
+      "activity_id": "C_FAST",
+      "assignments": [
+        [
+          "MECH",
+          "M"
+        ]
+      ],
+      "finish": 1,
+      "group_demands": [],
+      "method_id": "FAST",
+      "mode_id": "FIXED",
+      "periods": [
+        [
+          0,
+          1
+        ]
+      ],
+      "start": 0,
+      "work_package_id": "CREW"
+    },
+    {
+      "activity_id": "D",
+      "assignments": [],
+      "finish": 1,
+      "group_demands": [],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [],
+      "start": 1,
+      "work_package_id": "CHECK"
+    },
+    {
+      "activity_id": "E",
+      "assignments": [],
+      "finish": 1,
+      "group_demands": [],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [],
+      "start": 1,
+      "work_package_id": "CHECK"
+    },
+    {
+      "activity_id": "F",
+      "assignments": [],
+      "finish": 1,
+      "group_demands": [],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [],
+      "start": 1,
+      "work_package_id": "CHECK"
+    },
+    {
+      "activity_id": "G",
+      "assignments": [],
+      "finish": 1,
+      "group_demands": [],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [],
+      "start": 1,
+      "work_package_id": "CHECK"
+    },
+    {
+      "activity_id": "DONE",
+      "assignments": [],
+      "finish": 7,
+      "group_demands": [],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [],
+      "start": 7,
+      "work_package_id": "HANDOFF"
+    }
+  ],
+  "input_hash": "e1eaacb44a46a86b457df446d1861027694d977e9adb1fa9f91d2f0042e7f791",
+  "objective": [
+    7,
+    118
+  ],
+  "physical_status": "PROVEN_FEASIBLE",
+  "plan_hash": "61add1ea57ede769cb676aa11f93b31eb5696f8f691b22b22a38b9f146172a7d",
+  "policy": "finish-global-start-timing-declared-methods-declared-modes-canonical-placement/0",
+  "pooled_riggers": false,
+  "schema": "pm-native-work-method-time-plan/0",
+  "selected_methods": {
+    "ACCESS": "FIXED",
+    "BUILD": "ALT",
+    "CHECK": "FIXED",
+    "CREW": "FAST",
+    "HANDOFF": "FIXED"
+  },
+  "selected_modes": {
+    "A_ALT": "FIXED",
+    "B": "FIXED",
+    "C_FAST": "FIXED",
+    "D": "FIXED",
+    "DONE": "FIXED",
+    "E": "FIXED",
+    "F": "FIXED",
+    "G": "FIXED"
+  },
+  "solver": {
+    "canonical_blocks": [
+      {
+        "digits": [
+          {
+            "coefficient": 44236800000,
+            "maximum": 1,
+            "name": "method:BUILD"
+          },
+          {
+            "coefficient": 44236800000,
+            "maximum": 0,
+            "name": "method:ACCESS"
+          },
+          {
+            "coefficient": 22118400000,
+            "maximum": 1,
+            "name": "method:CREW"
+          },
+          {
+            "coefficient": 22118400000,
+            "maximum": 0,
+            "name": "method:CHECK"
+          },
+          {
+            "coefficient": 22118400000,
+            "maximum": 0,
+            "name": "method:HANDOFF"
+          },
+          {
+            "coefficient": 11059200000,
+            "maximum": 1,
+            "name": "mode:A_FAST"
+          },
+          {
+            "coefficient": 5529600000,
+            "maximum": 1,
+            "name": "mode:A_ALT"
+          },
+          {
+            "coefficient": 2764800000,
+            "maximum": 1,
+            "name": "mode:B"
+          },
+          {
+            "coefficient": 1382400000,
+            "maximum": 1,
+            "name": "mode:C_FAST"
+          },
+          {
+            "coefficient": 691200000,
+            "maximum": 1,
+            "name": "mode:C_ALT"
+          },
+          {
+            "coefficient": 345600000,
+            "maximum": 1,
+            "name": "mode:D"
+          },
+          {
+            "coefficient": 172800000,
+            "maximum": 1,
+            "name": "mode:E"
+          },
+          {
+            "coefficient": 86400000,
+            "maximum": 1,
+            "name": "mode:F"
+          },
+          {
+            "coefficient": 43200000,
+            "maximum": 1,
+            "name": "mode:G"
+          },
+          {
+            "coefficient": 21600000,
+            "maximum": 1,
+            "name": "mode:DONE"
+          },
+          {
+            "coefficient": 5400000,
+            "maximum": 3,
+            "name": "placement:A_FAST"
+          },
+          {
+            "coefficient": 1800000,
+            "maximum": 2,
+            "name": "placement:A_ALT"
+          },
+          {
+            "coefficient": 900000,
+            "maximum": 1,
+            "name": "placement:B"
+          },
+          {
+            "coefficient": 100000,
+            "maximum": 8,
+            "name": "placement:C_FAST"
+          },
+          {
+            "coefficient": 100000,
+            "maximum": 0,
+            "name": "placement:C_ALT"
+          },
+          {
+            "coefficient": 10000,
+            "maximum": 9,
+            "name": "placement:D"
+          },
+          {
+            "coefficient": 1000,
+            "maximum": 9,
+            "name": "placement:E"
+          },
+          {
+            "coefficient": 100,
+            "maximum": 9,
+            "name": "placement:F"
+          },
+          {
+            "coefficient": 10,
+            "maximum": 9,
+            "name": "placement:G"
+          },
+          {
+            "coefficient": 1,
+            "maximum": 9,
+            "name": "placement:DONE"
+          }
+        ],
+        "integer_safety_bound": 1152921504606846975,
+        "maximum_possible_value": 88473599999,
+        "name": "canonical_block:000",
+        "solved_value": 54586022228
+      }
+    ],
+    "compiler": "native-work-method-time-batched/0",
+    "max_deterministic_time_per_stage": 60.0,
+    "name": "CP-SAT",
+    "repeatability": "canonical stage ordering in the same declared environment; not a cross-version guarantee",
+    "seed": 0,
+    "stages": [
+      {
+        "stage": "finish",
+        "status": "OPTIMAL",
+        "value": 7
+      },
+      {
+        "stage": "global_start_timing",
+        "status": "OPTIMAL",
+        "value": 118
+      },
+      {
+        "stage": "canonical_block:000",
+        "status": "OPTIMAL",
+        "value": 54586022228
+      }
+    ],
+    "version": "9.15.6755",
+    "workers": 1
+  }
+}

@@ -451,6 +451,20 @@ for the complete query traces, non-exact-LB controls and bounded Outcome A.
 The experiment does not import into production; do not adopt its finish search
 or change admission from this evidence alone.
 
+The subsequent bounded adoption implements **LB1-seeded exact finish search**
+as the sole public Work-Method/productive-time authority. The previous
+objective-minimised finish/batched-canonical and sequential implementations
+remain private historical oracles. SAT at solver-independent admissible LB1
+proves finish immediately; otherwise capped exponential queries and bisection
+prove SAT at F and UNSAT at F−1. All finish queries share the original 60-unit
+logical-stage deterministic budget, with no silent objective fallback.
+Truthful deterministic query facts and a new compiler identity give new
+proof-sensitive hashes without changing old artifacts, accepted-history
+status, lineage or the decision policy. Tests must distinguish logical policy
+stages from actual solver calls. See
+`docs/authoritative-lb1-seeded-finish.md`; do not infer permission to raise
+the 64/16/20,000/480 bounds.
+
 Other focused candidates remain:
 
 - **calendar/state semantics:** only for a focused irregular-calendar or state-transition capability not answered by the bounded productive-time experiments;

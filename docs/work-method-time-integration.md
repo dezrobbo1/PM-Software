@@ -85,7 +85,10 @@ in this declared order:
 4. declared mode index, activity by activity (inactive activity contributes zero);
 5. deterministic placement ordering for the remaining representation ties.
 
-Finish and global timing are each proved and fixed separately. The authoritative
+Finish and global timing are each proved and fixed separately. Since the later
+[LB1-seeded adoption](authoritative-lb1-seeded-finish.md), finish is proven
+through exact bounded SAT queries sharing one logical 60-unit budget; global
+timing still requires an OPTIMAL minimisation proof. The authoritative
 path then proves adjacent lower-order digits in bounded, exact mixed-radix
 blocks, fixing each block before the next. The retained sequential oracle
 proves and fixes each digit separately. A fixed-method comparator retains the
