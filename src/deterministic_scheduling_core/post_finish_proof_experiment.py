@@ -191,7 +191,8 @@ def run_evidence(source_sha):
     g, c = primary["post_finish_deterministic"].values()
     block_costs = [b["production_cost"]["deterministic_time"] for b in primary["blocks"]]
     if c > g and max(block_costs) > sum(block_costs) / 2:
-        solver_class = "S-B — canonical block 000 dominates the post-finish solver family"
+        dominant = primary["blocks"][block_costs.index(max(block_costs))]["name"]
+        solver_class = f"S-B — {dominant} exceeds the remaining canonical blocks"
     elif c > g:
         solver_class = "S-C — canonical proof distributed across blocks"
     else:
