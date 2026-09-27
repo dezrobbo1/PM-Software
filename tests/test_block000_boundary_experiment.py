@@ -2,9 +2,12 @@
 import subprocess
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from deterministic_scheduling_core.block000_boundary_experiment import run_evidence
+from deterministic_scheduling_core.block000_boundary_experiment import _full_challenger, run_evidence
+from deterministic_scheduling_core.converged_scale_experiment import build_problem as scale_problem
 from deterministic_scheduling_core.post_finish_proof_experiment import BASE_HASHES
+from deterministic_scheduling_core.scheduling import work_method_time as scheduler
 
 
 class BlockBoundaryTests(unittest.TestCase):
@@ -63,6 +66,14 @@ class BlockBoundaryTests(unittest.TestCase):
             self.assertTrue(all(r["status"] == "SAT" for r in floor["repetitions"]))
             self.assertLessEqual(floor["wall_min_ms"], floor["wall_median_ms"])
             self.assertLessEqual(floor["wall_median_ms"], floor["wall_max_ms"])
+
+    def test_challenger_validates_once_inside_timed_path(self):
+        production = scheduler.schedule_work_method_time(scale_problem())
+        original = scheduler.validate_plan
+        with patch.object(scheduler, "validate_plan", wraps=original) as validate:
+            challenger = _full_challenger(scale_problem(), "semantic_split", production, 0)
+        self.assertTrue(challenger["semantic_equal"])
+        self.assertEqual(validate.call_count, 1)
 
     def test_controls_and_admission(self):
         e = self.evidence

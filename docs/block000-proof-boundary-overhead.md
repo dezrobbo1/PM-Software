@@ -12,6 +12,8 @@ In lexicographic order, all methods precede all modes. Minimising the complete o
 
 P0 is the actual public production path. P1 executes a fresh full LB1-finish, global-timing, two-sub-block and remaining-original-block proof path, with plan extraction and independent physical validation. P2 repeats that full path with one proof per target digit only. Both challenger plans match the entire production semantic projection and complete canonical vector; their experimental proof documents carry their own identity and are not production plans.
 
+The common extraction helper performs both independent allocation and stored-plan validation once on each path. Challenger end-to-end timing does not include a second validation pass; a focused regression checks that invocation count.
+
 ## Proof anatomy and cost accounting
 
 Each P0/method/mode A/B/C probe starts from three cloned objective-free models with the same within-environment proto digest, variable count, constraint count and prior fixed values. A minimises the corresponding objective; B asks SAT at its exact optimum; C asks UNSAT at one unit better. B/C are diagnostic and **not added** to P0/P1 actual scheduling costs. Every query closes to its declared proof status.

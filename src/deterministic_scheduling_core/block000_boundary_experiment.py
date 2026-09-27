@@ -28,7 +28,7 @@ from deterministic_scheduling_core.scheduling.finish_search import prove_finish
 from deterministic_scheduling_core.scheduling.work_method_time import (
     MAX_DETERMINISTIC_TIME_PER_STAGE, _Stage, _canonical_block_stages,
     _compile_work_method_time, _extract_plan, _new_solver, _solve_compiled_stages,
-    schedule_work_method_time, validate_plan,
+    schedule_work_method_time,
 )
 
 
@@ -149,7 +149,8 @@ def _full_challenger(problem, strategy, expected, target_index):
                     "queries": [{"bound": q["bound"], "result": q["result"]} for q in queries]}
     plan, extraction = _extract_plan(compiled, solver, [finish_proof, *timing, *preceding,
         *target_proof, *remainder], compiler=f"experiment-{strategy}/0")
-    validate_plan(problem, plan)
+    # _extract_plan already performs independent allocation and stored-plan
+    # validation; repeating either here would inflate challenger wall cost.
     vector = [{"name": s.name, "value": solver.value(s.expression)} for s in compiled.stages[2:]]
     original = [{"name": v["name"], "value": v["value"]} for v in expected.metrics["canonical_vector"]]
     if semantic_plan(plan) != semantic_plan(expected.plan) or vector != original:
