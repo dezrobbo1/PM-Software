@@ -1,0 +1,59 @@
+name: Post-finish proof cost decomposition
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-finish-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-decomposition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Record exact head
+        run: |
+          mkdir -p /tmp/post-finish-proof
+          git rev-parse HEAD > /tmp/post-finish-proof/source-sha.txt
+      - name: Install bounded scheduler
+        run: python -m pip install -e .
+      - name: Run focused diagnostics
+        env:
+          PYTHONHASHSEED: '0'
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_post_finish_proof_experiment -v 2>&1 | tee /tmp/post-finish-proof/focused-tests.txt
+      - name: Produce source-bound result
+        env:
+          PYTHONHASHSEED: '0'
+        run: |
+          python -m deterministic_scheduling_core.post_finish_proof_experiment --source-sha "$(git rev-parse HEAD)" --output /tmp/post-finish-proof/result.json
+          python -c 'import json,subprocess; d=json.load(open("/tmp/post-finish-proof/result.json")); assert d["source_sha"] == subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()'
+      - name: Digest available evidence
+        if: always()
+        run: |
+          cd /tmp/post-finish-proof
+          : > SHA256SUMS
+          for file in source-sha.txt focused-tests.txt result.json; do
+            if [ -f "$file" ]; then
+              sha256sum "$file" >> SHA256SUMS
+            fi
+          done
+      - name: Upload exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-finish-proof-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/post-finish-proof/
+          if-no-files-found: warn
