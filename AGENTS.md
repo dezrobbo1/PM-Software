@@ -440,6 +440,17 @@ See `docs/finish-lower-bound-propagation.md` for admissibility arguments, total
 costs and Outcome E. Do not add these lower bounds to production from this
 evidence; do not change its model, policy, hashes or scale bounds.
 
+The subsequent objective-formulation and exact LB-seeded feasibility experiment
+keeps the R0 production model and policy intact. Directly minimising the
+placement-finish expression leaves the 64/48 proof effort unchanged, while a
+single objective-free SAT query at frozen admissible LB1=19 proves the same
+finish with lower deterministic effort. Exact semantic plans, canonical digits
+and physical witnesses match on the named, anonymous-group, suspended-workface
+and inactive-method controls. See `docs/finish-objective-search-formulation.md`
+for the complete query traces, non-exact-LB controls and bounded Outcome A.
+The experiment does not import into production; do not adopt its finish search
+or change admission from this evidence alone.
+
 Other focused candidates remain:
 
 - **calendar/state semantics:** only for a focused irregular-calendar or state-transition capability not answered by the bounded productive-time experiments;

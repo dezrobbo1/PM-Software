@@ -525,6 +525,8 @@ The follow-up [exact finish-search and factored-placement experiment](docs/facto
 
 The [exact lower-bound propagation experiment](docs/finish-lower-bound-propagation.md) finds a cheap solver-independent precedence bound already equal to the 64/48 optimum of 19. Injecting it, a calendar/placement-aware bound, or even diagnostic `finish >= 19` does not reduce the retained 5.478 deterministic-second finish proof. Budgeted solver snapshots do not establish an earlier incumbent with a lagging objective bound. **Outcome E: lower-bound strength does not explain this anchor's objective cost.** This remains diagnostic only.
 
+The [exact finish objective and LB-seeded search experiment](docs/finish-objective-search-formulation.md) tests the unchanged enumerated model with the original end-variable objective, an algebraically equivalent placement-finish objective and exact SAT search seeded by frozen admissible bounds. On the 64/48 case, the direct objective does not improve the 5.478 deterministic-second finish proof, while one LB1-seeded SAT query proves F=19 in about 0.068 deterministic seconds. Complete policy and physical results agree on named-resource, workface, inactive-structure and anonymous-group controls; smaller cases also expose query overhead. **Outcome A for these bounded controls; no production adoption or scale-limit change.**
+
 Do not substitute broad compatibility work, production hardening, a P6/MSP clone, full event sourcing, a generic objective-policy framework, a generic decomposition framework or a large UI framework for the next focused experiment.
 
 ## External-format adapter boundary
