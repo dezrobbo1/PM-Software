@@ -98,6 +98,23 @@ The classifier must still stop at the 64-activity admission guard, with
 20,000 placement cap. This is no evidence of 160/120 schedulability or
 production-scale readiness.
 
+One same-environment Python 3.12 / OR-Tools 9.15 exact-head run measured:
+
+| Control | LB1 / exact F | S2 finish queries | S2 / S0 finish deterministic seconds | S2 / S0 complete-policy deterministic seconds |
+| :--- | :---: | ---: | ---: | ---: |
+| 64 declared / 48 active | 19 / 19 | 1 | 0.06846 / 5.47831 | 0.27896 / 5.68881 |
+| Small named resource | 27 / 30 | 5 | 0.00618 / 0.44538 | 0.00953 / 0.44873 |
+| Professional workface/deadline | 4 / 7 | 5 | 0.00068 / 0.00039 | 0.00114 / 0.00085 |
+
+The small named case's ordered bounds are 27 UNSAT, 28 UNSAT, 29 UNSAT,
+31 SAT, 30 SAT. The professional case has small absolute overhead; no
+universal speed claim follows from this small matrix. The complete
+machine-readable evidence also reports build, wall observations, 8–64
+activity controls and fixed-eight-activity 129–3841-placement controls.
+Subject to final exact-head review and regression, the bounded classification
+is **A — adoption proven**: complete policy, historical identity, budget and
+failure contracts survived. This does not justify raising scale limits.
+
 The adoption does **not** adopt LB2, LB3, C2, R1, generic binary search, a
 fallback optimizer or a new backend. It changes no activity/structure/
 placement/workface/horizon/safety bounds, accepted-history meaning, workface

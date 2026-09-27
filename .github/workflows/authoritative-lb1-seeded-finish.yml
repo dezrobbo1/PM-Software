@@ -43,8 +43,14 @@ jobs:
       - name: Digest evidence
         if: always()
         run: |
+          mkdir -p /tmp/lb1-seeded
           cd /tmp/lb1-seeded
-          sha256sum source-sha.txt focused-tests.txt result.json > SHA256SUMS
+          : > SHA256SUMS
+          for file in source-sha.txt focused-tests.txt result.json; do
+            if [ -f "$file" ]; then
+              sha256sum "$file" >> SHA256SUMS
+            fi
+          done
       - name: Retain evidence
         if: always()
         uses: actions/upload-artifact@v4
