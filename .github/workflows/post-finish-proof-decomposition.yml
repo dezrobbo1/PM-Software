@@ -22,12 +22,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install bounded scheduler
-        run: python -m pip install -e .
       - name: Record exact head
         run: |
           mkdir -p /tmp/post-finish-proof
           git rev-parse HEAD > /tmp/post-finish-proof/source-sha.txt
+      - name: Install bounded scheduler
+        run: python -m pip install -e .
       - name: Run focused diagnostics
         env:
           PYTHONHASHSEED: '0'

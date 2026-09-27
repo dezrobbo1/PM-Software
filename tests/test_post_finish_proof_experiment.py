@@ -25,6 +25,8 @@ class PostFinishProofTests(unittest.TestCase):
     def test_all_stage_optima_and_better_infeasibility(self):
         for row in [self.evidence["primary"], *self.evidence["controls"]]:
             stages = [(row["global_anatomy"], row["objective"][1])]
+            self.assertTrue(row["blocks"])
+            self.assertEqual(len(row["block_anatomy"]), len(row["blocks"]))
             stages.extend((a, b["value"]) for a, b in zip(row["block_anatomy"], row["blocks"]))
             for anatomy, optimum in stages:
                 self.assertTrue(anatomy["context"]["objective_absent"])
@@ -73,6 +75,13 @@ class PostFinishProofTests(unittest.TestCase):
         directory = Path(__file__).resolve().parents[1] / "src/deterministic_scheduling_core/scheduling"
         self.assertFalse(any("post_finish_proof_experiment" in source.read_text()
                              for source in directory.glob("*.py")))
+
+    def test_partial_evidence_created_before_install(self):
+        workflow = (Path(__file__).resolve().parents[1] /
+                    ".github/workflows/post-finish-proof-decomposition.yml").read_text()
+        self.assertLess(workflow.index("- name: Record exact head"),
+                        workflow.index("- name: Install bounded scheduler"))
+        self.assertIn("if: always()", workflow)
 
 
 if __name__ == "__main__":
