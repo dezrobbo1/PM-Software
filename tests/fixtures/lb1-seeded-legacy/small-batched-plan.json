@@ -1,0 +1,463 @@
+{
+  "allocation_witness": [
+    [
+      "C_SERVICE",
+      "CRANE",
+      "C04"
+    ],
+    [
+      "L1",
+      "CRANE",
+      "C04"
+    ],
+    [
+      "L1",
+      "MECH",
+      "M1"
+    ],
+    [
+      "L2",
+      "MECH",
+      "M1"
+    ],
+    [
+      "P1",
+      "SPECIALIST",
+      "M2"
+    ],
+    [
+      "QA",
+      "INSPECT",
+      "M2"
+    ]
+  ],
+  "entries": [
+    {
+      "activity_id": "RELEASE",
+      "assignments": [],
+      "finish": 20,
+      "group_demands": [],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [],
+      "start": 20,
+      "work_package_id": "RELEASE_WORK"
+    },
+    {
+      "activity_id": "L1",
+      "assignments": [
+        [
+          "MECH",
+          "M1"
+        ],
+        [
+          "CRANE",
+          "C04"
+        ]
+      ],
+      "finish": 27,
+      "group_demands": [],
+      "method_id": "LIFT",
+      "mode_id": "NORMAL",
+      "periods": [
+        [
+          20,
+          24
+        ],
+        [
+          25,
+          27
+        ]
+      ],
+      "start": 20,
+      "work_package_id": "REMOVE"
+    },
+    {
+      "activity_id": "L2",
+      "assignments": [
+        [
+          "MECH",
+          "M1"
+        ]
+      ],
+      "finish": 28,
+      "group_demands": [],
+      "method_id": "LIFT",
+      "mode_id": "FIXED",
+      "periods": [
+        [
+          27,
+          28
+        ]
+      ],
+      "start": 27,
+      "work_package_id": "REMOVE"
+    },
+    {
+      "activity_id": "P1",
+      "assignments": [
+        [
+          "SPECIALIST",
+          "M2"
+        ]
+      ],
+      "finish": 24,
+      "group_demands": [],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [
+        [
+          20,
+          24
+        ]
+      ],
+      "start": 20,
+      "work_package_id": "SUPPORT"
+    },
+    {
+      "activity_id": "R1",
+      "assignments": [],
+      "finish": 22,
+      "group_demands": [
+        [
+          "RIGGING",
+          1
+        ]
+      ],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [
+        [
+          20,
+          22
+        ]
+      ],
+      "start": 20,
+      "work_package_id": "SUPPORT"
+    },
+    {
+      "activity_id": "R2",
+      "assignments": [],
+      "finish": 22,
+      "group_demands": [
+        [
+          "RIGGING",
+          1
+        ]
+      ],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [
+        [
+          20,
+          22
+        ]
+      ],
+      "start": 20,
+      "work_package_id": "SUPPORT"
+    },
+    {
+      "activity_id": "R_END",
+      "assignments": [],
+      "finish": 22,
+      "group_demands": [],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [],
+      "start": 22,
+      "work_package_id": "SUPPORT"
+    },
+    {
+      "activity_id": "C_SERVICE",
+      "assignments": [
+        [
+          "CRANE",
+          "C04"
+        ]
+      ],
+      "finish": 25,
+      "group_demands": [],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [
+        [
+          24,
+          25
+        ]
+      ],
+      "start": 24,
+      "work_package_id": "SUPPORT"
+    },
+    {
+      "activity_id": "SUPPORT_END",
+      "assignments": [],
+      "finish": 25,
+      "group_demands": [],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [],
+      "start": 25,
+      "work_package_id": "SUPPORT"
+    },
+    {
+      "activity_id": "QA",
+      "assignments": [
+        [
+          "INSPECT",
+          "M2"
+        ]
+      ],
+      "finish": 30,
+      "group_demands": [],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [
+        [
+          28,
+          30
+        ]
+      ],
+      "start": 28,
+      "work_package_id": "HANDOFF"
+    },
+    {
+      "activity_id": "DONE",
+      "assignments": [],
+      "finish": 30,
+      "group_demands": [],
+      "method_id": "FIXED",
+      "mode_id": "FIXED",
+      "periods": [],
+      "start": 30,
+      "work_package_id": "HANDOFF"
+    }
+  ],
+  "input_hash": "28c6e73ff1e5303973a1a3cb1783ff317df640a2030bd87e365239f6e20d4987",
+  "objective": [
+    30,
+    2000
+  ],
+  "physical_status": "PROVEN_FEASIBLE",
+  "plan_hash": "458a5927a645fb2eed8a8ac432c0262d2bfcf23d3ae222a4e9f32d4682569ab5",
+  "policy": "finish-global-start-timing-declared-methods-declared-modes-canonical-placement/0",
+  "pooled_riggers": false,
+  "schema": "pm-native-work-method-time-plan/0",
+  "selected_methods": {
+    "HANDOFF": "FIXED",
+    "RELEASE_WORK": "FIXED",
+    "REMOVE": "LIFT",
+    "SUPPORT": "FIXED"
+  },
+  "selected_modes": {
+    "C_SERVICE": "FIXED",
+    "DONE": "FIXED",
+    "L1": "NORMAL",
+    "L2": "FIXED",
+    "P1": "FIXED",
+    "QA": "FIXED",
+    "R1": "FIXED",
+    "R2": "FIXED",
+    "RELEASE": "FIXED",
+    "R_END": "FIXED",
+    "SUPPORT_END": "FIXED"
+  },
+  "solver": {
+    "canonical_blocks": [
+      {
+        "digits": [
+          {
+            "coefficient": 199144309741977600,
+            "maximum": 0,
+            "name": "method:RELEASE_WORK"
+          },
+          {
+            "coefficient": 99572154870988800,
+            "maximum": 1,
+            "name": "method:REMOVE"
+          },
+          {
+            "coefficient": 99572154870988800,
+            "maximum": 0,
+            "name": "method:SUPPORT"
+          },
+          {
+            "coefficient": 99572154870988800,
+            "maximum": 0,
+            "name": "method:HANDOFF"
+          },
+          {
+            "coefficient": 49786077435494400,
+            "maximum": 1,
+            "name": "mode:RELEASE"
+          },
+          {
+            "coefficient": 16595359145164800,
+            "maximum": 2,
+            "name": "mode:L1"
+          },
+          {
+            "coefficient": 8297679572582400,
+            "maximum": 1,
+            "name": "mode:L2"
+          },
+          {
+            "coefficient": 4148839786291200,
+            "maximum": 1,
+            "name": "mode:S1"
+          },
+          {
+            "coefficient": 2074419893145600,
+            "maximum": 1,
+            "name": "mode:S2"
+          },
+          {
+            "coefficient": 1037209946572800,
+            "maximum": 1,
+            "name": "mode:P1"
+          },
+          {
+            "coefficient": 518604973286400,
+            "maximum": 1,
+            "name": "mode:R1"
+          },
+          {
+            "coefficient": 259302486643200,
+            "maximum": 1,
+            "name": "mode:R2"
+          },
+          {
+            "coefficient": 129651243321600,
+            "maximum": 1,
+            "name": "mode:R_END"
+          },
+          {
+            "coefficient": 64825621660800,
+            "maximum": 1,
+            "name": "mode:C_SERVICE"
+          },
+          {
+            "coefficient": 32412810830400,
+            "maximum": 1,
+            "name": "mode:SUPPORT_END"
+          },
+          {
+            "coefficient": 16206405415200,
+            "maximum": 1,
+            "name": "mode:QA"
+          },
+          {
+            "coefficient": 8103202707600,
+            "maximum": 1,
+            "name": "mode:DONE"
+          },
+          {
+            "coefficient": 103887214200,
+            "maximum": 77,
+            "name": "placement:RELEASE"
+          },
+          {
+            "coefficient": 1018502100,
+            "maximum": 101,
+            "name": "placement:L1"
+          },
+          {
+            "coefficient": 13227300,
+            "maximum": 76,
+            "name": "placement:L2"
+          },
+          {
+            "coefficient": 186300,
+            "maximum": 70,
+            "name": "placement:S1"
+          },
+          {
+            "coefficient": 2700,
+            "maximum": 68,
+            "name": "placement:S2"
+          },
+          {
+            "coefficient": 75,
+            "maximum": 35,
+            "name": "placement:P1"
+          },
+          {
+            "coefficient": 1,
+            "maximum": 74,
+            "name": "placement:R1"
+          }
+        ],
+        "integer_safety_bound": 1152921504606846975,
+        "maximum_possible_value": 199144309741977599,
+        "name": "canonical_block:000",
+        "solved_value": 76745550302104138
+      },
+      {
+        "digits": [
+          {
+            "coefficient": 2404745560,
+            "maximum": 74,
+            "name": "placement:R2"
+          },
+          {
+            "coefficient": 24538220,
+            "maximum": 97,
+            "name": "placement:R_END"
+          },
+          {
+            "coefficient": 336140,
+            "maximum": 72,
+            "name": "placement:C_SERVICE"
+          },
+          {
+            "coefficient": 3430,
+            "maximum": 97,
+            "name": "placement:SUPPORT_END"
+          },
+          {
+            "coefficient": 98,
+            "maximum": 34,
+            "name": "placement:QA"
+          },
+          {
+            "coefficient": 1,
+            "maximum": 97,
+            "name": "placement:DONE"
+          }
+        ],
+        "integer_safety_bound": 1152921504606846975,
+        "maximum_possible_value": 180355916999,
+        "name": "canonical_block:001",
+        "solved_value": 34231243525
+      }
+    ],
+    "compiler": "native-work-method-time-batched/0",
+    "max_deterministic_time_per_stage": 60.0,
+    "name": "CP-SAT",
+    "repeatability": "canonical stage ordering in the same declared environment; not a cross-version guarantee",
+    "seed": 0,
+    "stages": [
+      {
+        "stage": "finish",
+        "status": "OPTIMAL",
+        "value": 30
+      },
+      {
+        "stage": "global_start_timing",
+        "status": "OPTIMAL",
+        "value": 2000
+      },
+      {
+        "stage": "canonical_block:000",
+        "status": "OPTIMAL",
+        "value": 76745550302104138
+      },
+      {
+        "stage": "canonical_block:001",
+        "status": "OPTIMAL",
+        "value": 34231243525
+      }
+    ],
+    "version": "9.15.6755",
+    "workers": 1
+  }
+}

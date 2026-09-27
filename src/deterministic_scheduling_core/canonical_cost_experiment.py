@@ -351,8 +351,8 @@ def run_cost_decomposition() -> dict:
     for name, family, problem in fixture_matrix():
         before = input_hash(problem)
         sequential = _schedule_work_method_time_sequential_oracle(problem)
-        challenger = schedule_work_method_time(problem)
-        repeat = schedule_work_method_time(problem)
+        challenger = _schedule_work_method_time_batched(problem)
+        repeat = _schedule_work_method_time_batched(problem)
         validate_plan(problem, sequential.plan)
         validate_plan(problem, challenger.plan)
         semantic_equal = semantic_plan(sequential.plan) == semantic_plan(challenger.plan)

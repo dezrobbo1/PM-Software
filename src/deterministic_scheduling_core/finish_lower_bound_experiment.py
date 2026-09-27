@@ -1,4 +1,4 @@
-"""Experimental admissible finish bounds; never imported by production scheduling."""
+"""Historical S0 admissible finish-bound diagnostics; never imported by production."""
 from __future__ import annotations
 
 import argparse
@@ -24,8 +24,9 @@ from deterministic_scheduling_core.professional_scale_challenge import run_chall
 from deterministic_scheduling_core.professional_workface_experiment import build_problem as professional_problem
 from deterministic_scheduling_core.project.work_method_time import input_hash, materialise, method_selections
 from deterministic_scheduling_core.scheduling.work_method_time import (
-    _compile_work_method_time, _new_solver, policy_key, schedule_work_method_time,
+    _compile_work_method_time, _new_solver, policy_key, _schedule_work_method_time_batched,
 )
+from deterministic_scheduling_core.scheduling.finish_lower_bound import authorised_precedence_lower_bound
 from deterministic_scheduling_core.working_time_experiment import WorkCalendar, SUSPENDABLE
 
 
@@ -100,6 +101,10 @@ def _network_lower_bound(problem, level, compiled=None):
     Replacing a feasible full schedule by these earlier local completions cannot
     delay any successor. The minimum over all structures is therefore admissible.
     """
+    if level == 1:
+        # The historically tested pure precedence bound now has one shared
+        # implementation used by production and the retained experiments.
+        return authorised_precedence_lower_bound(problem)
     source = problem.project
     horizon = source["horizon_ticks"]
     calendars = {c["id"]: WorkCalendar(c["id"], tuple(map(tuple, c["daily_windows"]))).slots(horizon)
@@ -188,7 +193,7 @@ def derive_bounds(problem, compiled=None):
 def _fixture(problem, *, exact_plan=None, injected=False):
     original = input_hash(problem)
     if exact_plan is None:
-        exact_plan = schedule_work_method_time(problem).plan
+        exact_plan = _schedule_work_method_time_batched(problem).plan
     f = exact_plan["objective"][0]
     compile_started = perf_counter()
     compiled = _compile_work_method_time(problem)
@@ -231,7 +236,7 @@ def run_experiment(*, source_sha=None):
     fixtures = {"small": small_problem(), "professional": professional_problem(workface=True, deadline=True),
                 "scale_64_48": scale_problem()}
     originals = {name: input_hash(problem) for name, problem in fixtures.items()}
-    production = {name: schedule_work_method_time(problem).plan for name, problem in fixtures.items()}
+    production = {name: _schedule_work_method_time_batched(problem).plan for name, problem in fixtures.items()}
     hashes = {name: plan["plan_hash"] for name, plan in production.items()}
     if hashes != BASE_HASHES:
         raise AssertionError("verified-base production identity changed")

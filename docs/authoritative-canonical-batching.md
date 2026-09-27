@@ -1,5 +1,9 @@
 # Authoritative exact canonical batching v0
 
+Historical PR #43 adoption: finish proof was later changed to admissible-LB1-
+seeded exact SAT search without changing the lower canonical blocks or policy;
+see [authoritative LB1 finish](authoritative-lb1-seeded-finish.md).
+
 The later, diagnostic-only [controlling-finish proof decomposition](controlling-finish-proof-decomposition.md)
 investigates the dominant finish stage after adoption. It retains the production
 compiler and all plan hashes; the historical adoption measurements below remain

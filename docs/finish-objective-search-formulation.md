@@ -1,5 +1,8 @@
 # Exact finish objective and lower-bound-seeded search (experimental)
 
+Historical PR #47 experiment: the subsequent bounded production adoption is
+documented in [authoritative LB1-seeded finish](authoritative-lb1-seeded-finish.md).
+
 PR #46 found a solver-independent admissible LB1 of 19 on the retained 64/48
 source, equal to its independently controlled production optimum F=19. Adding
 `finish >= 19` to CP-SAT minimisation left the objective proof at 5.478313

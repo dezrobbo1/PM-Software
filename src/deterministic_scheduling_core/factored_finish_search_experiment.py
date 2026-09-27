@@ -1,4 +1,4 @@
-"""Experimental exact finish search and anonymous-group factoring; never production.
+"""Historical S0 exact finish search and anonymous-group factoring; never production.
 
 The R1 compiler reuses source validation, productive-case compilation, raw
 placement generation, canonical block mathematics and independent plan
@@ -31,7 +31,7 @@ from deterministic_scheduling_core.scheduling.canonical_batching import Canonica
 from deterministic_scheduling_core.scheduling.planning_workspace import _group_placements
 from deterministic_scheduling_core.scheduling.work_method_time import (
     _CompiledWorkMethodTime, _Stage, _canonical_block_stages, _compile_work_method_time,
-    _extract_plan, _mode_cases, _new_solver, _solve_compiled_stages, schedule_work_method_time,
+    _extract_plan, _mode_cases, _new_solver, _solve_compiled_stages, _schedule_work_method_time_batched,
     validate_plan, validate_problem,
 )
 
@@ -365,7 +365,7 @@ def _bounds(compiled, finish):
 
 def _matrix(problem, *, authority=None):
     before = input_hash(problem)
-    authoritative = authority or schedule_work_method_time(problem)
+    authoritative = authority or _schedule_work_method_time_batched(problem)
     reference = _compile_work_method_time(problem)
     challenger, representation = compile_factored(problem)
     rank = _rank_check(reference, challenger)
@@ -553,7 +553,7 @@ def run_experiment(*, source_sha=None):
     sources = {"small": small_problem(), "professional": professional_problem(workface=True, deadline=True),
                "scale_64_48": scale_problem()}
     hashes = {name: input_hash(problem) for name, problem in sources.items()}
-    production = {name: schedule_work_method_time(problem) for name, problem in sources.items()}
+    production = {name: _schedule_work_method_time_batched(problem) for name, problem in sources.items()}
     if {name: result.plan["plan_hash"] for name, result in production.items()} != BASE_HASHES:
         raise AssertionError("base-main production plan identity changed")
     anchor = _matrix(sources["scale_64_48"], authority=production["scale_64_48"])

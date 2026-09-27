@@ -1,0 +1,1304 @@
+{
+  "current_problem": {
+    "project": {
+      "activities": [
+        {
+          "id": "PREP",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 2,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M1"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Prepare workfront"
+        },
+        {
+          "id": "LIFT",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 4,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M1"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                },
+                {
+                  "eligible_resource_ids": [
+                    "C04"
+                  ],
+                  "id": "CRANE",
+                  "pool_ids": [
+                    "CRANE"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Lift component"
+        },
+        {
+          "id": "SEG1",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 3,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M1"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Segment component"
+        },
+        {
+          "id": "SEG2",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 4,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M1"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Remove segmented component",
+          "predecessors": [
+            "SEG1"
+          ]
+        },
+        {
+          "id": "REST_CRANE",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 2,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M2"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                },
+                {
+                  "eligible_resource_ids": [
+                    "C04"
+                  ],
+                  "id": "CRANE",
+                  "pool_ids": [
+                    "CRANE"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Crane-assisted restore",
+          "not_before": 6
+        },
+        {
+          "id": "REST_MAN1",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 4,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M2"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Manual restore stage one"
+        },
+        {
+          "id": "REST_MAN2",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 4,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M2"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Manual restore stage two",
+          "predecessors": [
+            "REST_MAN1"
+          ]
+        },
+        {
+          "id": "DONE",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 0,
+              "requirements": []
+            }
+          ],
+          "name": "Return to service"
+        }
+      ],
+      "calendars": [
+        {
+          "daily_windows": [
+            [
+              0,
+              48
+            ]
+          ],
+          "id": "ALWAYS"
+        }
+      ],
+      "horizon_ticks": 32,
+      "id": "accepted-wm-demo",
+      "name": "Accepted history with structural recovery",
+      "objective_activity_id": "DONE",
+      "pool_riggers": false,
+      "resource_groups": [],
+      "resources": [
+        {
+          "calendar_id": "ALWAYS",
+          "capabilities": [
+            "MECH"
+          ],
+          "id": "M1"
+        },
+        {
+          "calendar_id": "ALWAYS",
+          "capabilities": [
+            "MECH"
+          ],
+          "id": "M2"
+        },
+        {
+          "calendar_id": "ALWAYS",
+          "capabilities": [
+            "CRANE"
+          ],
+          "id": "C04"
+        }
+      ]
+    },
+    "reports": [],
+    "schema": "pm-native-work-method-time/0",
+    "work_packages": [
+      {
+        "id": "PREP_WORK",
+        "methods": [
+          {
+            "activity_ids": [
+              "PREP"
+            ],
+            "completion_activity_id": "PREP",
+            "id": "FIXED",
+            "name": "Preparation"
+          }
+        ],
+        "name": "Preparation",
+        "predecessors": []
+      },
+      {
+        "id": "REMOVE",
+        "methods": [
+          {
+            "activity_ids": [
+              "LIFT"
+            ],
+            "completion_activity_id": "LIFT",
+            "id": "LIFT",
+            "name": "Lift complete component"
+          },
+          {
+            "activity_ids": [
+              "SEG1",
+              "SEG2"
+            ],
+            "completion_activity_id": "SEG2",
+            "id": "SEGMENTED",
+            "name": "Segmented removal"
+          }
+        ],
+        "name": "Remove component",
+        "predecessors": [
+          "PREP_WORK"
+        ]
+      },
+      {
+        "id": "RESTORE",
+        "methods": [
+          {
+            "activity_ids": [
+              "REST_CRANE"
+            ],
+            "completion_activity_id": "REST_CRANE",
+            "id": "CRANE",
+            "name": "Crane-assisted restore"
+          },
+          {
+            "activity_ids": [
+              "REST_MAN1",
+              "REST_MAN2"
+            ],
+            "completion_activity_id": "REST_MAN2",
+            "id": "MANUAL",
+            "name": "Manual restore"
+          }
+        ],
+        "name": "Restore system",
+        "predecessors": [
+          "PREP_WORK"
+        ]
+      },
+      {
+        "id": "HANDOFF",
+        "methods": [
+          {
+            "activity_ids": [
+              "DONE"
+            ],
+            "completion_activity_id": "DONE",
+            "id": "FIXED",
+            "name": "Handoff"
+          }
+        ],
+        "name": "Return to service",
+        "predecessors": [
+          "REMOVE",
+          "RESTORE"
+        ]
+      }
+    ]
+  },
+  "lineage": [
+    {
+      "prior_reference_plan_hash": "74713c6e4f9afd8876764b2a3c3c9a0c1079312b8559c5b34e4d2a66a6bb40ca",
+      "prior_status_state_hash": "7d2f76241059df5fb55fe81a365d82431df47e597efd96c8a2ad33034013e772",
+      "promoted_reference_plan_hash": "bca8421d3077b9cc1b8a6d05a548491d851ea7ce79eb0ef57d57207c54196824",
+      "promoted_status_state_hash": "b907ee8831298a9b803eaa17b8b83f933bd31dc62dc43d2ab25379b1223c4e24",
+      "recovery_plan_hash": "b5ac01947fe1ab0c49ea514aa91dfee2f375448ba8486a235b22d87338d50ec0",
+      "selected_methods": {
+        "HANDOFF": "FIXED",
+        "PREP_WORK": "FIXED",
+        "REMOVE": "LIFT",
+        "RESTORE": "MANUAL"
+      }
+    }
+  ],
+  "reference_plan": {
+    "allocation_witness": [
+      [
+        "LIFT",
+        "CRANE",
+        "C04"
+      ],
+      [
+        "LIFT",
+        "MECH",
+        "M1"
+      ],
+      [
+        "REST_MAN1",
+        "MECH",
+        "M2"
+      ],
+      [
+        "REST_MAN2",
+        "MECH",
+        "M2"
+      ]
+    ],
+    "entries": [
+      {
+        "activity_id": "PREP",
+        "assignments": [],
+        "finish": 2,
+        "group_demands": [],
+        "method_id": "FIXED",
+        "mode_id": "FIXED",
+        "periods": [],
+        "start": 2,
+        "work_package_id": "PREP_WORK"
+      },
+      {
+        "activity_id": "LIFT",
+        "assignments": [
+          [
+            "MECH",
+            "M1"
+          ],
+          [
+            "CRANE",
+            "C04"
+          ]
+        ],
+        "finish": 12,
+        "group_demands": [],
+        "method_id": "LIFT",
+        "mode_id": "FIXED",
+        "periods": [
+          [
+            4,
+            12
+          ]
+        ],
+        "start": 4,
+        "work_package_id": "REMOVE"
+      },
+      {
+        "activity_id": "REST_MAN1",
+        "assignments": [
+          [
+            "MECH",
+            "M2"
+          ]
+        ],
+        "finish": 8,
+        "group_demands": [],
+        "method_id": "MANUAL",
+        "mode_id": "FIXED",
+        "periods": [
+          [
+            4,
+            8
+          ]
+        ],
+        "start": 4,
+        "work_package_id": "RESTORE"
+      },
+      {
+        "activity_id": "REST_MAN2",
+        "assignments": [
+          [
+            "MECH",
+            "M2"
+          ]
+        ],
+        "finish": 12,
+        "group_demands": [],
+        "method_id": "MANUAL",
+        "mode_id": "FIXED",
+        "periods": [
+          [
+            8,
+            12
+          ]
+        ],
+        "start": 8,
+        "work_package_id": "RESTORE"
+      },
+      {
+        "activity_id": "DONE",
+        "assignments": [],
+        "finish": 12,
+        "group_demands": [],
+        "method_id": "FIXED",
+        "mode_id": "FIXED",
+        "periods": [],
+        "start": 12,
+        "work_package_id": "HANDOFF"
+      }
+    ],
+    "input_hash": "edd22130e503a3134411f400f2c58040d469381eac2caec33d6a0b25f6a3891b",
+    "objective": [
+      12,
+      138
+    ],
+    "physical_status": "PROVEN_FEASIBLE",
+    "plan_hash": "bca8421d3077b9cc1b8a6d05a548491d851ea7ce79eb0ef57d57207c54196824",
+    "policy": "finish-global-start-timing-declared-methods-declared-modes-canonical-placement/0",
+    "pooled_riggers": false,
+    "schema": "pm-native-work-method-time-plan/0",
+    "selected_methods": {
+      "HANDOFF": "FIXED",
+      "PREP_WORK": "FIXED",
+      "REMOVE": "LIFT",
+      "RESTORE": "MANUAL"
+    },
+    "selected_modes": {
+      "DONE": "FIXED",
+      "LIFT": "FIXED",
+      "PREP": "FIXED",
+      "REST_MAN1": "FIXED",
+      "REST_MAN2": "FIXED"
+    },
+    "solver": {
+      "canonical_blocks": [
+        {
+          "digits": [
+            {
+              "coefficient": 47514255360,
+              "maximum": 0,
+              "name": "method:PREP_WORK"
+            },
+            {
+              "coefficient": 47514255360,
+              "maximum": 0,
+              "name": "method:REMOVE"
+            },
+            {
+              "coefficient": 23757127680,
+              "maximum": 1,
+              "name": "method:RESTORE"
+            },
+            {
+              "coefficient": 23757127680,
+              "maximum": 0,
+              "name": "method:HANDOFF"
+            },
+            {
+              "coefficient": 11878563840,
+              "maximum": 1,
+              "name": "mode:PREP"
+            },
+            {
+              "coefficient": 5939281920,
+              "maximum": 1,
+              "name": "mode:LIFT"
+            },
+            {
+              "coefficient": 2969640960,
+              "maximum": 1,
+              "name": "mode:REST_CRANE"
+            },
+            {
+              "coefficient": 1484820480,
+              "maximum": 1,
+              "name": "mode:REST_MAN1"
+            },
+            {
+              "coefficient": 742410240,
+              "maximum": 1,
+              "name": "mode:REST_MAN2"
+            },
+            {
+              "coefficient": 371205120,
+              "maximum": 1,
+              "name": "mode:DONE"
+            },
+            {
+              "coefficient": 11600160,
+              "maximum": 31,
+              "name": "placement:PREP"
+            },
+            {
+              "coefficient": 527280,
+              "maximum": 21,
+              "name": "placement:LIFT"
+            },
+            {
+              "coefficient": 20280,
+              "maximum": 25,
+              "name": "placement:REST_CRANE"
+            },
+            {
+              "coefficient": 780,
+              "maximum": 25,
+              "name": "placement:REST_MAN1"
+            },
+            {
+              "coefficient": 30,
+              "maximum": 25,
+              "name": "placement:REST_MAN2"
+            },
+            {
+              "coefficient": 1,
+              "maximum": 29,
+              "name": "placement:DONE"
+            }
+          ],
+          "integer_safety_bound": 1152921504606846975,
+          "maximum_possible_value": 47514255359,
+          "name": "canonical_block:000",
+          "solved_value": 44185537659
+        }
+      ],
+      "compiler": "native-work-method-time-batched/0",
+      "max_deterministic_time_per_stage": 60.0,
+      "name": "CP-SAT",
+      "repeatability": "canonical stage ordering in the same declared environment; not a cross-version guarantee",
+      "seed": 0,
+      "stages": [
+        {
+          "stage": "finish",
+          "status": "OPTIMAL",
+          "value": 12
+        },
+        {
+          "stage": "global_start_timing",
+          "status": "OPTIMAL",
+          "value": 138
+        },
+        {
+          "stage": "canonical_block:000",
+          "status": "OPTIMAL",
+          "value": 44185537659
+        }
+      ],
+      "version": "9.15.6755",
+      "workers": 1
+    }
+  },
+  "reference_problem": {
+    "project": {
+      "activities": [
+        {
+          "id": "PREP",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 0,
+              "requirements": []
+            }
+          ],
+          "name": "Prepare workfront",
+          "not_before": 2
+        },
+        {
+          "id": "LIFT",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 8,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M1"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                },
+                {
+                  "eligible_resource_ids": [
+                    "C04"
+                  ],
+                  "id": "CRANE",
+                  "pool_ids": [
+                    "CRANE"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Lift component",
+          "not_before": 4
+        },
+        {
+          "id": "REST_CRANE",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 2,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M2"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                },
+                {
+                  "eligible_resource_ids": [
+                    "C04"
+                  ],
+                  "id": "CRANE",
+                  "pool_ids": [
+                    "CRANE"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Crane-assisted restore",
+          "not_before": 6
+        },
+        {
+          "id": "REST_MAN1",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 4,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M2"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Manual restore stage one",
+          "not_before": 4
+        },
+        {
+          "id": "REST_MAN2",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 4,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M2"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Manual restore stage two",
+          "not_before": 4,
+          "predecessors": [
+            "REST_MAN1"
+          ]
+        },
+        {
+          "id": "DONE",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 0,
+              "requirements": []
+            }
+          ],
+          "name": "Return to service",
+          "not_before": 4
+        }
+      ],
+      "calendars": [
+        {
+          "daily_windows": [
+            [
+              0,
+              48
+            ]
+          ],
+          "id": "ALWAYS"
+        }
+      ],
+      "horizon_ticks": 32,
+      "id": "accepted-wm-demo",
+      "name": "Accepted history with structural recovery",
+      "objective_activity_id": "DONE",
+      "pool_riggers": false,
+      "resource_groups": [],
+      "resources": [
+        {
+          "calendar_id": "ALWAYS",
+          "capabilities": [
+            "MECH"
+          ],
+          "id": "M1"
+        },
+        {
+          "calendar_id": "ALWAYS",
+          "capabilities": [
+            "MECH"
+          ],
+          "id": "M2"
+        },
+        {
+          "calendar_id": "ALWAYS",
+          "capabilities": [
+            "CRANE"
+          ],
+          "id": "C04"
+        }
+      ]
+    },
+    "reports": [],
+    "schema": "pm-native-work-method-time/0",
+    "work_packages": [
+      {
+        "id": "PREP_WORK",
+        "methods": [
+          {
+            "activity_ids": [
+              "PREP"
+            ],
+            "completion_activity_id": "PREP",
+            "id": "FIXED",
+            "name": "Preparation"
+          }
+        ],
+        "name": "Preparation",
+        "predecessors": []
+      },
+      {
+        "id": "REMOVE",
+        "methods": [
+          {
+            "activity_ids": [
+              "LIFT"
+            ],
+            "completion_activity_id": "LIFT",
+            "id": "LIFT",
+            "name": "Lift complete component"
+          }
+        ],
+        "name": "Remove component",
+        "predecessors": [
+          "PREP_WORK"
+        ]
+      },
+      {
+        "id": "RESTORE",
+        "methods": [
+          {
+            "activity_ids": [
+              "REST_CRANE"
+            ],
+            "completion_activity_id": "REST_CRANE",
+            "id": "CRANE",
+            "name": "Crane-assisted restore"
+          },
+          {
+            "activity_ids": [
+              "REST_MAN1",
+              "REST_MAN2"
+            ],
+            "completion_activity_id": "REST_MAN2",
+            "id": "MANUAL",
+            "name": "Manual restore"
+          }
+        ],
+        "name": "Restore system",
+        "predecessors": [
+          "PREP_WORK"
+        ]
+      },
+      {
+        "id": "HANDOFF",
+        "methods": [
+          {
+            "activity_ids": [
+              "DONE"
+            ],
+            "completion_activity_id": "DONE",
+            "id": "FIXED",
+            "name": "Handoff"
+          }
+        ],
+        "name": "Return to service",
+        "predecessors": [
+          "REMOVE",
+          "RESTORE"
+        ]
+      }
+    ]
+  },
+  "schema": "pm-native-rolling-structural-status/0",
+  "status_workspace": {
+    "approved_plan": null,
+    "execution": {
+      "status_point": 4,
+      "updates": [
+        {
+          "accepted_at": "2026-09-27T05:47:26.341883+00:00",
+          "accepted_by": "schedule-acceptor",
+          "activity_id": "PREP",
+          "actual_finish": 2,
+          "actual_periods": [
+            [
+              0,
+              2
+            ]
+          ],
+          "actual_start": 0,
+          "asserted_at": "2026-09-27T05:47:26.341643+00:00",
+          "asserted_by": "field-planner",
+          "execution_context": {
+            "accepted_outages": [],
+            "activity_id": "PREP",
+            "calendars": [
+              {
+                "daily_windows": [
+                  [
+                    0,
+                    48
+                  ]
+                ],
+                "id": "ALWAYS"
+              }
+            ],
+            "mode": {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 2,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M1"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                }
+              ]
+            },
+            "named_resources": [
+              {
+                "calendar_id": "ALWAYS",
+                "capabilities": [
+                  "MECH"
+                ],
+                "id": "M1"
+              }
+            ],
+            "resource_groups": []
+          },
+          "execution_state": "COMPLETED",
+          "id": "U001",
+          "mode_id": "FIXED",
+          "named_assignments": [
+            [
+              "MECH",
+              "M1"
+            ]
+          ],
+          "occurred_at": 4,
+          "reason": "bounded accepted-history composition fixture",
+          "remaining_processing_ticks": 0,
+          "status": "ACCEPTED",
+          "supersedes_update_id": null
+        },
+        {
+          "accepted_at": "2026-09-27T05:47:26.342269+00:00",
+          "accepted_by": "schedule-acceptor",
+          "activity_id": "LIFT",
+          "actual_finish": null,
+          "actual_periods": [
+            [
+              2,
+              4
+            ]
+          ],
+          "actual_start": 2,
+          "asserted_at": "2026-09-27T05:47:26.342008+00:00",
+          "asserted_by": "field-planner",
+          "execution_context": {
+            "accepted_outages": [],
+            "activity_id": "LIFT",
+            "calendars": [
+              {
+                "daily_windows": [
+                  [
+                    0,
+                    48
+                  ]
+                ],
+                "id": "ALWAYS"
+              }
+            ],
+            "mode": {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 4,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M1"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                },
+                {
+                  "eligible_resource_ids": [
+                    "C04"
+                  ],
+                  "id": "CRANE",
+                  "pool_ids": [
+                    "CRANE"
+                  ]
+                }
+              ]
+            },
+            "named_resources": [
+              {
+                "calendar_id": "ALWAYS",
+                "capabilities": [
+                  "CRANE"
+                ],
+                "id": "C04"
+              },
+              {
+                "calendar_id": "ALWAYS",
+                "capabilities": [
+                  "MECH"
+                ],
+                "id": "M1"
+              }
+            ],
+            "resource_groups": []
+          },
+          "execution_state": "IN_PROGRESS",
+          "id": "U002",
+          "mode_id": "FIXED",
+          "named_assignments": [
+            [
+              "MECH",
+              "M1"
+            ],
+            [
+              "CRANE",
+              "C04"
+            ]
+          ],
+          "occurred_at": 4,
+          "reason": "bounded accepted-history composition fixture",
+          "remaining_processing_ticks": 8,
+          "status": "ACCEPTED",
+          "supersedes_update_id": null
+        },
+        {
+          "accepted_at": "2026-09-27T05:47:26.343211+00:00",
+          "accepted_by": "schedule-acceptor",
+          "activity_id": "DONE",
+          "actual_finish": null,
+          "actual_periods": [],
+          "actual_start": null,
+          "asserted_at": "2026-09-27T05:47:26.342884+00:00",
+          "asserted_by": "field-planner",
+          "execution_context": null,
+          "execution_state": "NOT_STARTED",
+          "id": "U004",
+          "mode_id": null,
+          "named_assignments": [],
+          "occurred_at": 4,
+          "reason": "bounded accepted-history composition fixture",
+          "remaining_processing_ticks": null,
+          "status": "ACCEPTED",
+          "supersedes_update_id": null
+        },
+        {
+          "accepted_at": "2026-09-27T05:47:26.416471+00:00",
+          "accepted_by": "t1-acceptor",
+          "activity_id": "REST_MAN1",
+          "actual_finish": null,
+          "actual_periods": [],
+          "actual_start": null,
+          "asserted_at": "2026-09-27T05:47:26.416020+00:00",
+          "asserted_by": "t1-planner",
+          "execution_context": null,
+          "execution_state": "NOT_STARTED",
+          "id": "U003",
+          "mode_id": null,
+          "named_assignments": [],
+          "occurred_at": 4,
+          "reason": "selected by validated structural recovery b5ac01947fe1ab0c49ea514aa91dfee2f375448ba8486a235b22d87338d50ec0",
+          "remaining_processing_ticks": null,
+          "status": "ACCEPTED",
+          "supersedes_update_id": null
+        },
+        {
+          "accepted_at": "2026-09-27T05:47:26.416958+00:00",
+          "accepted_by": "t1-acceptor",
+          "activity_id": "REST_MAN2",
+          "actual_finish": null,
+          "actual_periods": [],
+          "actual_start": null,
+          "asserted_at": "2026-09-27T05:47:26.416580+00:00",
+          "asserted_by": "t1-planner",
+          "execution_context": null,
+          "execution_state": "NOT_STARTED",
+          "id": "U005",
+          "mode_id": null,
+          "named_assignments": [],
+          "occurred_at": 4,
+          "reason": "selected by validated structural recovery b5ac01947fe1ab0c49ea514aa91dfee2f375448ba8486a235b22d87338d50ec0",
+          "remaining_processing_ticks": null,
+          "status": "ACCEPTED",
+          "supersedes_update_id": null
+        }
+      ]
+    },
+    "plan_history": [],
+    "project": {
+      "activities": [
+        {
+          "id": "PREP",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 2,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M1"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Prepare workfront",
+          "predecessors": []
+        },
+        {
+          "id": "LIFT",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 4,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M1"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                },
+                {
+                  "eligible_resource_ids": [
+                    "C04"
+                  ],
+                  "id": "CRANE",
+                  "pool_ids": [
+                    "CRANE"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Lift component",
+          "predecessors": [
+            "PREP"
+          ]
+        },
+        {
+          "id": "REST_MAN1",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 4,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M2"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Manual restore stage one",
+          "predecessors": [
+            "PREP"
+          ]
+        },
+        {
+          "id": "REST_MAN2",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 4,
+              "requirements": [
+                {
+                  "eligible_resource_ids": [
+                    "M2"
+                  ],
+                  "id": "MECH",
+                  "pool_ids": [
+                    "MECH"
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "Manual restore stage two",
+          "predecessors": [
+            "REST_MAN1"
+          ]
+        },
+        {
+          "id": "DONE",
+          "modes": [
+            {
+              "calendar_id": "ALWAYS",
+              "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS",
+              "group_requirements": [],
+              "id": "FIXED",
+              "processing_ticks": 0,
+              "requirements": []
+            }
+          ],
+          "name": "Return to service",
+          "predecessors": [
+            "LIFT",
+            "REST_MAN2"
+          ]
+        }
+      ],
+      "calendars": [
+        {
+          "daily_windows": [
+            [
+              0,
+              48
+            ]
+          ],
+          "id": "ALWAYS"
+        }
+      ],
+      "horizon_ticks": 32,
+      "id": "accepted-wm-demo",
+      "name": "Accepted history with structural recovery",
+      "objective_activity_id": "DONE",
+      "pool_riggers": false,
+      "resource_groups": [],
+      "resources": [
+        {
+          "calendar_id": "ALWAYS",
+          "capabilities": [
+            "MECH"
+          ],
+          "id": "M1"
+        },
+        {
+          "calendar_id": "ALWAYS",
+          "capabilities": [
+            "MECH"
+          ],
+          "id": "M2"
+        },
+        {
+          "calendar_id": "ALWAYS",
+          "capabilities": [
+            "CRANE"
+          ],
+          "id": "C04"
+        }
+      ]
+    },
+    "proposal": null,
+    "reports": [],
+    "schema": "pm-native-planning-workspace/2"
+  }
+}

@@ -527,6 +527,8 @@ The [exact lower-bound propagation experiment](docs/finish-lower-bound-propagati
 
 The [exact finish objective and LB-seeded search experiment](docs/finish-objective-search-formulation.md) tests the unchanged enumerated model with the original end-variable objective, an algebraically equivalent placement-finish objective and exact SAT search seeded by frozen admissible bounds. On the 64/48 case, the direct objective does not improve the 5.478 deterministic-second finish proof, while one LB1-seeded SAT query proves F=19 in about 0.068 deterministic seconds. Complete policy and physical results agree on named-resource, workface, inactive-structure and anonymous-group controls; smaller cases also expose query overhead. **Outcome A for these bounded controls; no production adoption or scale-limit change.**
 
+The subsequent [authoritative LB1-seeded adoption](docs/authoritative-lb1-seeded-finish.md) retains exactly that finish → global timing → methods → modes → placements policy. It gives the entire exact SAT finish search one shared 60-unit deterministic budget, fails closed on unproved queries and records truthful ordered proof facts under a new compiler identity. The pre-adoption S0 objective-minimisation path and the earlier sequential solver remain private oracles; frozen artifacts from both eras still validate without recalculation. New S2-era plans have their own proof-sensitive hashes, including in accepted-history and rolling lineage. This is not a scale-limit increase.
+
 Do not substitute broad compatibility work, production hardening, a P6/MSP clone, full event sourcing, a generic objective-policy framework, a generic decomposition framework or a large UI framework for the next focused experiment.
 
 ## External-format adapter boundary

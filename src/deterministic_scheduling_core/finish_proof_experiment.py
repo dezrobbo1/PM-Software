@@ -1,7 +1,7 @@
-"""Read-only finish-proof diagnostics on fresh copies of the production compiler.
+"""Historical S0 finish-proof diagnostics on fresh copies of the unchanged compiler.
 
-No diagnostic result is an authoritative schedule. The public batched scheduler
-and its plan format are deliberately outside this experiment's implementation.
+S0 was production authority when this experiment was conducted; it is now a
+private frozen-identity oracle. No diagnostic result is an authoritative plan.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from deterministic_scheduling_core.professional_workface_experiment import build
 from deterministic_scheduling_core.project.work_method_time import WorkMethodTimeProject, input_hash, materialise
 from deterministic_scheduling_core.scheduling.planning_workspace import _group_placements
 from deterministic_scheduling_core.scheduling.work_method_time import (
-    _compile_work_method_time, _new_solver, policy_key, schedule_work_method_time, validate_plan,
+    _compile_work_method_time, _new_solver, policy_key, _schedule_work_method_time_batched, validate_plan,
 )
 
 
@@ -228,7 +228,7 @@ def run_experiment(*, include_classifier=True):
     fixtures = {"small": build_small(), "professional": build_professional(workface=True, deadline=True),
                 "scale_64_48": build_scale()}
     source_hashes = {name: input_hash(p) for name, p in fixtures.items()}
-    plans = {name: schedule_work_method_time(p).plan for name, p in fixtures.items()}
+    plans = {name: _schedule_work_method_time_batched(p).plan for name, p in fixtures.items()}
     for name, plan in plans.items():
         validate_plan(fixtures[name], plan)
         if plan["plan_hash"] != BASE_HASHES[name]:
@@ -265,7 +265,7 @@ def run_experiment(*, include_classifier=True):
     professional_bounds = _two_bounds(fixtures["professional"], professional_finish, professional, 3)
     suspended_problem = build_professional(workface=True)
     suspended_hash = input_hash(suspended_problem)
-    suspended_plan = schedule_work_method_time(suspended_problem).plan
+    suspended_plan = _schedule_work_method_time_batched(suspended_problem).plan
     suspended_bounds = _two_bounds(suspended_problem, suspended_plan["objective"][0], suspended_plan, 3)
     a_fast = next(e for e in suspended_plan["entries"] if e["activity_id"] == "A_FAST")
     b_workface = next(e for e in suspended_plan["entries"] if e["activity_id"] == "B")
