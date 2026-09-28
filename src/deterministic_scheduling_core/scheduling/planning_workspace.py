@@ -115,7 +115,8 @@ def _can_pool(case: ra.ExperimentCase, requested: bool) -> bool:
     return True
 
 
-def _group_placements(case: ra.ExperimentCase, activity: ra.ActivitySpec, approach: str):
+def _group_placements(case: ra.ExperimentCase, activity: ra.ActivitySpec, approach: str,
+                      *, max_count: int | None = None):
     """Keep one anonymous set for all segments; quotient out within-crew permutations.
 
     This is the existing finite-placement compiler, with disjoint group sets as
@@ -139,6 +140,8 @@ def _group_placements(case: ra.ExperimentCase, activity: ra.ActivitySpec, approa
             for start in range(activity.not_before, case.horizon + 1):
                 periods = ra._periods_from_start(start, activity.processing_ticks, eligible, activity.continuity, case.horizon)
                 if periods is not None:
+                    if max_count is not None and len(candidates) >= max_count:
+                        raise ValueError("bounded W1 preprocessing supports at most 100000 raw placements")
                     candidates.append(ra.CandidatePlacement(start, periods[-1][1] if periods else start, periods, assignments))
     return tuple(candidates)
 

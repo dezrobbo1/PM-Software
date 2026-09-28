@@ -22,8 +22,9 @@ from deterministic_scheduling_core.scheduling.placement_window import (
     RankedPlacement, check_preprocessing_count, union_supported_ranks,
 )
 from deterministic_scheduling_core.scheduling.work_method_time import (
-    _compile_work_method_time, schedule_work_method_time, validate_plan, validate_problem,
+    _compile_work_method_time, _mode_cases, schedule_work_method_time, validate_plan, validate_problem,
 )
+from deterministic_scheduling_core.scheduling.planning_workspace import _group_placements
 from deterministic_scheduling_core.w1_model_integration_experiment import low_density_case, w1_domain
 
 BASELINE = json.loads((Path(__file__).parent / "fixtures/w1-adoption/pre-adoption.json").read_text())
@@ -134,6 +135,19 @@ class AuthoritativeW1AdmissionTests(unittest.TestCase):
         check_preprocessing_count(100_000)
         with self.assertRaisesRegex(ValueError, "100000 raw placements"):
             check_preprocessing_count(100_001)
+
+    def test_raw_guard_stops_inside_mode_generation(self):
+        case = small()
+        environment, specs = _mode_cases(case)
+        first = case.project["activities"][0]
+        spec = specs[first["id"], first["modes"][0]["id"]]
+        all_rows = _group_placements(environment, spec, "B")
+        self.assertGreater(len(all_rows), 1)
+        self.assertEqual(_group_placements(environment, spec, "B", max_count=len(all_rows)), all_rows)
+        with self.assertRaisesRegex(ValueError, "raw placements"):
+            _group_placements(environment, spec, "B", max_count=len(all_rows) - 1)
+        with self.assertRaisesRegex(ValueError, "raw placements"):
+            _group_placements(environment, spec, "B", max_count=0)
 
     def test_professional_public_exact_and_repeat(self):
         problem = build_professional_projection()

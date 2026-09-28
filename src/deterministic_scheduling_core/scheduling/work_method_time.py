@@ -30,7 +30,8 @@ from .canonical_batching import (
 )
 from .finish_lower_bound import authorised_precedence_lower_bound
 from .finish_search import prove_finish
-from .placement_window import RankedPlacement, check_preprocessing_count, union_supported_ranks
+from .placement_window import (MAX_PREPROCESSING_PLACEMENTS, RankedPlacement,
+                               check_preprocessing_count, union_supported_ranks)
 
 PLAN_SCHEMA = "pm-native-work-method-time-plan/0"
 POLICY = "finish-global-start-timing-declared-methods-declared-modes-canonical-placement/0"
@@ -274,7 +275,8 @@ def _compile_work_method_time(problem: WorkMethodTimeProject, *, use_w1: bool = 
             aid = activity["id"]
             rows = []
             for mode in activity["modes"]:
-                placements = _group_placements(environment, specs[aid, mode["id"]], "B")
+                placements = _group_placements(environment, specs[aid, mode["id"]], "B",
+                    max_count=MAX_PREPROCESSING_PLACEMENTS - raw_rows)
                 raw_rows += len(placements)
                 check_preprocessing_count(raw_rows)
                 if "latest_finish" in activity:
