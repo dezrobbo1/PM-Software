@@ -38,8 +38,16 @@ jobs:
         env:
           PYTHONHASHSEED: '0'
         run: |
-          python -m deterministic_scheduling_core.w1_model_integration_experiment --source-sha "$(git rev-parse HEAD)" --output /tmp/w1-model-integration/result.json
-          python -c 'import json,subprocess; p=json.load(open("/tmp/w1-model-integration/result.json")); assert p["source_sha"] == subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()'
+          set -euo pipefail
+          recorded_sha="$(cat /tmp/w1-model-integration/source-sha.txt)"
+          test "$(git rev-parse HEAD)" = "$recorded_sha"
+          git diff --exit-code
+          git diff --cached --exit-code
+          python -m deterministic_scheduling_core.w1_model_integration_experiment --source-sha "$recorded_sha" --output /tmp/w1-model-integration/result.json
+          test "$(git rev-parse HEAD)" = "$recorded_sha"
+          git diff --exit-code
+          git diff --cached --exit-code
+          python -c 'import json, pathlib, subprocess; p=json.load(open("/tmp/w1-model-integration/result.json")); recorded=pathlib.Path("/tmp/w1-model-integration/source-sha.txt").read_text().strip(); assert p["source_sha"] == recorded == subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()'
       - name: Digest available evidence
         if: always()
         run: |
