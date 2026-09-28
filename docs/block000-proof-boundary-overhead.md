@@ -4,6 +4,8 @@ This is a diagnostic follow-up to PR #49, not an authoritative scheduling change
 
 Merged main `4ad6b7afe02a969e5f0d4ff34a1c9b0b328334fd` was verified with eight green push workflows, including POC/browser smoke. Before editing, the public small, professional and 64/48 plan hashes matched PR #49's frozen values. No production scheduling module imports this experiment.
 
+The primary 64/48 result is checked against the existing independently constructed fixed-network control on the **same** source. That control enumerates 64 method/mode networks and compares its complete method/mode/objective policy key with the authoritative result; its objective, branch count and solver calls are retained in the evidence JSON. The small fixture is not substituted for this primary control.
+
 ## Exact grouping and proof
 
 The experiment discovers the highest-deterministic-cost production canonical block instead of assuming its index. On the 64/48 fixture it is `canonical_block:000`: eight method digits followed by 54 mode digits, no placement digits. The existing production block builder generates the same digit witness variables and the same exact mixed-radix coefficients. The challenger uses that builder's bounded mixed-radix implementation separately for the method prefix and the mode suffix; it does not invent a new weighting rule.

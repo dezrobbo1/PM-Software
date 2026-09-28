@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-from hashlib import sha256
 import json
 import platform
 import statistics
@@ -20,15 +19,13 @@ from deterministic_scheduling_core.factored_finish_search_experiment import buil
 from deterministic_scheduling_core.professional_scale_challenge import run_challenge
 from deterministic_scheduling_core.project.work_method_time import input_hash
 from deterministic_scheduling_core.post_finish_proof_experiment import BASE_HASHES, _anatomy, _shape
-from deterministic_scheduling_core.scheduling.canonical_batching import (
-    CanonicalDigit, MAX_SAFE_BLOCK_VALUE, build_lexicographic_blocks,
-)
+from deterministic_scheduling_core.scheduling.canonical_batching import CanonicalDigit, build_lexicographic_blocks
 from deterministic_scheduling_core.scheduling.finish_lower_bound import authorised_precedence_lower_bound
 from deterministic_scheduling_core.scheduling.finish_search import prove_finish
 from deterministic_scheduling_core.scheduling.work_method_time import (
     MAX_DETERMINISTIC_TIME_PER_STAGE, _Stage, _canonical_block_stages,
     _compile_work_method_time, _extract_plan, _new_solver, _solve_compiled_stages,
-    schedule_work_method_time,
+    policy_key, schedule_work_method_time,
 )
 
 
@@ -173,9 +170,12 @@ def inspect_primary(problem):
     production = schedule_work_method_time(problem)
     if production.plan["plan_hash"] != BASE_HASHES["64_48"] or production.plan["objective"][0] != 19:
         raise AssertionError("merged-main primary identity or finish changed")
-    fixed = solve_fixed_controls(small_problem())
-    if fixed["best"]["objective"][0] != schedule_work_method_time(small_problem()).plan["objective"][0]:
-        raise AssertionError("independent fixed-network policy disagrees")
+    fixed = solve_fixed_controls(problem)
+    best = fixed["best"]
+    if best is None or policy_key(problem, production.plan["selected_methods"],
+            production.plan["selected_modes"], production.plan["objective"]) != policy_key(
+            problem, best["methods"], best["modes"], best["objective"]):
+        raise AssertionError("64/48 independent fixed-network policy disagrees")
     canonical_metrics = production.metrics["stage_metrics"][2:]
     index = max(range(len(canonical_metrics)), key=lambda i: canonical_metrics[i]["deterministic_time"])
     compiled = _compile_work_method_time(problem)
@@ -211,6 +211,10 @@ def inspect_primary(problem):
         raise AssertionError("diagnostics changed source")
     return {"source_input_hash": source, "production_hash": production.plan["plan_hash"],
             "F": F, "G": G, "placements": production.metrics["placement_alternatives"],
+            "independent_fixed_network": {"objective": best["objective"],
+                                          "branches": len(fixed["branches"]),
+                                          "solver_calls": fixed["solver_calls"],
+                                          "policy_equal": True},
             "base_model": {k: production.metrics[k] for k in ("base_variables", "base_constraints")},
             "target_index": index, "target_name": target.name,
             "target_value": p0_value, "target_numerics": _numbers(target),
