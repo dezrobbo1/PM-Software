@@ -1,0 +1,70 @@
+name: First exact professional 160/120 solve
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: professional-first-exact-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bounded-exact-solve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Record source before installation
+        run: |
+          mkdir -p /tmp/professional-first-exact
+          git rev-parse HEAD > /tmp/professional-first-exact/source-sha.txt
+      - name: Install bounded scheduler
+        run: python -m pip install -e .
+      - name: Focused diagnostic and predecessor tests
+        env:
+          PYTHONHASHSEED: '0'
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_professional_160_exact_solve_experiment tests.test_w1_model_integration_experiment -v 2>&1 | tee /tmp/professional-first-exact/focused-tests.txt
+      - name: Verify recorded checkout remains unchanged
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/professional-first-exact/source-sha.txt)"
+          git diff --exit-code
+          git diff --cached --exit-code
+      - name: First bounded exact professional solve
+        timeout-minutes: 45
+        env:
+          PYTHONHASHSEED: '0'
+        run: |
+          set -euo pipefail
+          python -m deterministic_scheduling_core.professional_160_exact_solve_experiment \
+            --source-sha "$(cat /tmp/professional-first-exact/source-sha.txt)" \
+            --output /tmp/professional-first-exact/result.json \
+            2>&1 | tee /tmp/professional-first-exact/solver.log
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/professional-first-exact/source-sha.txt)"
+          git diff --exit-code
+          git diff --cached --exit-code
+          python -c 'import json,pathlib; p=pathlib.Path("/tmp/professional-first-exact"); assert json.loads((p/"result.json").read_text())["source_sha"] == (p/"source-sha.txt").read_text().strip()'
+      - name: Digest all available evidence
+        if: always()
+        run: |
+          cd /tmp/professional-first-exact
+          : > SHA256SUMS
+          for file in source-sha.txt focused-tests.txt solver.log result.json; do
+            if [ -f "$file" ]; then sha256sum "$file" >> SHA256SUMS; fi
+          done
+      - name: Preserve partial evidence and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: professional-first-exact-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/professional-first-exact/
+          if-no-files-found: warn
