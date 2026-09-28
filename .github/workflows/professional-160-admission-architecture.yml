@@ -1,0 +1,57 @@
+name: Professional 160 admission and placement architecture
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: professional-160-admission-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-domain-census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Record checked-out source before installation
+        run: |
+          mkdir -p /tmp/professional-160-admission
+          git rev-parse HEAD > /tmp/professional-160-admission/source-sha.txt
+      - name: Install bounded scheduler
+        run: python -m pip install -e .
+      - name: Focused architecture and pruning controls
+        env:
+          PYTHONHASHSEED: '0'
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_professional_admission_architecture -v 2>&1 | tee /tmp/professional-160-admission/focused-tests.txt
+      - name: Complete source-bound result
+        env:
+          PYTHONHASHSEED: '0'
+        run: |
+          python -m deterministic_scheduling_core.professional_admission_architecture --source-sha "$(git rev-parse HEAD)" --output /tmp/professional-160-admission/result.json
+          python -c 'import json,subprocess; d=json.load(open("/tmp/professional-160-admission/result.json")); assert d["source_sha"] == subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()'
+      - name: Digest every available result
+        if: always()
+        run: |
+          cd /tmp/professional-160-admission
+          : > SHA256SUMS
+          for file in source-sha.txt focused-tests.txt result.json; do
+            if [ -f "$file" ]; then sha256sum "$file" >> SHA256SUMS; fi
+          done
+      - name: Upload evidence even on partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: professional-160-admission-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/professional-160-admission/
+          if-no-files-found: warn
