@@ -1,0 +1,57 @@
+name: W1 original-rank model integration
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: w1-model-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-w1-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Record exact source before installation
+        run: |
+          mkdir -p /tmp/w1-model-integration
+          git rev-parse HEAD > /tmp/w1-model-integration/source-sha.txt
+      - name: Install bounded scheduler
+        run: python -m pip install -e .
+      - name: Focused model and no-solve tests
+        env:
+          PYTHONHASHSEED: '0'
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_w1_model_integration_experiment -v 2>&1 | tee /tmp/w1-model-integration/focused-tests.txt
+      - name: Source-bound complete evidence
+        env:
+          PYTHONHASHSEED: '0'
+        run: |
+          python -m deterministic_scheduling_core.w1_model_integration_experiment --source-sha "$(git rev-parse HEAD)" --output /tmp/w1-model-integration/result.json
+          python -c 'import json,subprocess; p=json.load(open("/tmp/w1-model-integration/result.json")); assert p["source_sha"] == subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()'
+      - name: Digest available evidence
+        if: always()
+        run: |
+          cd /tmp/w1-model-integration
+          : > SHA256SUMS
+          for file in source-sha.txt focused-tests.txt result.json; do
+            if [ -f "$file" ]; then sha256sum "$file" >> SHA256SUMS; fi
+          done
+      - name: Upload even on partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: w1-model-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/w1-model-integration/
+          if-no-files-found: warn
