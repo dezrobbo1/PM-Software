@@ -93,7 +93,21 @@ class ProfessionalArchitectureTests(unittest.TestCase):
         self.assertEqual(sum(len(ranks) for ranks in all_u1.values()), p["u1"]["flattened"])
 
     def test_interval_and_canonical_pressure(self):
-        for domain in [self.evidence["primary"]["u0"], self.evidence["primary"]["u1"]]:
+        p = self.evidence["primary"]
+        for label, expected_pre_variables, expected_pre_constraints in (
+                ("u0", 64528, 58803), ("u1", 8308, 7937)):
+            pressure = p[label]["model_pressure"]
+            self.assertEqual(pressure["pre_canonical_base_variable_estimate"], expected_pre_variables)
+            self.assertEqual(pressure["pre_canonical_base_constraint_estimate_excluding_union_package_arcs"],
+                             expected_pre_constraints)
+            self.assertEqual(pressure["post_canonical_witness_variable_estimate"],
+                             expected_pre_variables + 332)
+            self.assertEqual(pressure["post_canonical_witness_constraint_estimate_excluding_union_package_arcs"],
+                             expected_pre_constraints + 332)
+        domains_to_check = [(p["u0"], 332, 26), (p["u1"], 332, 26)]
+        domains_to_check.extend((structure[label], 252, 20)
+                                for structure in p["structures"] for label in ("s0", "s1"))
+        for domain, digit_count, block_count in domains_to_check:
             pressure = domain["model_pressure"]
             resources = sum(domain["named_resource_intervals"].values()) + sum(
                 domain["group_resource_intervals"].values())
@@ -103,7 +117,14 @@ class ProfessionalArchitectureTests(unittest.TestCase):
                               pressure["workface_optional_intervals_exact"]))
             self.assertEqual(pressure["interval_constraints_exact"], resources + faces)
             self.assertEqual(pressure["placement_boolvars"], domain["flattened"])
-            self.assertEqual(pressure["canonical_digit_count"], 332)
+            self.assertEqual(pressure["canonical_digit_count"], digit_count)
+            self.assertEqual(pressure["canonical_block_count"], block_count)
+            self.assertEqual(pressure["canonical_witness_intvars"], digit_count)
+            self.assertEqual(pressure["canonical_witness_equalities"], digit_count)
+            self.assertEqual(pressure["post_canonical_witness_variable_estimate"],
+                             pressure["pre_canonical_base_variable_estimate"] + digit_count)
+            self.assertEqual(pressure["post_canonical_witness_constraint_estimate_excluding_union_package_arcs"],
+                             pressure["pre_canonical_base_constraint_estimate_excluding_union_package_arcs"] + digit_count)
             self.assertEqual(pressure["measurement_kind"], "mechanically_derived_no_proto")
         self.assertEqual(self.evidence["primary"]["u0"]["model_pressure"]["canonical_block_count"],
                          self.evidence["primary"]["u1"]["model_pressure"]["canonical_block_count"])
@@ -118,8 +139,14 @@ class ProfessionalArchitectureTests(unittest.TestCase):
             self.assertTrue(self.evidence["controls"][label]["selected_ranks_survive"])
             self.assertGreaterEqual(self.evidence["controls"][label]["u0"],
                                     self.evidence["controls"][label]["u1"])
-        self.assertTrue(self.evidence["independent_64_48"]["full_policy_equal"])
-        self.assertEqual(self.evidence["independent_64_48"]["fixed_networks"], 64)
+        fixed = self.evidence["independent_64_48"]
+        self.assertEqual(fixed["fixed_networks"], 64)
+        self.assertEqual(fixed["objective"], [19, 14674])
+        self.assertTrue(all(fixed[key] for key in (
+            "selected_methods_equal", "selected_modes_equal", "finish_equal", "global_timing_equal")))
+        self.assertIs(fixed["placement_canonical_checked"], False)
+        self.assertIn("policy prefix only", fixed["comparison_scope"])
+        self.assertNotIn("full_policy_equal", fixed)
 
     def test_no_professional_solve_or_production_import(self):
         # The 160/120 path executes domain/pruning only, even if solver API is disabled.

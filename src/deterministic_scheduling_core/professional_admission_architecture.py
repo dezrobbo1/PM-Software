@@ -196,24 +196,34 @@ def census(problem, indexed, allowed, *, raw=None, selected=None, rank_map=False
     # Original production ranks, including pruned holes, remain digit maxima.
     blocks = build_lexicographic_blocks([*method_digits, *mode_digits, *placement_digits])
     intervals = sum(named.values()) + sum(group.values()) + sum(workface.values())
+    canonical_digits = len(method_digits + mode_digits + placement_digits)
+    pre_canonical_variables = method_count + modes + len(rows) + 2 * len(activities)
+    pre_canonical_linear_constraints = packages + modes + 3 * len(activities) + predecessor_arcs
+    pre_canonical_constraints = (pre_canonical_linear_constraints + intervals + len(named) +
+        len(workface) + sum(r["capacity"] for r in source.get("resource_groups", []) if r["id"] in group))
+    # _canonical_block_stages adds exactly one new_int_var and one equality
+    # per digit; objectives and later stage-fixing constraints are not counted.
     pressure = {"measurement_kind": "mechanically_derived_no_proto", "declared_activities": len(source["activities"]),
         "active_activities": len(activities), "method_boolvars": method_count,
         "mode_boolvars": modes, "placement_boolvars": len(rows),
         "start_end_intvars": 2 * len(activities),
-        "base_variable_estimate": method_count + modes + len(rows) + 2 * len(activities),
+        "pre_canonical_base_variable_estimate": pre_canonical_variables,
         "resource_optional_intervals_exact": sum(named.values()) + sum(group.values()),
         "workface_optional_intervals_exact": sum(workface.values()),
         "interval_constraints_exact": intervals,
         "named_no_overlap_buckets": len(named),
         "anonymous_no_overlap_buckets": len(internal_group_units),
         "workface_no_overlap_buckets": len(workface),
-        "precedence_arcs": predecessor_arcs, "canonical_digit_count": len(method_digits + mode_digits + placement_digits),
+        "precedence_arcs": predecessor_arcs, "canonical_digit_count": canonical_digits,
         "canonical_block_count": len(blocks),
-        "base_linear_constraint_estimate": packages + modes + 3 * len(activities) + predecessor_arcs,
-        "base_constraint_estimate_excluding_union_package_arcs":
-            packages + modes + 3 * len(activities) + predecessor_arcs + intervals + len(named) + len(workface) +
-            sum(r["capacity"] for r in source.get("resource_groups", []) if r["id"] in group),
-        "estimate_note": "Selected structures are projections, not production protos. Union package-root arcs and constant variables are excluded from the constraint/variable estimates."}
+        "pre_canonical_base_linear_constraint_estimate": pre_canonical_linear_constraints,
+        "pre_canonical_base_constraint_estimate_excluding_union_package_arcs": pre_canonical_constraints,
+        "canonical_witness_intvars": canonical_digits,
+        "canonical_witness_equalities": canonical_digits,
+        "post_canonical_witness_variable_estimate": pre_canonical_variables + canonical_digits,
+        "post_canonical_witness_constraint_estimate_excluding_union_package_arcs":
+            pre_canonical_constraints + canonical_digits,
+        "estimate_note": "Selected structures are projections, not production protos. Union package-root arcs and constant variables are excluded where applicable. Post-witness estimates add exactly the per-digit IntVar/equality from _canonical_block_stages; later stage-fixing equalities and objective state are excluded. No 160/120 CP-SAT proto was assembled."}
     result = {"flattened": len(rows), "temporal_patterns": len(temporal),
         "temporal_named_patterns": len(temporal_named),
         "anonymous_witness_expansion": len(rows) - len(temporal_named),
@@ -381,10 +391,22 @@ def run_evidence(source_sha):
             "structures": len(observed["structures"])}
     fixed = solve_fixed_controls(scale_problem())
     authority = schedule_work_method_time(scale_problem()).plan
-    if fixed["best"] is None or policy_key(scale_problem(), authority["selected_methods"],
-            authority["selected_modes"], authority["objective"]) != policy_key(scale_problem(),
-            fixed["best"]["methods"], fixed["best"]["modes"], fixed["best"]["objective"]):
-        raise AssertionError("independent 64/48 network policy differs")
+    if fixed["best"] is None:
+        raise AssertionError("independent 64/48 fixed-network control found no feasible network")
+    fixed_best = fixed["best"]
+    comparison = {"fixed_networks": len(fixed["branches"]), "objective": fixed_best["objective"],
+        "selected_methods_equal": fixed_best["methods"] == authority["selected_methods"],
+        "selected_modes_equal": fixed_best["modes"] == authority["selected_modes"],
+        "finish_equal": fixed_best["objective"][0] == authority["objective"][0],
+        "global_timing_equal": fixed_best["objective"][1] == authority["objective"][1],
+        "placement_canonical_checked": False,
+        "comparison_scope": "method/mode/objective policy prefix only; placement canonical ranks not independently proved"}
+    if not all(comparison[key] for key in (
+            "selected_methods_equal", "selected_modes_equal", "finish_equal", "global_timing_equal")) or (
+            policy_key(scale_problem(), authority["selected_methods"], authority["selected_modes"],
+                authority["objective"]) != policy_key(scale_problem(), fixed_best["methods"],
+                fixed_best["modes"], fixed_best["objective"])):
+        raise AssertionError("independent 64/48 fixed-network policy prefix differs")
     tiny = tiny_problem()
     tiny_rows, _ = domains(tiny)
     tiny_result = tiny_oracle(tiny, tiny_rows)
@@ -405,8 +427,7 @@ def run_evidence(source_sha):
         "production_hashes": BASE_HASHES, "professional_shape": shape["shape"],
         "professional_classifier": shape["authoritative_first_failure"],
         "primary": primary, "controls": controls,
-        "independent_64_48": {"fixed_networks": len(fixed["branches"]),
-            "objective": fixed["best"]["objective"], "full_policy_equal": True},
+        "independent_64_48": comparison,
         "tiny_oracle": tiny_result,
         "w1_contract": "Repeated FS arc support on current exact local placement domains; all inter-activity resource/workface conflicts relaxed. Every deletion is unsupported by a necessary FS arc; no completeness claim for arbitrary DAGs.",
         "rank_contract": "Every S1/U1 row is indexed by its original U0 one-based per-activity canonical placement rank; retained arrays are sorted original ranks and are never compacted.",
