@@ -45,7 +45,7 @@ from deterministic_scheduling_core.scheduling.finish_search import prove_finish
 from deterministic_scheduling_core.scheduling.work_method_time import (
     MAX_DETERMINISTIC_TIME_PER_STAGE, MAX_WORKFACE_INTERVALS, _CompiledWorkMethodTime,
     _Stage, _canonical_block_stages, _compile_work_method_time, _extract_plan,
-    _mode_cases, _new_solver, _solve_compiled_stages, policy_key,
+    _mode_cases, _new_solver, _solve_compiled_stages, _schedule_work_method_time_lb1, policy_key,
     schedule_work_method_time, validate_plan, validate_problem,
 )
 
@@ -405,7 +405,8 @@ def _selected_ranks(result, mapping, solver):
 def admitted_comparison(problem, *, shadow=False):
     """Run P0/E1 and optionally E0 against one admitted, source-immutable case."""
     before = input_hash(problem)
-    authority = schedule_work_method_time(problem)
+    # P0 is the frozen pre-adoption authority, not the later public W1 path.
+    authority = _schedule_work_method_time_lb1(problem)
     indexed, allowed, _, structures = w1_domain(problem)
     p0 = _compile_work_method_time(problem)
     production_map = production_row_map(p0, indexed)
@@ -491,14 +492,8 @@ def activity_ladder():
     for count in (65, 96, 128, 160):
         problem = low_density_case(count)
         source = input_hash(problem)
-        try:
-            validate_problem(problem)
-        except ValueError as exc:
-            if "1..64 declared activities" not in str(exc):
-                raise AssertionError("production rejected a different contract") from exc
-            rejection = str(exc)
-        else:
-            raise AssertionError("production admitted an experimental >64 fixture")
+        validate_problem(problem)
+        rejection = None
         validate_experimental(problem)
         indexed, allowed, _, structures = w1_domain(problem)
         if structures != 1 or sum(map(len, indexed.values())) != count or (
@@ -532,14 +527,8 @@ def professional_assembly():
     """Build the faithful compact 160/120 model; never invoke any solver."""
     problem = build_professional_projection()
     before = input_hash(problem)
-    try:
-        validate_problem(problem)
-    except ValueError as exc:
-        if "1..64 declared activities" not in str(exc):
-            raise
-        production_rejection = str(exc)
-    else:
-        raise AssertionError("production unexpectedly admitted 160 declarations")
+    validate_problem(problem)
+    production_rejection = None
     validate_experimental(problem)
     pr51 = domain_inspect(problem)
     indexed, allowed, detail, structures = w1_domain(problem)

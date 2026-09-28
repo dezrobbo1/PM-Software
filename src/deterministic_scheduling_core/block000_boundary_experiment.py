@@ -25,7 +25,7 @@ from deterministic_scheduling_core.scheduling.finish_search import prove_finish
 from deterministic_scheduling_core.scheduling.work_method_time import (
     MAX_DETERMINISTIC_TIME_PER_STAGE, _Stage, _canonical_block_stages,
     _compile_work_method_time, _extract_plan, _new_solver, _solve_compiled_stages,
-    policy_key, schedule_work_method_time,
+    policy_key, _schedule_work_method_time_lb1 as schedule_work_method_time,
 )
 
 

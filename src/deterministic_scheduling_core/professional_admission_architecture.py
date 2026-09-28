@@ -31,7 +31,7 @@ from deterministic_scheduling_core.project.work_method_time import (
 from deterministic_scheduling_core.scheduling.canonical_batching import CanonicalDigit, build_lexicographic_blocks
 from deterministic_scheduling_core.scheduling.planning_workspace import _group_placements
 from deterministic_scheduling_core.scheduling.work_method_time import (
-    MAX_WORKFACE_INTERVALS, _mode_cases, policy_key, schedule_work_method_time,
+    MAX_WORKFACE_INTERVALS, _mode_cases, _schedule_work_method_time_lb1, policy_key, schedule_work_method_time,
     validate_plan, validate_problem,
 )
 
@@ -371,7 +371,7 @@ def run_evidence(source_sha):
     for name, fixture in (("small_named", small_problem()),
                           ("professional", professional_problem(workface=True, deadline=True)),
                           ("64_48", scale_problem()), ("anonymous_group", build_group_stress())):
-        result = schedule_work_method_time(fixture)
+        result = _schedule_work_method_time_lb1(fixture)  # frozen pre-W1 authority
         if name in BASE_HASHES and result.plan["plan_hash"] != BASE_HASHES[name]:
             raise AssertionError(f"{name}: merged-main plan hash changed")
         validate_plan(fixture, result.plan)

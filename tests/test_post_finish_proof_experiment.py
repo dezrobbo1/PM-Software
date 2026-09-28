@@ -5,7 +5,9 @@ from pathlib import Path
 
 from deterministic_scheduling_core.post_finish_proof_experiment import BASE_HASHES, run_evidence
 from deterministic_scheduling_core.converged_scale_experiment import build_problem as scale_problem
-from deterministic_scheduling_core.scheduling.work_method_time import schedule_work_method_time
+from deterministic_scheduling_core.scheduling.work_method_time import (
+    _schedule_work_method_time_lb1 as schedule_work_method_time,
+)
 
 
 class PostFinishProofTests(unittest.TestCase):

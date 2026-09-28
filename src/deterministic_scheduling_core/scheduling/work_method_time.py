@@ -30,6 +30,8 @@ from .canonical_batching import (
 )
 from .finish_lower_bound import authorised_precedence_lower_bound
 from .finish_search import prove_finish
+from .placement_window import (MAX_PREPROCESSING_PLACEMENTS, RankedPlacement,
+                               check_preprocessing_count, union_supported_ranks)
 
 PLAN_SCHEMA = "pm-native-work-method-time-plan/0"
 POLICY = "finish-global-start-timing-declared-methods-declared-modes-canonical-placement/0"
@@ -83,8 +85,8 @@ def validate_problem(problem: WorkMethodTimeProject) -> None:
         raise ValueError("expected WorkMethodTimeProject, not a statused workspace")
     from_document(to_document(problem))
     source = problem.project
-    if not isinstance(source.get("activities"), list) or not 1 <= len(source["activities"]) <= 64:
-        raise ValueError("bounded composition requires 1..64 declared activities")
+    if not isinstance(source.get("activities"), list) or not 1 <= len(source["activities"]) <= 160:
+        raise ValueError("bounded composition requires 1..160 declared activities")
     if type(source.get("horizon_ticks")) is not int or not 1 <= source["horizon_ticks"] <= 480:
         raise ValueError("bounded composition requires a 1..480 tick horizon")
     if any(not isinstance(p, WorkPackage) for p in problem.work_packages):
@@ -251,7 +253,7 @@ def validate_plan(problem: WorkMethodTimeProject, plan: dict) -> str:
     return ra.EXACT_FEASIBLE
 
 
-def _compile_work_method_time(problem: WorkMethodTimeProject) -> _CompiledWorkMethodTime:
+def _compile_work_method_time(problem: WorkMethodTimeProject, *, use_w1: bool = False) -> _CompiledWorkMethodTime:
     """Build the shared bounded model and retain additive phase measurements."""
     started = perf_counter()
     problem = deepcopy(problem)
@@ -262,6 +264,36 @@ def _compile_work_method_time(problem: WorkMethodTimeProject) -> _CompiledWorkMe
     cases_started = perf_counter()
     environment, specs = _mode_cases(problem)
     productive_case_compile_ms = (perf_counter() - cases_started) * 1000
+    ranked_domains = {}
+    retained = {}
+    preprocessed_ms = 0.0
+    eligible_rows = 0
+    raw_rows = 0
+    if use_w1:
+        preprocess_started = perf_counter()
+        for activity in problem.project["activities"]:
+            aid = activity["id"]
+            rows = []
+            for mode in activity["modes"]:
+                placements = _group_placements(environment, specs[aid, mode["id"]], "B",
+                    max_count=MAX_PREPROCESSING_PLACEMENTS - raw_rows)
+                raw_rows += len(placements)
+                check_preprocessing_count(raw_rows)
+                if "latest_finish" in activity:
+                    placements = tuple(p for p in placements if p.finish <= activity["latest_finish"])
+                placements = sorted(placements, key=lambda p: (
+                    p.start, p.finish, p.periods,
+                    tuple("" if rid is None else rid for rid in p.assignments)))
+                first_rank = len(rows)
+                rows.extend(RankedPlacement(mode["id"], first_rank + i + 1, p)
+                            for i, p in enumerate(placements))
+            ranked_domains[aid] = tuple(rows)
+        eligible_rows = sum(map(len, ranked_domains.values()))
+        retained = union_supported_ranks(problem, ranked_domains)
+        # Protect the actual CP-SAT model before constructing any placement literal.
+        if sum(map(len, retained.values())) > 20_000:
+            raise ValueError("bounded composition supports at most 20000 placement alternatives")
+        preprocessed_ms = (perf_counter() - preprocess_started) * 1000
     assembly_started = perf_counter()
     model = cp_model.CpModel()
     source = problem.project
@@ -275,7 +307,9 @@ def _compile_work_method_time(problem: WorkMethodTimeProject) -> _CompiledWorkMe
     workface_intervals = {}
     placement_count = 0
     workface_interval_count = 0
+    # W1 materialisation is accounted for separately from model assembly.
     placement_generation_ms = 0.0
+    ranked_choices = {}
     for ai, activity in enumerate(source["activities"]):
         aid = activity["id"]
         present = methods[members[aid]] if aid in members else model.new_constant(1)
@@ -283,32 +317,41 @@ def _compile_work_method_time(problem: WorkMethodTimeProject) -> _CompiledWorkMe
         starts[aid] = model.new_int_var(0, environment.horizon, f"start_{ai}")
         ends[aid] = model.new_int_var(0, environment.horizon, f"end_{ai}")
         choices[aid] = []
+        ranked_choices[aid] = []
         for mi, mode in enumerate(activity["modes"]):
             mid = mode["id"]
             mode_var = model.new_bool_var(f"mode_{ai}_{mi}")
             mode_vars[aid, mid] = mode_var
             spec = specs[aid, mid]
-            placement_started = perf_counter()
-            placements = _group_placements(environment, spec, "B")
-            if "latest_finish" in activity:
-                placements = tuple(p for p in placements if p.finish <= activity["latest_finish"])
-            placements = tuple(sorted(placements, key=lambda p: (
-                p.start, p.finish, p.periods, tuple("" if r is None else r for r in p.assignments))))
-            placement_generation_ms += (perf_counter() - placement_started) * 1000
-            placement_count += len(placements)
+            if use_w1:
+                ranked_placements = tuple((row.rank, row.placement) for row in ranked_domains[aid]
+                    if row.mode == mid and row.rank in retained[aid])
+            else:
+                placement_started = perf_counter()
+                placements = _group_placements(environment, spec, "B")
+                if "latest_finish" in activity:
+                    placements = tuple(p for p in placements if p.finish <= activity["latest_finish"])
+                placements = tuple(sorted(placements, key=lambda p: (
+                    p.start, p.finish, p.periods, tuple("" if r is None else r for r in p.assignments))))
+                placement_generation_ms += (perf_counter() - placement_started) * 1000
+                ranked_placements = tuple((len(choices[aid]) + pi + 1, placement)
+                                          for pi, placement in enumerate(placements))
+            placement_count += len(ranked_placements)
             if placement_count > 20000:
                 raise ValueError("bounded composition supports at most 20000 placement alternatives")
             # Multiple group names multiply optional intervals per placement.
             # Bound that expansion before constructing any of this mode's intervals.
-            active_placements = sum(p.start < p.finish for p in placements)
+            active_placements = sum(p.start < p.finish for _, p in ranked_placements)
             workface_interval_count += active_placements * len(activity.get("exclusion_groups", []))
             if workface_interval_count > MAX_WORKFACE_INTERVALS:
                 raise ValueError("bounded composition supports at most 20000 workface intervals")
             literals = []
-            for pi, placement in enumerate(placements):
-                literal = model.new_bool_var(f"place_{ai}_{mi}_{pi}")
+            for pi, (rank, placement) in enumerate(ranked_placements):
+                literal = model.new_bool_var(f"place_{ai}_{mi}_{pi}" if not use_w1 else
+                                             f"place_{ai}_{mi}_original_{rank}")
                 literals.append(literal)
                 choices[aid].append((literal, mid, placement))
+                ranked_choices[aid].append((rank, literal))
                 if placement.start < placement.finish:
                     for group in activity.get("exclusion_groups", []):
                         workface_intervals.setdefault(group, []).append(model.new_optional_interval_var(
@@ -379,8 +422,8 @@ def _compile_work_method_time(problem: WorkMethodTimeProject) -> _CompiledWorkMe
         _Stage(
             f"placement:{activity['id']}",
             "placement_canonical",
-            sum((i + 1) * literal for i, (literal, _, _) in enumerate(choices[activity["id"]])),
-            len(choices[activity["id"]]),
+            sum(rank * literal for rank, literal in ranked_choices[activity["id"]]),
+            len(ranked_domains[activity["id"]]) if use_w1 else len(choices[activity["id"]]),
         )
         for activity in source["activities"]
     )
@@ -413,6 +456,10 @@ def _compile_work_method_time(problem: WorkMethodTimeProject) -> _CompiledWorkMe
             ),
             "base_variables": len(model.proto.variables),
             "base_constraints": len(model.proto.constraints),
+            "resource_optional_intervals": sum(map(len, named_intervals.values())),
+            **({"u0_raw_placements": raw_rows, "u0_eligible_placements": eligible_rows,
+                "w1_retained_placements": placement_count,
+                "w1_preprocessing_ms": preprocessed_ms} if use_w1 else {}),
         },
     )
 
@@ -595,12 +642,12 @@ def _result_metrics(
 
 def schedule_work_method_time(problem: WorkMethodTimeProject) -> WorkMethodTimeResult:
     """Calculate the authoritative LB1-exact finish and batched policy plan."""
-    return _schedule_work_method_time_lb1(problem)
+    return _schedule_work_method_time_lb1(problem, use_w1=True)
 
 
-def _schedule_work_method_time_lb1(problem: WorkMethodTimeProject) -> WorkMethodTimeResult:
+def _schedule_work_method_time_lb1(problem: WorkMethodTimeProject, *, use_w1: bool = False) -> WorkMethodTimeResult:
     """Prove finish with one shared 60-unit SAT budget; retain lower blocks."""
-    compiled = _compile_work_method_time(problem)
+    compiled = _compile_work_method_time(problem, use_w1=use_w1)
     bound_started = perf_counter()
     lower, structures = authorised_precedence_lower_bound(compiled.problem)
     bound_ms = (perf_counter() - bound_started) * 1000
@@ -639,7 +686,8 @@ def _schedule_work_method_time_lb1(problem: WorkMethodTimeProject) -> WorkMethod
                        for block, proof in zip(blocks, canonical)]
     plan, extraction = _extract_plan(
         compiled, solver, [finish_proof, *timing, *canonical],
-        compiler="native-work-method-time-lb1-seeded/0", canonical_blocks=block_documents,
+        compiler=("native-work-method-time-w1-lb1-seeded/0" if use_w1
+                  else "native-work-method-time-lb1-seeded/0"), canonical_blocks=block_documents,
     )
     metrics = _result_metrics(compiled, [finish_metrics, *timing_metrics, *block_metrics], extraction)
     metrics.update({

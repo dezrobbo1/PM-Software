@@ -476,6 +476,8 @@ Do not default to UI, broad compatibility, production hardening, full event sour
 
 ## Historical Microsoft Project machinery
 
+Current future-only Work-Method authority uses original-rank W1 pruning and admits at most 160 declared activities with a 100,000 raw placement preprocessing guard, 20,000 retained placement limit, 20,000 workface interval limit, and unchanged 16-structure/480-tick/60-unit proof boundaries. Accepted-history and rolling recovery retain their 64-activity scope. The earlier 64-activity/professional-unsolved paragraphs above are historical. See `docs/authoritative-w1-160-admission.md`.
+
 Unless a new experiment explicitly needs it, do not extend the historical `native/msproject`, `native-validation`, protocol, register, manifest or compatibility machinery. It remains research history and source material, not the active architecture.
 
 `prototype1_workspace.py` is a completed bounded bridge. Do not turn it into a general Microsoft Project importer simply because more MSPDI fields exist.

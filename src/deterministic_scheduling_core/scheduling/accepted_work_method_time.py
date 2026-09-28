@@ -84,6 +84,11 @@ def validate_input(
     """Validate current recovery inputs separately from the reference-plan source."""
     validate_problem(problem)
     validate_problem(reference_problem)
+    # The ordinary future-only scheduler has a new 160-activity admission, but
+    # accepted-history and rolling recovery have only been proved through 64.
+    for candidate in (problem, reference_problem):
+        if len(candidate.project["activities"]) > 64:
+            raise ValueError("accepted-history recovery supports at most 64 declared activities")
     validate_future_plan(reference_problem, reference_plan)
     current_packages = {package.id: package for package in problem.work_packages}
     reference_packages = {package.id: package for package in reference_problem.work_packages}

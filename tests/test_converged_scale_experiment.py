@@ -101,13 +101,9 @@ class ConvergedScaleExperimentTests(unittest.TestCase):
 
         self.assertEqual(cycle_to_document(cycle), cycle_document)
 
-    def test_65_declared_activities_remain_outside_this_bounded_admission(self):
-        problem = build_problem()
-        extra = deepcopy(problem.project["activities"][0])
-        extra["id"] = "OUTSIDE_65"
-        problem.project["activities"].append(extra)
-        with self.assertRaisesRegex(ValueError, "1..64 declared activities"):
-            validate_problem(problem)
+    def test_65_declared_activities_are_now_boundedly_admitted(self):
+        from deterministic_scheduling_core.w1_model_integration_experiment import low_density_case
+        validate_problem(low_density_case(65))
 
     def test_experiment_evidence_is_self_consistent(self):
         self.assertTrue(self.evidence["evidence_valid"])
