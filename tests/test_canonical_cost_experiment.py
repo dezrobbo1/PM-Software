@@ -235,9 +235,9 @@ class CanonicalCostExperimentTests(unittest.TestCase):
             *({"id": f"X{i}", "name": f"X{i}", "modes": [{
                 "id": "FIXED", "processing_ticks": 0, "calendar_id": "ALWAYS",
                 "continuity": "SUSPENDABLE_AT_AVAILABILITY_GAPS", "requirements": [],
-            }]} for i in range(55)),
+            }]} for i in range(161)),
         ]})
-        with self.assertRaisesRegex(ValueError, "1..64 declared activities"):
+        with self.assertRaisesRegex(ValueError, "1..160 declared activities"):
             validate_problem(oversized)
 
     def test_professional_160_120_remains_classification_only(self):

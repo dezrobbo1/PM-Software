@@ -21,7 +21,7 @@ from deterministic_scheduling_core.project.work_method_time import input_hash
 from deterministic_scheduling_core.scheduling.canonical_batching import CanonicalDigit, build_lexicographic_blocks
 from deterministic_scheduling_core.scheduling.work_method_time import (
     _canonical_block_stages, _compile_work_method_time, _new_solver,
-    schedule_work_method_time, validate_plan,
+    _schedule_work_method_time_lb1 as schedule_work_method_time, validate_plan,
 )
 
 

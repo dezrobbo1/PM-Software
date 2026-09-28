@@ -115,7 +115,9 @@ class AuthoritativeCanonicalBatchingTests(unittest.TestCase):
                     digits = {row["name"]: row["value"] for row in batch.metrics["canonical_vector"]}
                     self.assertEqual((digits["mode:C_ALT"], digits["placement:C_ALT"]), (0, 0))
                 if name == "64_48":
-                    self.assertEqual((batch.metrics["placement_alternatives"], oracle.metrics["solver_calls"], batch.metrics["solver_calls"]), (5626, 138, 11))
+                    self.assertEqual((batch.metrics["u0_eligible_placements"], batch.metrics["placement_alternatives"],
+                                      oracle.metrics["solver_calls"], batch.metrics["solver_calls"]),
+                                     (5626, 4284, 138, 11))
 
     def test_frozen_accepted_reference_and_future_recovery(self):
         bundle = frozen("accepted-sequential-reference.json")
