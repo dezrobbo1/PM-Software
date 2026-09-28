@@ -388,7 +388,9 @@ def main():
         "finish": result.get("finish_proof", {}).get("finish"),
         "completed_blocks": result.get("lower_policy", {}).get("completed_blocks"),
         "solver_calls": result["solver_calls"]}))
-    if result["classification"] == "MODEL_OR_VALIDATION_DEFECT":
+    # Incomplete and infeasible results remain valuable uploaded evidence,
+    # but the exact-solve workflow must never report them as a green proof.
+    if result["classification"] != "COMPLETE_EXACT_POLICY_PROVEN":
         raise SystemExit(1)
 
 

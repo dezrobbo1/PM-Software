@@ -16,7 +16,7 @@ from deterministic_scheduling_core.professional_workface_experiment import build
 from deterministic_scheduling_core.project.work_method_time import input_hash
 from deterministic_scheduling_core.scheduling import work_method_time as production
 from deterministic_scheduling_core.professional_160_exact_solve_experiment import (
-    EXPECTED_INPUT_HASH, _experimental_validate, _head, _run_policy, _stable_result, prepare, run,
+    EXPECTED_INPUT_HASH, _experimental_validate, _head, _run_policy, _stable_result, main, prepare, run,
 )
 from deterministic_scheduling_core.w1_model_integration_experiment import (
     _blocks, compile_compact, validate_experimental, w1_domain,
@@ -144,6 +144,25 @@ class ProfessionalFirstSolveControls(unittest.TestCase):
             stored = json.loads(output.read_text())
             self.assertEqual(stored["classification"], result["classification"])
             self.assertIn("injected model discrepancy", stored["error"])
+
+    def test_cli_reports_success_only_for_complete_exact_proof(self):
+        classifications = ("COMPLETE_EXACT_POLICY_PROVEN",
+                           "EXACT_FINISH_PROVEN_LOWER_POLICY_INCOMPLETE",
+                           "EXACT_FINISH_NOT_PROVEN_WITHIN_DECLARED_BUDGET",
+                           "MODEL_INFEASIBLE", "MODEL_OR_VALIDATION_DEFECT")
+        for classification in classifications:
+            with self.subTest(classification=classification), patch(
+                "sys.argv", ["experiment", "--source-sha", "head", "--output", "/tmp/result.json"]
+            ), patch("deterministic_scheduling_core.professional_160_exact_solve_experiment.run",
+                     return_value={"source_sha": "head", "classification": classification,
+                                   "finish_proof": {}, "lower_policy": {}, "solver_calls": 0}), patch(
+                "builtins.print"):
+                if classification == "COMPLETE_EXACT_POLICY_PROVEN":
+                    self.assertIsNone(main())
+                else:
+                    with self.assertRaises(SystemExit) as stopped:
+                        main()
+                    self.assertEqual(stopped.exception.code, 1)
 
     def test_independent_physical_validator_retains_hard_deadline(self):
         small = professional_small(workface=True, deadline=True)
