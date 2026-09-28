@@ -1,0 +1,68 @@
+name: Authoritative W1 and bounded 160 admission
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: authoritative-w1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-adoption:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Record source before installation
+        run: |
+          mkdir -p /tmp/authoritative-w1
+          git rev-parse HEAD > /tmp/authoritative-w1/source-sha.txt
+      - name: Install bounded scheduler
+        run: python -m pip install -e .
+      - name: Focused adoption and historical compatibility
+        env:
+          PYTHONHASHSEED: '0'
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_authoritative_w1_160_admission tests.test_authoritative_lb1_seeded_finish tests.test_authoritative_canonical_batching -q 2>&1 | tee /tmp/authoritative-w1/focused-tests.txt
+      - name: Prove source-bound evidence
+        timeout-minutes: 35
+        env:
+          PYTHONHASHSEED: '0'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/authoritative-w1/source-sha.txt)"
+          git diff --exit-code
+          git diff --cached --exit-code
+          python -m deterministic_scheduling_core.authoritative_w1_admission_evidence \
+            --source-sha "$(cat /tmp/authoritative-w1/source-sha.txt)" \
+            --output /tmp/authoritative-w1/result.json \
+            2>&1 | tee /tmp/authoritative-w1/evidence.log
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/authoritative-w1/source-sha.txt)"
+          git diff --exit-code
+          git diff --cached --exit-code
+          python -c 'import json,pathlib; p=pathlib.Path("/tmp/authoritative-w1"); r=json.loads((p/"result.json").read_text()); assert r["source_sha"] == (p/"source-sha.txt").read_text().strip(); assert r["classification"] == "A_W1_ADOPTION_AND_160_ADMISSION_PROVEN"'
+      - name: Digest available evidence
+        if: always()
+        run: |
+          cd /tmp/authoritative-w1
+          : > SHA256SUMS
+          for file in source-sha.txt focused-tests.txt evidence.log result.json; do
+            if [ -f "$file" ]; then sha256sum "$file" >> SHA256SUMS; fi
+          done
+      - name: Upload complete or partial result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authoritative-w1-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/authoritative-w1/
+          if-no-files-found: warn

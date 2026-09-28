@@ -599,6 +599,8 @@ python -m unittest \
 
 ## Active repository map
 
+The ordinary future Work-Method scheduler now uses exact, original-rank-preserving W1 placement pruning and admits up to 160 declared activities within its separate raw, retained-placement, workface and horizon bounds. The faithful 160/120 professional fixture completes the unchanged exact policy. Accepted-history and rolling recovery remain limited to their earlier 64-activity scale. Earlier descriptions of the 64-activity admission and unsolved professional projection above are historical results. See [authoritative W1 and 160 admission](docs/authoritative-w1-160-admission.md) for current boundaries and source-bound evidence.
+
 - `src/deterministic_scheduling_core/project/` — current PM-Software-owned native activity project model and JSON persistence.
 - `src/deterministic_scheduling_core/scheduling/` — current scheduler/optimiser consuming only the native model.
 - `src/deterministic_scheduling_core/adapters/` — optional external-system translators.

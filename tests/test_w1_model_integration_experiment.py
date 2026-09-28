@@ -61,7 +61,7 @@ class W1ModelIntegrationTests(unittest.TestCase):
         rows = self.facts["activity_admission_ladder"]
         self.assertEqual([r["declared"] for r in rows], [65, 96, 128, 160])
         for row in rows:
-            self.assertIn("1..64 declared activities", row["production_rejection"])
+            self.assertIsNone(row["production_rejection"])
             self.assertEqual(row["actual_objective"][0], row["declared"])
             self.assertEqual(row["actual_objective"][1],
                              sum((i + 1) * i for i in range(row["declared"])))
@@ -85,7 +85,7 @@ class W1ModelIntegrationTests(unittest.TestCase):
                          (8640, 8284))
         self.assertEqual(result["pr51_reconciliation"]["actual_package_root_arcs"], 15)
         self.assertTrue(result["pr51_reconciliation"]["exact_reconciliation"])
-        self.assertIn("1..64 declared activities", result["production_rejection"])
+        self.assertIsNone(result["production_rejection"])
 
     def test_result_and_experiment_are_isolated(self):
         self.assertEqual(self.result["source_sha"], subprocess.check_output(

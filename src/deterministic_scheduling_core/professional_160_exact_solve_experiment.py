@@ -81,14 +81,7 @@ def prepare():
     if source != EXPECTED_INPUT_HASH:
         raise AssertionError("professional source hash changed")
     validate_experimental(problem)
-    try:
-        production.validate_problem(problem)
-    except ValueError as exc:
-        if "1..64 declared activities" not in str(exc):
-            raise
-        rejection = str(exc)
-    else:
-        raise AssertionError("production admitted 160 activities")
+    production.validate_problem(problem)  # Now admitted by the successor W1 authority.
     started = perf_counter()
     indexed, allowed, details, structures = w1_domain(problem)
     compiled, ranked = compile_compact(problem, indexed, allowed)
@@ -108,7 +101,7 @@ def prepare():
                 for selection in method_selections(problem)) or
             input_hash(problem) != source):
         raise AssertionError("professional domain/structure differs from frozen PR #52")
-    evidence = {"professional_input_hash": source, "production_rejection": rejection,
+    evidence = {"professional_input_hash": source, "production_admission": "W1_160",
                 "domain": {"declared": 160, "active_per_structure": 120,
                     "work_packages": 12, "flexible_work_packages": 4,
                     "authorised_structures": structures, "u0_raw": raw, "u0_eligible": eligible,

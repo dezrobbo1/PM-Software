@@ -40,8 +40,7 @@ class ProfessionalArchitectureTests(unittest.TestCase):
         self.assertEqual(e["professional_classifier"]["class"], "ADMISSION_BOUND")
         self.assertEqual((CURRENT_ACTIVITY_LIMIT, CURRENT_PLACEMENT_LIMIT, MAX_WORKFACE_INTERVALS),
                          (64, 20000, 20000))
-        with self.assertRaisesRegex(ValueError, "1..64 declared activities"):
-            validate_problem(self.problem)
+        validate_problem(self.problem)
         self.assertTrue(e["no_professional_solve"])
 
     def test_union_and_per_mode_reconcile(self):

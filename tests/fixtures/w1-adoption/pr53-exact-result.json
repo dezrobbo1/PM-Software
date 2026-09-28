@@ -1,0 +1,2332 @@
+{
+  "admitted_controls": "PR52_FOCUSED_TESTS_REQUIRED_IN_CI",
+  "base_main": "166d6e209f5fd29795cc92108d42ed5e17225751",
+  "classification": "COMPLETE_EXACT_POLICY_PROVEN",
+  "deterministic_time": 30.621410511498535,
+  "domain": {
+    "active_per_structure": 120,
+    "authorised_structures": 16,
+    "canonical_blocks": 26,
+    "canonical_digits": 332,
+    "declared": 160,
+    "flexible_work_packages": 4,
+    "resource_optional_intervals": 6705,
+    "u0_eligible": 64032,
+    "u0_raw": 64068,
+    "w1_retained": 7812,
+    "work_packages": 12,
+    "workface_optional_intervals": 409
+  },
+  "finish_proof": {
+    "base_proto_digest": "08d5ba3c835885940c364a5b8078996193f319a7c032c2b18f5e6bc853e38078",
+    "deterministic_time": 8.331390100088822,
+    "finish": 60,
+    "lb1": 60,
+    "queries": [
+      {
+        "bound": 60,
+        "budget_before": 60.0,
+        "deterministic_time": 8.331390100088822,
+        "result": "SAT",
+        "solver_wall_ms": 3278.8149670000003,
+        "status": "OPTIMAL",
+        "wall_ms": 3279.5394700000033
+      }
+    ],
+    "remaining_budget": 51.668609899911175,
+    "remaining_budget_observed": 51.668609899911175,
+    "shared_budget": 60.0,
+    "status": "PROVEN_EXACT",
+    "structures": 16
+  },
+  "lower_policy": {
+    "completed_blocks": 26,
+    "stages": [
+      {
+        "budget": 60.0,
+        "deterministic_time": 8.844661869346025,
+        "solver_wall_ms": 3539.932505,
+        "stage": "global_start_timing",
+        "status": "OPTIMAL",
+        "type": "global_timing",
+        "value": 363133,
+        "wall_ms": 3540.6346139999982
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 2.1253821150002006,
+        "solver_wall_ms": 1097.586773,
+        "stage": "canonical_block:000",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 72057525385560063,
+        "wall_ms": 1098.2962920000148
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.41484401200176846,
+        "solver_wall_ms": 502.22446900000006,
+        "stage": "canonical_block:001",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 1080934279313096640,
+        "wall_ms": 502.8982380000002
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.41484288200176767,
+        "solver_wall_ms": 509.909732,
+        "stage": "canonical_block:002",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 84662314677172,
+        "wall_ms": 510.6077360000256
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.5526139010029918,
+        "solver_wall_ms": 568.6205659999999,
+        "stage": "canonical_block:003",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 6637516598433186,
+        "wall_ms": 569.3806169999789
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 1.312765126002249,
+        "solver_wall_ms": 1136.943834,
+        "stage": "canonical_block:004",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 20472016376702904,
+        "wall_ms": 1137.62301700001
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 1.0672822073545642,
+        "solver_wall_ms": 1120.2192790000001,
+        "stage": "canonical_block:005",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 9946354814163675,
+        "wall_ms": 1120.91071399999
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.8498838468995923,
+        "solver_wall_ms": 962.42146,
+        "stage": "canonical_block:006",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 0,
+        "wall_ms": 963.1091389999824
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 1.2541495171003214,
+        "solver_wall_ms": 1135.002134,
+        "stage": "canonical_block:007",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 4051155809972,
+        "wall_ms": 1135.6836170000122
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.8958451825155525,
+        "solver_wall_ms": 1025.537526,
+        "stage": "canonical_block:008",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 2471120360280755,
+        "wall_ms": 1026.1899840000126
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.8614514168525325,
+        "solver_wall_ms": 988.122114,
+        "stage": "canonical_block:009",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 10830050282283139,
+        "wall_ms": 988.7825840000062
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.9409611387998679,
+        "solver_wall_ms": 910.8860020000001,
+        "stage": "canonical_block:010",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 399452795715273,
+        "wall_ms": 911.5774610000074
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.6203219220996363,
+        "solver_wall_ms": 781.3031340000001,
+        "stage": "canonical_block:011",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 23462665009325977,
+        "wall_ms": 782.0011180000108
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.4399481549997985,
+        "solver_wall_ms": 602.0128940000001,
+        "stage": "canonical_block:012",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 1,
+        "wall_ms": 602.7013329999988
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.5490708952998069,
+        "solver_wall_ms": 630.853695,
+        "stage": "canonical_block:013",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 9155901271840898,
+        "wall_ms": 631.5091310000014
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.44180707247597406,
+        "solver_wall_ms": 558.9257640000001,
+        "stage": "canonical_block:014",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 23497761918352424,
+        "wall_ms": 559.683734999993
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.22435548406227745,
+        "solver_wall_ms": 376.409204,
+        "stage": "canonical_block:015",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 10807352403037469,
+        "wall_ms": 377.05359100002056
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.08159191899995964,
+        "solver_wall_ms": 190.830766,
+        "stage": "canonical_block:016",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 11647942706113407,
+        "wall_ms": 191.46234799998751
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.20508074919492736,
+        "solver_wall_ms": 313.7951570000001,
+        "stage": "canonical_block:017",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 8342570288467588,
+        "wall_ms": 314.42804799999635
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.04066557799997392,
+        "solver_wall_ms": 127.650433,
+        "stage": "canonical_block:018",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 3223567819289734,
+        "wall_ms": 128.2945320000124
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.040467530999973626,
+        "solver_wall_ms": 130.325109,
+        "stage": "canonical_block:019",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 0,
+        "wall_ms": 130.98835399998165
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.06116814639996952,
+        "solver_wall_ms": 150.569952,
+        "stage": "canonical_block:020",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 409459029468955,
+        "wall_ms": 151.2137500000108
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.04513042499998418,
+        "solver_wall_ms": 99.05632200000001,
+        "stage": "canonical_block:021",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 23734759126833640,
+        "wall_ms": 99.72555000001648
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.0015502210000000014,
+        "solver_wall_ms": 66.47760500000001,
+        "stage": "canonical_block:022",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 972711021427266,
+        "wall_ms": 67.12356699998168
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.0013314899999999998,
+        "solver_wall_ms": 55.227378,
+        "stage": "canonical_block:023",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 0,
+        "wall_ms": 55.896582999992006
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.0014360319999999998,
+        "solver_wall_ms": 57.422459,
+        "stage": "canonical_block:024",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 438339167780,
+        "wall_ms": 58.07643500000381
+      },
+      {
+        "budget": 60.0,
+        "deterministic_time": 0.0014115759999999999,
+        "solver_wall_ms": 57.647943000000005,
+        "stage": "canonical_block:025",
+        "status": "OPTIMAL",
+        "type": "canonical_block",
+        "value": 151744091079,
+        "wall_ms": 58.319609000022865
+      }
+    ],
+    "total_blocks": 26
+  },
+  "model": {
+    "post_witness": {
+      "constraints": 8284,
+      "serialized_bytes": 952123,
+      "variables": 8640
+    },
+    "post_witness_after_stage_fixing": {
+      "constraints": 8286,
+      "serialized_bytes": 953198,
+      "variables": 8640
+    },
+    "pre_canonical": {
+      "constraints": 7952,
+      "serialized_bytes": 838675,
+      "variables": 8308
+    }
+  },
+  "model_build_wall_ms": 4145.519570999994,
+  "observed_wall_ms": 50390.91399200001,
+  "production_rejection": "bounded composition requires 1..64 declared activities",
+  "professional_input_hash": "92a2a346a64d916ff2f8346bd016915553737f3c9d71423157f5579defc0cc46",
+  "repeatability": {
+    "second_classification": "COMPLETE_EXACT_POLICY_PROVEN",
+    "second_deterministic_time": 30.621410511498535,
+    "second_solver_calls": 28,
+    "status": "EXACT_MATCH"
+  },
+  "result": {
+    "canonical_vector": [
+      {
+        "maximum": 0,
+        "name": "method:WP-01",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "method:WP-02",
+        "value": 0
+      },
+      {
+        "maximum": 0,
+        "name": "method:WP-03",
+        "value": 0
+      },
+      {
+        "maximum": 0,
+        "name": "method:WP-04",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "method:WP-05",
+        "value": 0
+      },
+      {
+        "maximum": 0,
+        "name": "method:WP-06",
+        "value": 0
+      },
+      {
+        "maximum": 0,
+        "name": "method:WP-07",
+        "value": 0
+      },
+      {
+        "maximum": 0,
+        "name": "method:WP-08",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "method:WP-09",
+        "value": 0
+      },
+      {
+        "maximum": 0,
+        "name": "method:WP-10",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "method:WP-11",
+        "value": 0
+      },
+      {
+        "maximum": 0,
+        "name": "method:WP-12",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P01A01",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P01A02",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P01A03",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P01A04",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P01A05",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P01A06",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P01A07",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P01A08",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P01A09",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P01A10",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02A01",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02A02",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02A03",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02A04",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02A05",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02A06",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02A07",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02A08",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02A09",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02A10",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02B01",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02B02",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02B03",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02B04",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02B05",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02B06",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02B07",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02B08",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02B09",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P02B10",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P03A01",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P03A02",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P03A03",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P03A04",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P03A05",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P03A06",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P03A07",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P03A08",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P03A09",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P03A10",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P04A01",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P04A02",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P04A03",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P04A04",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P04A05",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P04A06",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P04A07",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P04A08",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P04A09",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P04A10",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05A01",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05A02",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05A03",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05A04",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05A05",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05A06",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05A07",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05A08",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05A09",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05A10",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05B01",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05B02",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05B03",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05B04",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05B05",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05B06",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05B07",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05B08",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05B09",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P05B10",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P06A01",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P06A02",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P06A03",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P06A04",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P06A05",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P06A06",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P06A07",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P06A08",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P06A09",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P06A10",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P07A01",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P07A02",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P07A03",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P07A04",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P07A05",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P07A06",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P07A07",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P07A08",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P07A09",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P07A10",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P08A01",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P08A02",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P08A03",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P08A04",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P08A05",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P08A06",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P08A07",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P08A08",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P08A09",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P08A10",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09A01",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09A02",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09A03",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09A04",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09A05",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09A06",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09A07",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09A08",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09A09",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09A10",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09B01",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09B02",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09B03",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09B04",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09B05",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09B06",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09B07",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09B08",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09B09",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P09B10",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P10A01",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P10A02",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P10A03",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P10A04",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P10A05",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P10A06",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P10A07",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P10A08",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P10A09",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P10A10",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11A01",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11A02",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11A03",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11A04",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11A05",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11A06",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11A07",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11A08",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11A09",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11A10",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11B01",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11B02",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11B03",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11B04",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11B05",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11B06",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11B07",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11B08",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11B09",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P11B10",
+        "value": 0
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P12A01",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P12A02",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P12A03",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P12A04",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P12A05",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P12A06",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P12A07",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P12A08",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:P12A09",
+        "value": 1
+      },
+      {
+        "maximum": 1,
+        "name": "mode:F4",
+        "value": 1
+      },
+      {
+        "maximum": 76,
+        "name": "placement:P01A01",
+        "value": 1
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P01A02",
+        "value": 253
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P01A03",
+        "value": 23
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P01A04",
+        "value": 185
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P01A05",
+        "value": 25
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P01A06",
+        "value": 101
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P01A07",
+        "value": 27
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P01A08",
+        "value": 28
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P01A09",
+        "value": 337
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P01A10",
+        "value": 30
+      },
+      {
+        "maximum": 74,
+        "name": "placement:P02A01",
+        "value": 1
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P02A02",
+        "value": 277
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P02A03",
+        "value": 25
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P02A04",
+        "value": 201
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P02A05",
+        "value": 27
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P02A06",
+        "value": 109
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P02A07",
+        "value": 29
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P02A08",
+        "value": 30
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P02A09",
+        "value": 361
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P02A10",
+        "value": 32
+      },
+      {
+        "maximum": 74,
+        "name": "placement:P02B01",
+        "value": 0
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P02B02",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P02B03",
+        "value": 0
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P02B04",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P02B05",
+        "value": 0
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P02B06",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P02B07",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P02B08",
+        "value": 0
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P02B09",
+        "value": 0
+      },
+      {
+        "maximum": 94,
+        "name": "placement:P02B10",
+        "value": 0
+      },
+      {
+        "maximum": 72,
+        "name": "placement:P03A01",
+        "value": 1
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P03A02",
+        "value": 301
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P03A03",
+        "value": 27
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P03A04",
+        "value": 217
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P03A05",
+        "value": 29
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P03A06",
+        "value": 117
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P03A07",
+        "value": 31
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P03A08",
+        "value": 32
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P03A09",
+        "value": 385
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P03A10",
+        "value": 34
+      },
+      {
+        "maximum": 64,
+        "name": "placement:P04A01",
+        "value": 1
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P04A02",
+        "value": 397
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P04A03",
+        "value": 35
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P04A04",
+        "value": 281
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P04A05",
+        "value": 37
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P04A06",
+        "value": 149
+      },
+      {
+        "maximum": 94,
+        "name": "placement:P04A07",
+        "value": 39
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P04A08",
+        "value": 42
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P04A09",
+        "value": 505
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P04A10",
+        "value": 44
+      },
+      {
+        "maximum": 70,
+        "name": "placement:P05A01",
+        "value": 1
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P05A02",
+        "value": 325
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P05A03",
+        "value": 29
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P05A04",
+        "value": 233
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P05A05",
+        "value": 31
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P05A06",
+        "value": 125
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P05A07",
+        "value": 33
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P05A08",
+        "value": 34
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P05A09",
+        "value": 409
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P05A10",
+        "value": 36
+      },
+      {
+        "maximum": 70,
+        "name": "placement:P05B01",
+        "value": 0
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P05B02",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P05B03",
+        "value": 0
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P05B04",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P05B05",
+        "value": 0
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P05B06",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P05B07",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P05B08",
+        "value": 0
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P05B09",
+        "value": 0
+      },
+      {
+        "maximum": 94,
+        "name": "placement:P05B10",
+        "value": 0
+      },
+      {
+        "maximum": 68,
+        "name": "placement:P06A01",
+        "value": 1
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P06A02",
+        "value": 349
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P06A03",
+        "value": 31
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P06A04",
+        "value": 249
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P06A05",
+        "value": 33
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P06A06",
+        "value": 133
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P06A07",
+        "value": 35
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P06A08",
+        "value": 36
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P06A09",
+        "value": 433
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P06A10",
+        "value": 38
+      },
+      {
+        "maximum": 66,
+        "name": "placement:P07A01",
+        "value": 1
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P07A02",
+        "value": 373
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P07A03",
+        "value": 33
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P07A04",
+        "value": 265
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P07A05",
+        "value": 35
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P07A06",
+        "value": 141
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P07A07",
+        "value": 37
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P07A08",
+        "value": 38
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P07A09",
+        "value": 457
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P07A10",
+        "value": 40
+      },
+      {
+        "maximum": 62,
+        "name": "placement:P08A01",
+        "value": 1
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P08A02",
+        "value": 421
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P08A03",
+        "value": 37
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P08A04",
+        "value": 297
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P08A05",
+        "value": 39
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P08A06",
+        "value": 157
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P08A07",
+        "value": 41
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P08A08",
+        "value": 42
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P08A09",
+        "value": 506
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P08A10",
+        "value": 44
+      },
+      {
+        "maximum": 58,
+        "name": "placement:P09A01",
+        "value": 1
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P09A02",
+        "value": 469
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P09A03",
+        "value": 41
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P09A04",
+        "value": 329
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P09A05",
+        "value": 43
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P09A06",
+        "value": 173
+      },
+      {
+        "maximum": 94,
+        "name": "placement:P09A07",
+        "value": 45
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P09A08",
+        "value": 48
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P09A09",
+        "value": 577
+      },
+      {
+        "maximum": 95,
+        "name": "placement:P09A10",
+        "value": 50
+      },
+      {
+        "maximum": 58,
+        "name": "placement:P09B01",
+        "value": 0
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P09B02",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P09B03",
+        "value": 0
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P09B04",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P09B05",
+        "value": 0
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P09B06",
+        "value": 0
+      },
+      {
+        "maximum": 92,
+        "name": "placement:P09B07",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P09B08",
+        "value": 0
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P09B09",
+        "value": 0
+      },
+      {
+        "maximum": 97,
+        "name": "placement:P09B10",
+        "value": 0
+      },
+      {
+        "maximum": 67,
+        "name": "placement:P10A01",
+        "value": 1
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P10A02",
+        "value": 362
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P10A03",
+        "value": 32
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P10A04",
+        "value": 257
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P10A05",
+        "value": 34
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P10A06",
+        "value": 137
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P10A07",
+        "value": 36
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P10A08",
+        "value": 37
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P10A09",
+        "value": 445
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P10A10",
+        "value": 39
+      },
+      {
+        "maximum": 65,
+        "name": "placement:P11A01",
+        "value": 1
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P11A02",
+        "value": 386
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P11A03",
+        "value": 34
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P11A04",
+        "value": 273
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P11A05",
+        "value": 36
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P11A06",
+        "value": 145
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P11A07",
+        "value": 38
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P11A08",
+        "value": 39
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P11A09",
+        "value": 470
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P11A10",
+        "value": 41
+      },
+      {
+        "maximum": 65,
+        "name": "placement:P11B01",
+        "value": 0
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P11B02",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P11B03",
+        "value": 0
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P11B04",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P11B05",
+        "value": 0
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P11B06",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P11B07",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P11B08",
+        "value": 0
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P11B09",
+        "value": 0
+      },
+      {
+        "maximum": 94,
+        "name": "placement:P11B10",
+        "value": 0
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P12A01",
+        "value": 52
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P12A02",
+        "value": 625
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P12A03",
+        "value": 54
+      },
+      {
+        "maximum": 768,
+        "name": "placement:P12A04",
+        "value": 433
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P12A05",
+        "value": 56
+      },
+      {
+        "maximum": 384,
+        "name": "placement:P12A06",
+        "value": 225
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P12A07",
+        "value": 58
+      },
+      {
+        "maximum": 96,
+        "name": "placement:P12A08",
+        "value": 59
+      },
+      {
+        "maximum": 1152,
+        "name": "placement:P12A09",
+        "value": 709
+      },
+      {
+        "maximum": 61,
+        "name": "placement:F4",
+        "value": 61
+      }
+    ],
+    "extraction_validation_wall_ms": {
+      "independent_allocation_ms": 3.1338869999899543,
+      "independent_validation_ms": 62.48969899996837,
+      "result_extraction_ms": 12.05777699999544,
+      "stored_plan_validation_ms": 59.355811999978414
+    },
+    "objective": [
+      60,
+      363133
+    ],
+    "physical_validation": "PROVEN_FEASIBLE",
+    "plan_signature": "fb9207410a9a7f9279a4f83caff93e5e3aebd60e819ef700907b9293938695d1",
+    "selected_methods": {
+      "WP-01": "STANDARD",
+      "WP-02": "STANDARD",
+      "WP-03": "STANDARD",
+      "WP-04": "STANDARD",
+      "WP-05": "STANDARD",
+      "WP-06": "STANDARD",
+      "WP-07": "STANDARD",
+      "WP-08": "STANDARD",
+      "WP-09": "CRANE",
+      "WP-10": "STANDARD",
+      "WP-11": "STANDARD",
+      "WP-12": "HANDOVER"
+    },
+    "selected_modes": {
+      "F4": "MILESTONE",
+      "P01A01": "FIXED",
+      "P01A02": "FIXED",
+      "P01A03": "FIXED",
+      "P01A04": "FIXED",
+      "P01A05": "FIXED",
+      "P01A06": "FIXED",
+      "P01A07": "FIXED",
+      "P01A08": "FIXED",
+      "P01A09": "FIXED",
+      "P01A10": "FIXED",
+      "P02A01": "FIXED",
+      "P02A02": "FIXED",
+      "P02A03": "FIXED",
+      "P02A04": "FIXED",
+      "P02A05": "FIXED",
+      "P02A06": "FIXED",
+      "P02A07": "FIXED",
+      "P02A08": "FIXED",
+      "P02A09": "FIXED",
+      "P02A10": "FIXED",
+      "P03A01": "FIXED",
+      "P03A02": "FIXED",
+      "P03A03": "FIXED",
+      "P03A04": "FIXED",
+      "P03A05": "FIXED",
+      "P03A06": "FIXED",
+      "P03A07": "FIXED",
+      "P03A08": "FIXED",
+      "P03A09": "FIXED",
+      "P03A10": "FIXED",
+      "P04A01": "FIXED",
+      "P04A02": "FIXED",
+      "P04A03": "FIXED",
+      "P04A04": "FIXED",
+      "P04A05": "FIXED",
+      "P04A06": "FIXED",
+      "P04A07": "FIXED",
+      "P04A08": "FIXED",
+      "P04A09": "FIXED",
+      "P04A10": "FIXED",
+      "P05A01": "FIXED",
+      "P05A02": "FIXED",
+      "P05A03": "FIXED",
+      "P05A04": "FIXED",
+      "P05A05": "FIXED",
+      "P05A06": "FIXED",
+      "P05A07": "FIXED",
+      "P05A08": "FIXED",
+      "P05A09": "FIXED",
+      "P05A10": "FIXED",
+      "P06A01": "FIXED",
+      "P06A02": "FIXED",
+      "P06A03": "FIXED",
+      "P06A04": "FIXED",
+      "P06A05": "FIXED",
+      "P06A06": "FIXED",
+      "P06A07": "FIXED",
+      "P06A08": "FIXED",
+      "P06A09": "FIXED",
+      "P06A10": "FIXED",
+      "P07A01": "FIXED",
+      "P07A02": "FIXED",
+      "P07A03": "FIXED",
+      "P07A04": "FIXED",
+      "P07A05": "FIXED",
+      "P07A06": "FIXED",
+      "P07A07": "FIXED",
+      "P07A08": "FIXED",
+      "P07A09": "FIXED",
+      "P07A10": "FIXED",
+      "P08A01": "FIXED",
+      "P08A02": "FIXED",
+      "P08A03": "FIXED",
+      "P08A04": "FIXED",
+      "P08A05": "FIXED",
+      "P08A06": "FIXED",
+      "P08A07": "FIXED",
+      "P08A08": "FIXED",
+      "P08A09": "FIXED",
+      "P08A10": "FIXED",
+      "P09A01": "FIXED",
+      "P09A02": "FIXED",
+      "P09A03": "FIXED",
+      "P09A04": "FIXED",
+      "P09A05": "FIXED",
+      "P09A06": "FIXED",
+      "P09A07": "FIXED",
+      "P09A08": "FIXED",
+      "P09A09": "FIXED",
+      "P09A10": "FIXED",
+      "P10A01": "FIXED",
+      "P10A02": "FIXED",
+      "P10A03": "FIXED",
+      "P10A04": "FIXED",
+      "P10A05": "FIXED",
+      "P10A06": "FIXED",
+      "P10A07": "FIXED",
+      "P10A08": "FIXED",
+      "P10A09": "FIXED",
+      "P10A10": "FIXED",
+      "P11A01": "FIXED",
+      "P11A02": "FIXED",
+      "P11A03": "FIXED",
+      "P11A04": "FIXED",
+      "P11A05": "FIXED",
+      "P11A06": "FIXED",
+      "P11A07": "FIXED",
+      "P11A08": "FIXED",
+      "P11A09": "FIXED",
+      "P11A10": "FIXED",
+      "P12A01": "FIXED",
+      "P12A02": "FIXED",
+      "P12A03": "FIXED",
+      "P12A04": "FIXED",
+      "P12A05": "FIXED",
+      "P12A06": "FIXED",
+      "P12A07": "FIXED",
+      "P12A08": "FIXED",
+      "P12A09": "FIXED"
+    },
+    "selected_original_placement_ranks": {
+      "F4": 61,
+      "P01A01": 1,
+      "P01A02": 253,
+      "P01A03": 23,
+      "P01A04": 185,
+      "P01A05": 25,
+      "P01A06": 101,
+      "P01A07": 27,
+      "P01A08": 28,
+      "P01A09": 337,
+      "P01A10": 30,
+      "P02A01": 1,
+      "P02A02": 277,
+      "P02A03": 25,
+      "P02A04": 201,
+      "P02A05": 27,
+      "P02A06": 109,
+      "P02A07": 29,
+      "P02A08": 30,
+      "P02A09": 361,
+      "P02A10": 32,
+      "P02B01": 0,
+      "P02B02": 0,
+      "P02B03": 0,
+      "P02B04": 0,
+      "P02B05": 0,
+      "P02B06": 0,
+      "P02B07": 0,
+      "P02B08": 0,
+      "P02B09": 0,
+      "P02B10": 0,
+      "P03A01": 1,
+      "P03A02": 301,
+      "P03A03": 27,
+      "P03A04": 217,
+      "P03A05": 29,
+      "P03A06": 117,
+      "P03A07": 31,
+      "P03A08": 32,
+      "P03A09": 385,
+      "P03A10": 34,
+      "P04A01": 1,
+      "P04A02": 397,
+      "P04A03": 35,
+      "P04A04": 281,
+      "P04A05": 37,
+      "P04A06": 149,
+      "P04A07": 39,
+      "P04A08": 42,
+      "P04A09": 505,
+      "P04A10": 44,
+      "P05A01": 1,
+      "P05A02": 325,
+      "P05A03": 29,
+      "P05A04": 233,
+      "P05A05": 31,
+      "P05A06": 125,
+      "P05A07": 33,
+      "P05A08": 34,
+      "P05A09": 409,
+      "P05A10": 36,
+      "P05B01": 0,
+      "P05B02": 0,
+      "P05B03": 0,
+      "P05B04": 0,
+      "P05B05": 0,
+      "P05B06": 0,
+      "P05B07": 0,
+      "P05B08": 0,
+      "P05B09": 0,
+      "P05B10": 0,
+      "P06A01": 1,
+      "P06A02": 349,
+      "P06A03": 31,
+      "P06A04": 249,
+      "P06A05": 33,
+      "P06A06": 133,
+      "P06A07": 35,
+      "P06A08": 36,
+      "P06A09": 433,
+      "P06A10": 38,
+      "P07A01": 1,
+      "P07A02": 373,
+      "P07A03": 33,
+      "P07A04": 265,
+      "P07A05": 35,
+      "P07A06": 141,
+      "P07A07": 37,
+      "P07A08": 38,
+      "P07A09": 457,
+      "P07A10": 40,
+      "P08A01": 1,
+      "P08A02": 421,
+      "P08A03": 37,
+      "P08A04": 297,
+      "P08A05": 39,
+      "P08A06": 157,
+      "P08A07": 41,
+      "P08A08": 42,
+      "P08A09": 506,
+      "P08A10": 44,
+      "P09A01": 1,
+      "P09A02": 469,
+      "P09A03": 41,
+      "P09A04": 329,
+      "P09A05": 43,
+      "P09A06": 173,
+      "P09A07": 45,
+      "P09A08": 48,
+      "P09A09": 577,
+      "P09A10": 50,
+      "P09B01": 0,
+      "P09B02": 0,
+      "P09B03": 0,
+      "P09B04": 0,
+      "P09B05": 0,
+      "P09B06": 0,
+      "P09B07": 0,
+      "P09B08": 0,
+      "P09B09": 0,
+      "P09B10": 0,
+      "P10A01": 1,
+      "P10A02": 362,
+      "P10A03": 32,
+      "P10A04": 257,
+      "P10A05": 34,
+      "P10A06": 137,
+      "P10A07": 36,
+      "P10A08": 37,
+      "P10A09": 445,
+      "P10A10": 39,
+      "P11A01": 1,
+      "P11A02": 386,
+      "P11A03": 34,
+      "P11A04": 273,
+      "P11A05": 36,
+      "P11A06": 145,
+      "P11A07": 38,
+      "P11A08": 39,
+      "P11A09": 470,
+      "P11A10": 41,
+      "P11B01": 0,
+      "P11B02": 0,
+      "P11B03": 0,
+      "P11B04": 0,
+      "P11B05": 0,
+      "P11B06": 0,
+      "P11B07": 0,
+      "P11B08": 0,
+      "P11B09": 0,
+      "P11B10": 0,
+      "P12A01": 52,
+      "P12A02": 625,
+      "P12A03": 54,
+      "P12A04": 433,
+      "P12A05": 56,
+      "P12A06": 225,
+      "P12A07": 58,
+      "P12A08": 59,
+      "P12A09": 709
+    },
+    "stored_plan_validation": "PROVEN_FEASIBLE_EXPERIMENTAL_ONLY"
+  },
+  "runtime": {
+    "ortools": "9.15.6755",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "python": "3.12.14"
+  },
+  "solver_calls": 28,
+  "source_sha": "b3186ac915bfb2d4bdfe3eaee530c7e28f26be61",
+  "stopped_stage": null,
+  "structural_oracle": {
+    "reason": "No bounded independent 16-structure exact oracle exists in this experiment.",
+    "status": "STRUCTURAL_ORACLE_INCONCLUSIVE"
+  }
+}

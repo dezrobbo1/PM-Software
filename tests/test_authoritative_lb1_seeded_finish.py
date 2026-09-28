@@ -97,7 +97,7 @@ class AuthoritativeLB1FinishTests(unittest.TestCase):
                 self.assertEqual(current.plan, repeat.plan)
                 self.assertEqual(current.metrics["canonical_vector"], old.metrics["canonical_vector"])
                 self.assertEqual(current.plan["physical_status"], "PROVEN_FEASIBLE")
-                self.assertEqual(current.plan["solver"]["compiler"], "native-work-method-time-lb1-seeded/0")
+                self.assertEqual(current.plan["solver"]["compiler"], "native-work-method-time-w1-lb1-seeded/0")
                 self.assertNotEqual(current.plan["plan_hash"], old.plan["plan_hash"])
                 self.assertEqual(input_hash(problem), before)
                 self.assertEqual(len(current.plan["solver"]["stages"]), current.metrics["policy_stage_count"])
@@ -220,7 +220,7 @@ class AuthoritativeLB1FinishTests(unittest.TestCase):
         recovery = schedule_accepted_work_method_time(problem, problem, reference, status).plan
         self.assertEqual(recovery["reference_plan_hash"], reference["plan_hash"])
         self.assertEqual(recovery["status_state_hash"], state_hash(status))
-        self.assertEqual(recovery["future_plan"]["solver"]["compiler"], "native-work-method-time-lb1-seeded/0")
+        self.assertEqual(recovery["future_plan"]["solver"]["compiler"], "native-work-method-time-w1-lb1-seeded/0")
         self.assertEqual(semantic_plan(recovery["future_plan"]),
                          semantic_plan(_schedule_work_method_time_batched(future).plan))
         self.assertEqual(status, before)
@@ -238,7 +238,7 @@ class AuthoritativeLB1FinishTests(unittest.TestCase):
         future_problem, _, _ = _compile_future_problem(problem, problem, reference, status)
         oracle = _schedule_work_method_time_batched(future_problem)
         self.assertEqual(semantic_plan(recovery["future_plan"]), semantic_plan(oracle.plan))
-        self.assertEqual(recovery["future_plan"]["solver"]["compiler"], "native-work-method-time-lb1-seeded/0")
+        self.assertEqual(recovery["future_plan"]["solver"]["compiler"], "native-work-method-time-w1-lb1-seeded/0")
         self.assertEqual(recovery["reference_plan_hash"], reference["plan_hash"])
         with patch("deterministic_scheduling_core.scheduling.accepted_work_method_time.schedule_work_method_time",
                    side_effect=_schedule_work_method_time_batched):
@@ -258,7 +258,7 @@ class AuthoritativeLB1FinishTests(unittest.TestCase):
             validate_cycle(cycle)
         self.assertEqual(cycle_to_document(cycle), cycle_doc)
         recovered = calculate_structural_recovery(cycle).plan
-        self.assertEqual(recovered["future_plan"]["solver"]["compiler"], "native-work-method-time-lb1-seeded/0")
+        self.assertEqual(recovered["future_plan"]["solver"]["compiler"], "native-work-method-time-w1-lb1-seeded/0")
         promoted = promote_structural_recovery_to_status_cycle(
             cycle.current_problem, cycle.reference_problem, cycle.reference_plan, cycle.status_workspace,
             recovered, asserted_by="planner", accepted_by="acceptor", prior_lineage=cycle.lineage,
@@ -271,7 +271,7 @@ class AuthoritativeLB1FinishTests(unittest.TestCase):
             promoted, 6, _t2_assertions(), asserted_by="planner", accepted_by="acceptor")
         self.assertEqual(advanced.lineage[:len(old_lineage)], old_lineage)
         self.assertEqual(calculate_structural_recovery(advanced).plan["future_plan"]["solver"]["compiler"],
-                         "native-work-method-time-lb1-seeded/0")
+                         "native-work-method-time-w1-lb1-seeded/0")
         round_trip = cycle_from_document(cycle_to_document(advanced))
         with patch.object(cp_model.CpSolver, "solve", side_effect=AssertionError("no solve")):
             validate_cycle(round_trip)

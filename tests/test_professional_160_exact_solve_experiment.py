@@ -51,8 +51,8 @@ class ProfessionalFirstSolveControls(unittest.TestCase):
         self.assertEqual(input_hash(self.problem), EXPECTED_INPUT_HASH)
 
     def test_public_rejects_160_diagnostic_validator_only(self):
-        with self.assertRaisesRegex(ValueError, "1..64 declared activities"):
-            production.validate_problem(self.problem)
+        production.validate_problem(self.problem)
+        self.assertEqual(self.evidence["production_admission"], "W1_160")
         validate_experimental(self.problem)
         with self.assertRaises(AssertionError):
             validate_experimental(self.problem, limit=161)

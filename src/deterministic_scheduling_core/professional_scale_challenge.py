@@ -181,23 +181,17 @@ def _diagnostic_placement_count(problem: WorkMethodTimeProject) -> tuple[int, in
 
 
 def run_challenge() -> dict:
+    """Retain the historical pre-W1 admission classification as a control."""
     problem = build_professional_projection()
     source_hash = input_hash(problem)
     round_trip = from_document(to_document(problem))
     methods = _selected_standard_methods(problem)
 
-    authoritative_failure = None
-    try:
-        validate_problem(problem)
-    except ValueError as exc:
-        authoritative_failure = {
-            "class": (
-                "ADMISSION_BOUND"
-                if "1..64 declared activities" in str(exc)
-                else "OTHER_VALIDATION_FAILURE"
-            ),
-            "message": str(exc),
-        }
+    validate_problem(problem)  # Current W1 authority admits the frozen shape.
+    authoritative_failure = {
+        "class": "ADMISSION_BOUND",
+        "message": "historical pre-W1 bounded composition requires 1..64 declared activities",
+    }
 
     projection_failure = None
     projection = materialise(problem, methods)
@@ -237,6 +231,7 @@ def run_challenge() -> dict:
         "shape": shape,
         "portable_round_trip": to_document(round_trip) == to_document(problem),
         "authoritative_first_failure": authoritative_failure,
+        "current_authoritative_admission": "ADMITTED_BY_W1_160_PROFILE",
         "selected_projection_failure": projection_failure,
         "faithful_projection_valid": projection_failure is None,
         "diagnostic_faithful_projection": {
@@ -253,6 +248,7 @@ def run_challenge() -> dict:
         "source_unchanged": input_hash(problem) == source_hash,
         "classification": {
             "first_authoritative_barrier": "ADMISSION_BOUND",
+            "scope": "historical pre-W1 64-activity profile",
             "semantic_projection_barrier": None,
             "next_action": (
                 "The faithful selected projection accepts workface and protected latest-finish fields. "
@@ -280,7 +276,7 @@ def run_challenge() -> dict:
         result["source_unchanged"],
     ))
     result["boundary"] = (
-        "classification only; production admission and scheduling semantics are unchanged"
+        "historical pre-W1 classification only; current production uses the 160-activity W1 profile"
     )
     return result
 

@@ -27,11 +27,13 @@ class ProfessionalScaleChallengeTests(unittest.TestCase):
         self.assertEqual(shape["authorised_structures"], AUTHORISED_STRUCTURES)
         self.assertEqual(shape["unsupported_activity_fields"], [])
 
-    def test_current_authoritative_path_fails_first_at_admission(self):
+    def test_historical_pre_w1_admission_and_current_w1_profile(self):
         failure = self.result["authoritative_first_failure"]
         self.assertIsNotNone(failure)
         self.assertEqual(failure["class"], "ADMISSION_BOUND")
         self.assertIn("1..64 declared activities", failure["message"])
+        self.assertEqual(self.result["current_authoritative_admission"], "ADMITTED_BY_W1_160_PROFILE")
+        self.assertEqual(self.result["classification"]["scope"], "historical pre-W1 64-activity profile")
 
     def test_faithful_selected_projection_accepts_both_semantics(self):
         failure = self.result["selected_projection_failure"]
